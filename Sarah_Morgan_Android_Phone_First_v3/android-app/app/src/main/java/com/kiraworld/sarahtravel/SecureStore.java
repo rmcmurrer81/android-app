@@ -15,40 +15,89 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 public final class SecureStore {
-    private static final String ALIAS = "SarahMorganApiKey";
+    private static final String ALIAS = "SarahMorganEncryptedSecrets";
+    private static final String LEGACY_ALIAS = "SarahMorganApiKey";
     private static final String PREF = "secure_preferences";
 
     private SecureStore() { }
 
     public static void saveApiKey(Context context, String value) throws Exception {
-        SecretKey key = getOrCreateKey();
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, key);
-        byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
-        SharedPreferences p = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-        p.edit().putString("iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)).putString("key", Base64.encodeToString(encrypted, Base64.NO_WRAP)).apply();
+        saveSecret(context, "model", value);
     }
 
     public static String loadApiKey(Context context) {
+        String value = loadSecret(context, "model");
+        if (!value.isEmpty()) return value;
+        return loadLegacyApiKey(context);
+    }
+
+    public static void saveDealBackendToken(Context context, String value) throws Exception {
+        saveSecret(context, "deal_backend", value);
+    }
+
+    public static String loadDealBackendToken(Context context) {
+        return loadSecret(context, "deal_backend");
+    }
+
+    private static void saveSecret(Context context, String name, String value) throws Exception {
+        SecretKey key = getOrCreateKey(ALIAS);
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        byte[] encrypted = cipher.doFinal((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+        SharedPreferences preferences = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        preferences.edit()
+                .putString(name + "_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                .putString(name + "_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                .apply();
+    }
+
+    private static String loadSecret(Context context, String name) {
         try {
-            SharedPreferences p = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-            String iv = p.getString("iv", "");
-            String data = p.getString("key", "");
+            SharedPreferences preferences = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+            String iv = preferences.getString(name + "_iv", "");
+            String data = preferences.getString(name + "_data", "");
             if (iv.isEmpty() || data.isEmpty()) return "";
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    getOrCreateKey(ALIAS),
+                    new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
             return new String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), StandardCharsets.UTF_8);
         } catch (Exception ignored) {
             return "";
         }
     }
 
-    private static SecretKey getOrCreateKey() throws Exception {
+    private static String loadLegacyApiKey(Context context) {
+        try {
+            SharedPreferences preferences = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+            String iv = preferences.getString("iv", "");
+            String data = preferences.getString("key", "");
+            if (iv.isEmpty() || data.isEmpty()) return "";
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    getOrCreateKey(LEGACY_ALIAS),
+                    new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
+            return new String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static SecretKey getOrCreateKey(String alias) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
-        if (store.containsAlias(ALIAS)) return ((KeyStore.SecretKeyEntry) store.getEntry(ALIAS, null)).getSecretKey();
+        if (store.containsAlias(alias)) {
+            return ((KeyStore.SecretKeyEntry) store.getEntry(alias, null)).getSecretKey();
+        }
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-        generator.init(new KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
+        generator.init(new KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build());
         return generator.generateKey();
     }
 }
