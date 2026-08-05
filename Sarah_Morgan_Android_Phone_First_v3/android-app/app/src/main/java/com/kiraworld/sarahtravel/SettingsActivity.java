@@ -22,10 +22,9 @@ public final class SettingsActivity extends Activity {
     private static final int REQ_NOTIFICATIONS = 4401;
 
     public static void ensureAutomaticModeDefault(Context context) {
-        SarahRuntimeServices.install(context);
-        SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!p.getBoolean(KEY_MODE_MIGRATED, false)) {
-            p.edit()
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!preferences.getBoolean(KEY_MODE_MIGRATED, false)) {
+            preferences.edit()
                     .putInt(KEY_MODE, ConversationModePolicy.MODE_AUTO)
                     .putBoolean(KEY_MODE_MIGRATED, true)
                     .apply();
@@ -52,7 +51,7 @@ public final class SettingsActivity extends Activity {
         setContentView(R.layout.activity_settings);
         ensureAutomaticModeDefault(this);
 
-        SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
+        SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
         Spinner provider = findViewById(R.id.providerSpinner);
         Spinner voice = findViewById(R.id.voiceModeSpinner);
         provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
@@ -65,14 +64,14 @@ public final class SettingsActivity extends Activity {
                 "Sarah cloud voice (uses API)"
         }));
         provider.setSelection(getConversationMode(this));
-        voice.setSelection(p.getInt("voice_mode", 0));
+        voice.setSelection(preferences.getInt("voice_mode", 0));
 
         EditText api = findViewById(R.id.apiKeyInput);
         EditText model = findViewById(R.id.modelInput);
         EditText backendUrl = findViewById(R.id.dealBackendUrlInput);
         EditText backendToken = findViewById(R.id.dealBackendTokenInput);
-        model.setText(p.getString("model", "gpt-5-mini"));
-        backendUrl.setText(p.getString("deal_backend_url", ""));
+        model.setText(preferences.getString("model", "gpt-5-mini"));
+        backendUrl.setText(preferences.getString("deal_backend_url", ""));
 
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
@@ -80,24 +79,24 @@ public final class SettingsActivity extends Activity {
         CheckBox autoSpeak = findViewById(R.id.autoSpeakCheck);
         CheckBox learn = findViewById(R.id.learnCheck);
         SeekBar speed = findViewById(R.id.speedSeek);
-        web.setChecked(p.getBoolean("web_search", true));
-        autoResearch.setChecked(p.getBoolean("auto_destination_research", true));
-        dealAlerts.setChecked(p.getBoolean("deal_alerts_enabled", true));
-        autoSpeak.setChecked(p.getBoolean("auto_speak", true));
-        learn.setChecked(p.getBoolean("learn", true));
-        speed.setProgress(p.getInt("speed", 45));
+        web.setChecked(preferences.getBoolean("web_search", true));
+        autoResearch.setChecked(preferences.getBoolean("auto_destination_research", true));
+        dealAlerts.setChecked(preferences.getBoolean("deal_alerts_enabled", true));
+        autoSpeak.setChecked(preferences.getBoolean("auto_speak", true));
+        learn.setChecked(preferences.getBoolean("learn", true));
+        speed.setProgress(preferences.getInt("speed", 45));
 
         Button save = findViewById(R.id.saveSettingsButton);
         save.setOnClickListener(v -> {
             int selectedMode = provider.getSelectedItemPosition();
-            String entered = api.getText().toString().trim();
+            String enteredModelKey = api.getText().toString().trim();
             String enteredBackendToken = backendToken.getText().toString().trim();
             String savedKey = SecureStore.loadApiKey(this);
 
             setConversationMode(this, selectedMode);
-            p.edit()
+            preferences.edit()
                     .putInt("voice_mode", voice.getSelectedItemPosition())
-                    .putString("connected_provider", p.getString("connected_provider", "openai"))
+                    .putString("connected_provider", preferences.getString("connected_provider", "openai"))
                     .putString("model", model.getText().toString().trim().isEmpty()
                             ? "gpt-5-mini"
                             : model.getText().toString().trim())
@@ -110,10 +109,10 @@ public final class SettingsActivity extends Activity {
                     .putInt("speed", speed.getProgress())
                     .apply();
 
-            if (!entered.isEmpty()) {
+            if (!enteredModelKey.isEmpty()) {
                 try {
-                    SecureStore.saveApiKey(this, entered);
-                    savedKey = entered;
+                    SecureStore.saveApiKey(this, enteredModelKey);
+                    savedKey = enteredModelKey;
                 } catch (Exception e) {
                     Toast.makeText(this, "The model key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     return;
@@ -128,16 +127,19 @@ public final class SettingsActivity extends Activity {
                 }
             }
 
-            if (dealAlerts.isChecked()) {
+            if (dealAlerts.isChecked() || autoResearch.isChecked()) {
                 DealWatchScheduler.ensureScheduled(this);
                 DealWatchScheduler.runSoon(this);
-                if (Build.VERSION.SDK_INT >= 33
-                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
-                    return;
-                }
+            } else {
+                DealWatchScheduler.cancel(this);
             }
 
+            if (dealAlerts.isChecked()
+                    && Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+                return;
+            }
             finishWithMessage(selectedMode, savedKey);
         });
     }
@@ -158,8 +160,7 @@ public final class SettingsActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_NOTIFICATIONS) {
-            int selectedMode = getConversationMode(this);
-            finishWithMessage(selectedMode, SecureStore.loadApiKey(this));
+            finishWithMessage(getConversationMode(this), SecureStore.loadApiKey(this));
         }
     }
 }
