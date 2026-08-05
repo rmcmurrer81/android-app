@@ -13,7 +13,7 @@ import java.util.Map;
 
 public final class SarahDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "sarah.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
 
     public SarahDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -36,6 +36,37 @@ public final class SarahDatabase extends SQLiteOpenHelper {
         }
         if (oldVersion < 3) {
             try { db.execSQL("ALTER TABLE profile ADD COLUMN age INTEGER NOT NULL DEFAULT 18"); } catch (Exception ignored) { }
+        }
+        if (oldVersion < 4) {
+            repairEarlyTravelPreferenceBug(db);
+        }
+    }
+
+    private void repairEarlyTravelPreferenceBug(SQLiteDatabase db) {
+        long now = System.currentTimeMillis();
+        db.beginTransaction();
+        try {
+            db.delete(
+                    "memories",
+                    "lower(summary) LIKE ? OR lower(summary) LIKE ?",
+                    new String[]{"dislikes or avoids%care of dates%", "dislikes or avoids%travel light%"});
+
+            ContentValues flexible = new ContentValues();
+            flexible.put("category", "travel_preference");
+            flexible.put("summary", "Travel dates are flexible");
+            flexible.put("source_text", "Corrected from an early parser mistake");
+            flexible.put("created_at", now);
+            db.insertWithOnConflict("memories", null, flexible, SQLiteDatabase.CONFLICT_IGNORE);
+
+            ContentValues light = new ContentValues();
+            light.put("category", "travel_preference");
+            light.put("summary", "Usually travels light and prefers little or no checked luggage");
+            light.put("source_text", "Corrected from an early parser mistake");
+            light.put("created_at", now);
+            db.insertWithOnConflict("memories", null, light, SQLiteDatabase.CONFLICT_IGNORE);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
         }
     }
 
