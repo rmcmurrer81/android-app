@@ -21,7 +21,7 @@ public final class SettingsActivity extends Activity {
         SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
         Spinner provider = findViewById(R.id.providerSpinner);
         Spinner voice = findViewById(R.id.voiceModeSpinner);
-        provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Demo (offline and limited)", "OpenAI Responses (personal key)"}));
+        provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Offline companion (no account needed)", "OpenAI Responses + web search (personal key)"}));
         voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Android voice (free)", "Sarah cloud voice (uses API)"}));
         provider.setSelection(p.getInt("provider", 0));
         voice.setSelection(p.getInt("voice_mode", 0));
