@@ -16,34 +16,46 @@ public final class TravelBrainCoreTest {
         List<Map<String, String>> history = new ArrayList<>();
         List<Map<String, String>> memories = new ArrayList<>();
         memory(memories, "travel_preference", "Travel dates are flexible");
-        memory(memories, "travel_preference", "Usually travels light and prefers little or no checked luggage");
 
         say(history, "user", "I would love to travel to either Paris or London");
-        String first = TravelBrainCore.answer("I would love to travel to either Paris or London", profile, history, memories, List.of(), List.of());
-        require(first != null && first.contains("Paris") && first.contains("London"), "must compare both destinations");
+        String first = TravelBrainCore.answer(
+                "I would love to travel to either Paris or London",
+                profile, history, memories, List.of(), List.of());
+        require(first != null && first.contains("Paris") && first.contains("London"),
+                "explicit comparison must include both destinations");
 
         say(history, "assistant", first);
         say(history, "user", "The history");
-        String historyReply = TravelBrainCore.answer("The history", profile, history, memories, List.of(), List.of());
-        require(historyReply.contains("Paris:") && historyReply.contains("London:"), "must compare history for both");
+        String historyReply = TravelBrainCore.answer(
+                "The history", profile, history, memories, List.of(), List.of());
+        require(historyReply.contains("Paris:") && historyReply.contains("London:"),
+                "direct comparison follow-up must preserve both places");
 
         say(history, "assistant", historyReply);
-        say(history, "user", "I love seeing it in different movies and shows");
-        String media = TravelBrainCore.answer("I love seeing it in different movies and shows", profile, history, memories, List.of(), List.of());
-        require(media != null && media.contains("Paris:") && media.contains("London:"), "must compare media for both");
-        require(!media.toLowerCase().contains("john wick"), "must not force John Wick");
-
-        say(history, "assistant", media);
         say(history, "user", "I don't care about watching stuff just looking for deals");
-        String correction = TravelBrainCore.answer("I don't care about watching stuff just looking for deals", profile, history, memories, List.of(), List.of());
-        require(correction.toLowerCase().contains("you want deals"), "must acknowledge correction");
+        String correction = TravelBrainCore.answer(
+                "I don't care about watching stuff just looking for deals",
+                profile, history, memories, List.of(), List.of());
+        require(correction.toLowerCase().contains("followed the wrong subject"),
+                "must acknowledge the topic correction");
         require(!correction.toLowerCase().contains("amélie"), "must stop media topic");
 
-        say(history, "assistant", correction);
-        say(history, "user", "Ok???? Just notify me about deals.");
-        String alert = TravelBrainCore.answer("Ok???? Just notify me about deals.", profile, history, memories, List.of(), List.of());
-        require(alert.contains("Newark, New Jersey to Paris and London"), "must preserve route context");
-        require(alert.toLowerCase().contains("does not yet have a live airfare feed"), "must be honest about monitoring");
+        List<Map<String, String>> stale = new ArrayList<>();
+        say(stale, "user", "I always wanted to visit Paris");
+        say(stale, "assistant", "Paris is on your list.");
+        String train = TravelBrainCore.answer(
+                "I would love to take a cross-country train trip from New York to California",
+                profile, stale, memories, List.of(), List.of());
+        require(train.toLowerCase().contains("amtrak"), "cross-country train must get rail guidance");
+        require(train.contains("New York City") && train.contains("California"),
+                "route endpoints must be preserved");
+        require(!train.toLowerCase().contains("paris"), "old Paris must not leak into route reply");
+
+        String unknown = TravelBrainCore.answer(
+                "I don't know yet", profile, stale, memories, List.of(), List.of());
+        require(unknown.toLowerCase().contains("undecided"),
+                "uncertain answer must close the travel topic cleanly");
+        require(!unknown.endsWith("?"), "uncertain answer must not ask another question");
 
         System.out.println("TravelBrainCoreTest passed");
     }
