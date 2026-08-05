@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.2-event-aware-travel"
+            android:text="Build 1.3-multimodal-travel"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -72,7 +72,7 @@
             android:id="@+id/webSearchCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Allow connected web research for current attractions, events, weather, and travel information" />
+            android:text="Allow connected web research for current attractions, events, maps, routes, schedules, weather, and travel information" />
 
         <CheckBox
             android:id="@+id/autoResearchCheck"
@@ -85,7 +85,33 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Event trips are monitored separately. Saying “Vegas for CES” or “San Diego for Comic-Con” creates an event-centered record that checks official event details, venue and schedule changes, transportation, nearby food, and nearby places. Android may defer background jobs to preserve battery."
+            android:text="Sarah now keeps the current route separate from old wish-list places. A message such as “New York to California by train” is treated as one journey, not a comparison with Paris or another saved trip."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Maps, photos, videos, and routes"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="For relevant trip messages, Sarah can open an in-app Explore panel with an OpenStreetMap view, Wikimedia Commons photo search, YouTube travel-video search, and a route view. These are public contextual sources; verify closures, service changes, and accessibility before relying on them."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Event trips"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Saying “Vegas for CES,” “San Diego for Comic-Con,” or “metro to New York Comic Con” creates an event-centered record that checks official event details, venue and schedule changes, transportation, nearby food, and nearby places. Android may defer background jobs to preserve battery."
             android:textSize="13sp" />
 
         <TextView
@@ -105,13 +131,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Travel-deal service"
+            android:text="Multimodal travel service"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Sarah can store broad watches immediately. Actual airfare checks require a team backend that returns normalized fare dates, airports, price, booking link, and clearly labeled forecast or seasonal weather context."
+            android:text="Sarah can store journey plans and watches for air, Amtrak or rail, intercity bus, local metro or transit, driving, ferry, biking, walking, and mixed routes. Actual prices, schedules, delays, and service alerts require a team backend that returns normalized, source-backed results."
             android:textSize="13sp" />
 
         <EditText
@@ -134,7 +160,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Schedule background deal checks and notify me when the configured backend reports a meaningful option" />
+            android:text="Schedule background air, rail, bus, transit, driving, ferry, and deal checks and notify me when the configured backend reports a meaningful change" />
 
         <TextView
             android:layout_width="match_parent"
@@ -179,7 +205,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn useful travel preferences, past trips, interests, worries, wish-list places, event trips, and requested deal watches" />
+            android:text="Let Sarah learn useful travel preferences, past trips, journey methods, interests, worries, wish-list places, event trips, and requested watches" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -192,7 +218,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented fare and event sources, rate limits, privacy controls, and release signing."
+            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented transport and event sources, rate limits, privacy controls, and release signing."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
