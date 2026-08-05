@@ -29,15 +29,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 0.6 smart-modes APK
+      - name: Build Sarah 0.7 conversational APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-0.6-smart-modes.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-0.7-conversational.apk
 
-      - name: Upload Sarah 0.6 APK
+      - name: Upload Sarah 0.7 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-0.6-smart-modes
-          path: Sarah-Morgan-0.6-smart-modes.apk
+          name: Sarah-Morgan-0.7-conversational
+          path: Sarah-Morgan-0.7-conversational.apk
           if-no-files-found: error
