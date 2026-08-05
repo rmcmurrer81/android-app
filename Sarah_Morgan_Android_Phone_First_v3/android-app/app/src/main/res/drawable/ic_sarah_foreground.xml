@@ -45,7 +45,6 @@
         android:fillColor="@android:color/transparent"
         android:pathData="M72,29 C77,31 80,34 82,39"
         android:strokeColor="@color/sarah_icon_sky"
-        android:strokeDashArray="2,3"
         android:strokeLineCap="round"
         android:strokeWidth="3" />
 
