@@ -32,11 +32,41 @@ public final class TravelNotebookActivity extends Activity {
         container.removeAllViews();
         List<Map<String, String>> memories = db.listMemories(150);
 
-        addHeader("Travel deal requests");
-        boolean hasDealRequest = addMemoryRows(memories, "deal_watch_request");
-        if (!hasDealRequest) {
-            addRow("No saved deal request", "Sarah can remember a request, but real price-drop notifications need a connected fare data source or protected backend.");
+        addHeader("Travel deal watches");
+        List<Map<String, String>> watches = db.listDealWatches(100);
+        if (watches.isEmpty()) {
+            addRow("No watch yet", "Mention a dream destination or ask Sarah to watch for deals.");
+        } else {
+            for (Map<String, String> watch : watches) {
+                String title = watch.get("origin") + " → " + watch.get("destination");
+                String detail = "Status: " + watch.get("backend_status")
+                        + " • " + watch.get("trip_type")
+                        + " • " + watch.get("travelers") + " traveler(s)"
+                        + " • " + watch.get("bag_mode")
+                        + " • " + watch.get("min_trip_days") + "–" + watch.get("max_trip_days") + " nights"
+                        + " • flexible dates: " + yesNo(watch.get("flexible_dates"))
+                        + " • nearby airports: " + yesNo(watch.get("nearby_airports"));
+                addRow(title, detail);
+            }
         }
+
+        addHeader("Destination knowledge packs");
+        List<Map<String, String>> packs = db.listKnowledgePacks(100);
+        if (packs.isEmpty()) {
+            addRow("No pack yet", "Sarah queues a pack automatically when a destination becomes part of a plan.");
+        } else {
+            for (Map<String, String> pack : packs) {
+                String detail = "Status: " + pack.get("status");
+                if (!pack.getOrDefault("overview", "").isEmpty()) detail += "\n" + pack.get("overview");
+                if (!pack.getOrDefault("events", "").isEmpty()) detail += "\nEvents: " + pack.get("events");
+                if (!pack.getOrDefault("source_note", "").isEmpty()) detail += "\nSource note: " + pack.get("source_note");
+                addRow(pack.get("destination"), detail);
+            }
+        }
+
+        addHeader("Legacy deal requests");
+        boolean hasDealRequest = addMemoryRows(memories, "deal_watch_request");
+        if (!hasDealRequest) addRow("None", "Older request-only records will appear here if present.");
 
         addHeader("Places I want to visit");
         for (Map<String, String> row : db.listWishes(50)) addRow(row.get("destination"), row.get("notes"));
@@ -52,7 +82,8 @@ public final class TravelNotebookActivity extends Activity {
         hasTravelMemory |= addMemoryRows(memories, "travel_preference");
         hasTravelMemory |= addMemoryRows(memories, "travel_worry");
         hasTravelMemory |= addMemoryRows(memories, "travel_experience");
-        if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah will only add approved memories when memory is enabled.");
+        hasTravelMemory |= addMemoryRows(memories, "trip_focus");
+        if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah only adds approved memories when memory is enabled.");
 
         addHeader("Other things Sarah remembers");
         for (Map<String, String> row : memories) {
@@ -60,7 +91,8 @@ public final class TravelNotebookActivity extends Activity {
             if (category.equals("deal_watch_request")
                     || category.equals("travel_preference")
                     || category.equals("travel_worry")
-                    || category.equals("travel_experience")) continue;
+                    || category.equals("travel_experience")
+                    || category.equals("trip_focus")) continue;
             addRow(category, row.get("summary"));
         }
     }
@@ -76,28 +108,33 @@ public final class TravelNotebookActivity extends Activity {
     }
 
     private String labelForCategory(String category) {
-        if (category.equals("deal_watch_request")) return "Requested watch — not yet connected to live prices";
+        if (category.equals("deal_watch_request")) return "Older request record";
         if (category.equals("travel_preference")) return "Preference";
         if (category.equals("travel_worry")) return "Travel worry";
         if (category.equals("travel_experience")) return "Travel experience";
+        if (category.equals("trip_focus")) return "Trip focus";
         return category;
     }
 
+    private static String yesNo(String value) {
+        return "1".equals(value) ? "yes" : "no";
+    }
+
     private void addHeader(String text) {
-        TextView v = new TextView(this);
-        v.setText(text);
-        v.setTextSize(20f);
-        v.setTextColor(getColor(R.color.sarah_navy));
-        v.setPadding(0, 20, 0, 8);
-        container.addView(v);
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setTextSize(20f);
+        view.setTextColor(getColor(R.color.sarah_navy));
+        view.setPadding(0, 20, 0, 8);
+        container.addView(view);
     }
 
     private void addRow(String title, String detail) {
-        TextView v = new TextView(this);
-        v.setText("• " + title + (detail == null || detail.isEmpty() ? "" : "\n  " + detail));
-        v.setTextSize(16f);
-        v.setPadding(4, 8, 4, 8);
-        container.addView(v);
+        TextView view = new TextView(this);
+        view.setText("• " + title + (detail == null || detail.isEmpty() ? "" : "\n  " + detail));
+        view.setTextSize(16f);
+        view.setPadding(4, 8, 4, 8);
+        container.addView(view);
     }
 
     private void showWishDialog() {
@@ -114,7 +151,9 @@ public final class TravelNotebookActivity extends Activity {
                         Toast.makeText(this, "Enter a destination.", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    db.addWish(destination.getText().toString(), notes.getText().toString());
+                    String place = destination.getText().toString().trim();
+                    db.addWish(place, notes.getText().toString());
+                    db.queueKnowledgePack(place);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -140,11 +179,13 @@ public final class TravelNotebookActivity extends Activity {
                         Toast.makeText(this, "Enter a name and destination.", Toast.LENGTH_SHORT).show();
                         return;
                     }
+                    String place = destination.getText().toString().trim();
                     db.addTrip(
                             title.getText().toString(),
-                            destination.getText().toString(),
+                            place,
                             status.getText().toString().trim().isEmpty() ? "planned" : status.getText().toString(),
                             notes.getText().toString());
+                    db.queueKnowledgePack(place);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -154,20 +195,20 @@ public final class TravelNotebookActivity extends Activity {
     private LinearLayout dialogBox() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        int p = (int) (16 * getResources().getDisplayMetrics().density);
-        box.setPadding(p, p / 2, p, 0);
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        box.setPadding(padding, padding / 2, padding, 0);
         return box;
     }
 
     private EditText field(String hint) {
-        EditText e = new EditText(this);
-        e.setHint(hint);
-        e.setInputType(InputType.TYPE_CLASS_TEXT
+        EditText field = new EditText(this);
+        field.setHint(hint);
+        field.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        e.setLayoutParams(new LinearLayout.LayoutParams(
+        field.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
-        return e;
+        return field;
     }
 }
