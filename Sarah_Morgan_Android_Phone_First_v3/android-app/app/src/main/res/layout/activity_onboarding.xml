@@ -29,7 +29,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
-            android:text="First conversation • v0.7"
+            android:text="First conversation • v0.8"
             android:textColor="#DCEAF2"
             android:textSize="14sp" />
 
