@@ -1,0 +1,82 @@
+package com.kiraworld.sarahtravel;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+/** Reuses the team travel backend for rail, air, bus, transit, driving, and ferry checks. */
+public final class MobilityGateway {
+    private MobilityGateway() { }
+
+    public static MobilityResult check(Context context, Map<String, String> watch) throws Exception {
+        SharedPreferences prefs = context.getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE);
+        String endpoint = prefs.getString("deal_backend_url", "").trim();
+        if (endpoint.isEmpty()) return MobilityResult.unconfigured();
+
+        JSONObject request = new JSONObject();
+        request.put("watch_kind", "multimodal");
+        request.put("watch_id", longValue(watch, "id", 0));
+        request.put("origin", watch.getOrDefault("origin", ""));
+        request.put("destination", watch.getOrDefault("destination", ""));
+        request.put("event_name", watch.getOrDefault("event_name", ""));
+        request.put("modes", watch.getOrDefault("modes", "air,rail,intercity_bus"));
+        request.put("purpose", watch.getOrDefault("purpose", "options"));
+        request.put("include_price", true);
+        request.put("include_schedule", true);
+        request.put("include_service_alerts", true);
+        request.put("include_station_airport_access", true);
+        request.put("include_local_connection", true);
+        request.put("include_weather_context", true);
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(90000);
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/json");
+        String token = SecureStore.loadDealBackendToken(context);
+        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
+        byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
+        try (OutputStream out = connection.getOutputStream()) {
+            out.write(body);
+        }
+
+        int code = connection.getResponseCode();
+        InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
+        String response = readAll(stream);
+        if (code < 200 || code >= 300) {
+            throw new IllegalStateException("Mobility backend returned HTTP " + code + ": " + abbreviate(response));
+        }
+        return MobilityResult.fromJson(new JSONObject(response));
+    }
+
+    private static String readAll(InputStream stream) throws Exception {
+        if (stream == null) return "";
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            StringBuilder text = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) text.append(line);
+            return text.toString();
+        }
+    }
+
+    private static long longValue(Map<String, String> row, String key, long fallback) {
+        try { return Long.parseLong(row.getOrDefault(key, String.valueOf(fallback))); }
+        catch (Exception ignored) { return fallback; }
+    }
+
+    private static String abbreviate(String value) {
+        if (value == null) return "";
+        return value.length() <= 500 ? value : value.substring(0, 500);
+    }
+}
