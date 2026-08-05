@@ -15,9 +15,9 @@
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_sarah_launcher_v2"
         android:label="Sarah Morgan"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@drawable/ic_sarah_launcher_v2"
         android:supportsRtl="true"
         android:theme="@style/Theme.SarahMorgan"
         android:usesCleartextTraffic="false">
