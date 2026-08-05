@@ -10,6 +10,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -32,41 +34,52 @@ public final class TravelNotebookActivity extends Activity {
         container.removeAllViews();
         List<Map<String, String>> memories = db.listMemories(150);
 
-        addHeader("Travel deal watches");
-        List<Map<String, String>> watches = db.listDealWatches(100);
-        if (watches.isEmpty()) {
-            addRow("No watch yet", "Mention a dream destination or ask Sarah to watch for deals.");
-        } else {
-            for (Map<String, String> watch : watches) {
-                String title = watch.get("origin") + " → " + watch.get("destination");
-                String detail = "Status: " + watch.get("backend_status")
-                        + " • " + watch.get("trip_type")
-                        + " • " + watch.get("travelers") + " traveler(s)"
-                        + " • " + watch.get("bag_mode")
-                        + " • " + watch.get("min_trip_days") + "–" + watch.get("max_trip_days") + " nights"
-                        + " • flexible dates: " + yesNo(watch.get("flexible_dates"))
-                        + " • nearby airports: " + yesNo(watch.get("nearby_airports"));
-                addRow(title, detail);
-            }
-        }
-
         addHeader("Destination knowledge packs");
         List<Map<String, String>> packs = db.listKnowledgePacks(100);
         if (packs.isEmpty()) {
-            addRow("No pack yet", "Sarah queues a pack automatically when a destination becomes part of a plan.");
+            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations and events require Smart setup.");
         } else {
             for (Map<String, String> pack : packs) {
-                String detail = "Status: " + pack.get("status");
-                if (!pack.getOrDefault("overview", "").isEmpty()) detail += "\n" + pack.get("overview");
-                if (!pack.getOrDefault("events", "").isEmpty()) detail += "\nEvents: " + pack.get("events");
-                if (!pack.getOrDefault("source_note", "").isEmpty()) detail += "\nSource note: " + pack.get("source_note");
-                addRow(pack.get("destination"), detail);
+                String destination = pack.getOrDefault("destination", "Destination");
+                String status = pack.getOrDefault("status", "pending");
+                if (!"ready".equals(status)) {
+                    addRow(destination + " — research queued", "Sarah will retry when internet and a connected-model key are available.");
+                    continue;
+                }
+                String detail = joinSections(
+                        pack.getOrDefault("overview", ""),
+                        label("Recommended starting points", pack.getOrDefault("recommendations", "")),
+                        label("Transport", pack.getOrDefault("transport", "")),
+                        label("Accessibility and sensory notes", pack.getOrDefault("accessibility", "")),
+                        label("Seasonal context", pack.getOrDefault("seasonal", "")),
+                        label("Current events to verify", pack.getOrDefault("events", "")),
+                        label("Research note", pack.getOrDefault("source_note", "")));
+                addRow(destination + " — refreshed " + date(pack.get("refreshed_at")), detail);
             }
         }
 
-        addHeader("Legacy deal requests");
-        boolean hasDealRequest = addMemoryRows(memories, "deal_watch_request");
-        if (!hasDealRequest) addRow("None", "Older request-only records will appear here if present.");
+        addHeader("Active travel-deal watches");
+        List<Map<String, String>> watches = db.listDealWatches(100);
+        if (watches.isEmpty()) {
+            addRow("No active watches", "Saying that a destination is a dream trip or asking Sarah to watch for deals creates a broad watch with sensible defaults.");
+        } else {
+            for (Map<String, String> watch : watches) {
+                String title = watch.getOrDefault("origin", "Home area") + " → "
+                        + watch.getOrDefault("destination", "Destination");
+                String detail = "Status: " + watch.getOrDefault("backend_status", "queued")
+                        + "\nRound trip, " + watch.getOrDefault("travelers", "1") + " traveler"
+                        + "\nFlexible dates: " + yesNo(watch.get("flexible_dates"))
+                        + "; nearby airports: " + yesNo(watch.get("nearby_airports"))
+                        + "\nTrip lengths: " + watch.getOrDefault("min_trip_days", "3")
+                        + "–" + watch.getOrDefault("max_trip_days", "14") + " nights"
+                        + "\nBags: " + watch.getOrDefault("bag_mode", "carry_on")
+                        + "\nLast checked: " + date(watch.get("last_checked_at"));
+                double previous = number(watch.get("last_notified_price"));
+                if (previous > 0) detail += "\nLast notified fare: "
+                        + watch.getOrDefault("currency", "USD") + " " + Math.round(previous);
+                addRow(title, detail);
+            }
+        }
 
         addHeader("Places I want to visit");
         for (Map<String, String> row : db.listWishes(50)) addRow(row.get("destination"), row.get("notes"));
@@ -80,9 +93,9 @@ public final class TravelNotebookActivity extends Activity {
         addHeader("Travel preferences and needs");
         boolean hasTravelMemory = false;
         hasTravelMemory |= addMemoryRows(memories, "travel_preference");
+        hasTravelMemory |= addMemoryRows(memories, "trip_focus");
         hasTravelMemory |= addMemoryRows(memories, "travel_worry");
         hasTravelMemory |= addMemoryRows(memories, "travel_experience");
-        hasTravelMemory |= addMemoryRows(memories, "trip_focus");
         if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah only adds approved memories when memory is enabled.");
 
         addHeader("Other things Sarah remembers");
@@ -90,9 +103,9 @@ public final class TravelNotebookActivity extends Activity {
             String category = row.getOrDefault("category", "");
             if (category.equals("deal_watch_request")
                     || category.equals("travel_preference")
+                    || category.equals("trip_focus")
                     || category.equals("travel_worry")
-                    || category.equals("travel_experience")
-                    || category.equals("trip_focus")) continue;
+                    || category.equals("travel_experience")) continue;
             addRow(category, row.get("summary"));
         }
     }
@@ -108,16 +121,11 @@ public final class TravelNotebookActivity extends Activity {
     }
 
     private String labelForCategory(String category) {
-        if (category.equals("deal_watch_request")) return "Older request record";
         if (category.equals("travel_preference")) return "Preference";
+        if (category.equals("trip_focus")) return "Trip focus";
         if (category.equals("travel_worry")) return "Travel worry";
         if (category.equals("travel_experience")) return "Travel experience";
-        if (category.equals("trip_focus")) return "Trip focus";
         return category;
-    }
-
-    private static String yesNo(String value) {
-        return "1".equals(value) ? "yes" : "no";
     }
 
     private void addHeader(String text) {
@@ -154,6 +162,7 @@ public final class TravelNotebookActivity extends Activity {
                     String place = destination.getText().toString().trim();
                     db.addWish(place, notes.getText().toString());
                     db.queueKnowledgePack(place);
+                    DealWatchScheduler.runSoon(this);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -186,6 +195,7 @@ public final class TravelNotebookActivity extends Activity {
                             status.getText().toString().trim().isEmpty() ? "planned" : status.getText().toString(),
                             notes.getText().toString());
                     db.queueKnowledgePack(place);
+                    DealWatchScheduler.runSoon(this);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -210,5 +220,38 @@ public final class TravelNotebookActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         return field;
+    }
+
+    private static String label(String name, String value) {
+        return value == null || value.trim().isEmpty() ? "" : name + ": " + value.trim();
+    }
+
+    private static String joinSections(String... values) {
+        StringBuilder out = new StringBuilder();
+        for (String value : values) {
+            if (value == null || value.trim().isEmpty()) continue;
+            if (out.length() > 0) out.append("\n\n");
+            out.append(value.trim());
+        }
+        return out.toString();
+    }
+
+    private static String yesNo(String value) {
+        return "1".equals(value) || "yes".equalsIgnoreCase(value) ? "yes" : "no";
+    }
+
+    private static String date(String value) {
+        try {
+            long time = Long.parseLong(value == null ? "0" : value);
+            if (time <= 0) return "not yet";
+            return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(new Date(time));
+        } catch (Exception ignored) {
+            return "not yet";
+        }
+    }
+
+    private static double number(String value) {
+        try { return Double.parseDouble(value == null ? "0" : value); }
+        catch (Exception ignored) { return 0; }
     }
 }
