@@ -15,6 +15,8 @@ public final class AgenticTravelPlanner {
     public static final String CREATE_DEAL_WATCH = "create_deal_watch";
     public static final String UPDATE_DESTINATION_FOCUS = "update_destination_focus";
     public static final String SET_FLEXIBLE_DATES = "set_flexible_dates";
+    public static final String CREATE_EVENT_TRIP = "create_event_trip";
+    public static final String SAVE_BOOKING_LINK = "save_booking_link";
 
     public static final class Action {
         public final String type;
@@ -56,6 +58,38 @@ public final class AgenticTravelPlanner {
         List<String> context = merge(current, DestinationParser.extractFromHistory(history, 12));
         removeHome(context, profile);
         List<Action> actions = new ArrayList<>();
+
+        BookingLinkParser.BookingLink bookingLink = BookingLinkParser.parse(safe);
+        if (bookingLink.found()) {
+            actions.add(new Action(
+                    SAVE_BOOKING_LINK,
+                    bookingLink.url,
+                    bookingLink.provider + "|" + bookingLink.bookingType));
+            return new Plan(
+                    "I saved the " + bookingLink.provider + " link as a pending "
+                            + bookingLink.bookingType + " booking import. I will not treat a private booking page as verified just because I have its link. If the page hides the dates, hotel, confirmation number, or price behind a login, share a booking screenshot too; I can extract a review copy when Smart mode is connected, and you can confirm it before it becomes a trip fact.",
+                    actions);
+        }
+
+        EventTripIntentParser.EventIntent eventIntent = EventTripIntentParser.parse(safe);
+        if (eventIntent.found()) {
+            actions.add(new Action(
+                    CREATE_EVENT_TRIP,
+                    eventIntent.destination,
+                    eventIntent.eventName));
+            actions.add(new Action(
+                    QUEUE_KNOWLEDGE_PACK,
+                    eventIntent.destination,
+                    eventIntent.eventName + " event-centered trip"));
+            actions.add(new Action(
+                    SAVE_WISH,
+                    eventIntent.destination,
+                    "Trip centered on " + eventIntent.eventName));
+            return new Plan(
+                    "I’ll treat " + eventIntent.eventName + " as the center of the "
+                            + eventIntent.destination + " trip. I’ll monitor official dates, venue and schedule changes, transportation, accessibility information, and newly announced details. I’ll also build a nearby list for food and places worth checking out around the event area. I won’t make you answer a long form first; you can correct dates, hotel, budget, or other details later.",
+                    actions);
+        }
 
         if (isConversationClosure(lower)) {
             if (containsAny(prior, "date", "fare", "deal", "price", "flight")) {
