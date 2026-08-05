@@ -18,6 +18,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Test automatic Smart-to-Local routing
+        run: |
+          mkdir -p build/pure-java-test
+          javac -d build/pure-java-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java
+          java -cp build/pure-java-test ConversationModePolicyTest
+
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
         with:
@@ -29,15 +37,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 0.8 local-dialogue APK
+      - name: Build Sarah 0.9 auto-smart APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-0.8-local-dialogue.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-0.9-auto-smart.apk
 
-      - name: Upload Sarah 0.8 APK
+      - name: Upload Sarah 0.9 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-0.8-local-dialogue
-          path: Sarah-Morgan-0.8-local-dialogue.apk
+          name: Sarah-Morgan-0.9-auto-smart
+          path: Sarah-Morgan-0.9-auto-smart.apk
           if-no-files-found: error
