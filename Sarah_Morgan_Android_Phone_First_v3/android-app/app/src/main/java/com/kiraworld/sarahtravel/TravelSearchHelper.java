@@ -17,16 +17,21 @@ public final class TravelSearchHelper {
 
     private TravelSearchHelper() { }
 
+    /**
+     * Only open an external site after the person explicitly asks to open or show it.
+     * Ordinary questions about prices should remain in conversation first.
+     */
     public static boolean shouldOffer(String message) {
         String lower = message == null ? "" : message.toLowerCase(Locale.US);
-        return lower.contains("deal")
-                || lower.contains("cheap flight")
-                || lower.contains("cheap ticket")
-                || lower.contains("flight price")
-                || lower.contains("airfare")
-                || lower.contains("fare")
-                || lower.contains("discount flight")
-                || lower.contains("track price");
+        return lower.contains("open live search")
+                || lower.contains("open the live search")
+                || lower.contains("show me the fares")
+                || lower.contains("show fares")
+                || lower.contains("search now")
+                || lower.contains("open google flights")
+                || lower.contains("open kayak")
+                || lower.contains("open skyscanner")
+                || lower.contains("open flight deals");
     }
 
     public static void show(Activity activity, String message, Map<String, String> profile) {
@@ -44,8 +49,8 @@ public final class TravelSearchHelper {
         };
 
         new AlertDialog.Builder(activity)
-                .setTitle("Search live fares")
-                .setMessage("Sarah can open live travel sites, but prices change quickly. Compare baggage, seats, taxes, cancellation rules, airports, and the airline’s own checkout price before buying.")
+                .setTitle("Open a live fare search")
+                .setMessage("Prices change quickly. Compare baggage, seats, taxes, cancellation rules, airports, and the airline's own checkout price before buying.")
                 .setItems(choices, (dialog, which) -> {
                     String url;
                     if (which == 0) {
@@ -76,8 +81,21 @@ public final class TravelSearchHelper {
         Matcher matcher = DESTINATION.matcher(message.trim());
         if (!matcher.find()) return "";
         String value = matcher.group(1).trim();
-        value = value.replaceAll("(?i)\\b(?:for|from|during|next|this|with|and)\\b.*$", "").trim();
+        value = value.replaceAll("(?i)\\b(?:for|from|during|next|this|with|and|please|now)\\b.*$", "").trim();
         value = value.replaceAll("[?.!,]+$", "").trim();
-        return value;
+        return collapseRepeatedWords(value);
+    }
+
+    private static String collapseRepeatedWords(String value) {
+        String[] words = value.split("\\s+");
+        StringBuilder out = new StringBuilder();
+        String previous = "";
+        for (String word : words) {
+            if (word.equalsIgnoreCase(previous)) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(word);
+            previous = word;
+        }
+        return out.toString().trim();
     }
 }
