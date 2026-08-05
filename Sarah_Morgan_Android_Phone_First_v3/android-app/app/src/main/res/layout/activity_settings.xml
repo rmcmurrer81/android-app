@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 0.9-auto-smart"
+            android:text="Build 1.0-travel-brain"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -30,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Automatic mode is the default. Sarah uses the connected model whenever the phone has validated internet and a model key, continues locally when service drops, and returns to the connected model when service comes back."
+            android:text="Automatic mode is the default. Sarah uses the connected model whenever the phone has validated internet and a model key, continues with the offline Travel Brain when service drops, and returns to the connected model when service comes back."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -91,6 +91,19 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
+            android:text="Offline Travel Brain"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="The offline knowledge pack covers multi-destination comparisons, first-flight guidance, travel-deal planning, and stable background information for Paris, London, New York City, Rome, Tokyo, Washington, Chicago, Boston, Salem, Charleston, San Francisco, and Los Angeles. Live prices, schedules, closures, and visa rules still require a current connected source."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
             android:text="Sarah's voice"
             android:textStyle="bold" />
 
@@ -130,7 +143,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn travel preferences, past trips, interests, worries, and wish-list places from conversation" />
+            android:text="Let Sarah learn travel preferences, past trips, interests, worries, wish-list places, and requested deal watches from conversation" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -143,7 +156,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Private prototype note: a personal API key is encrypted on this phone. A public release should use a protected server instead of putting a shared developer key inside the APK."
+            android:text="Private prototype note: a personal API key is encrypted on this phone. A public release should use a protected server instead of putting a shared developer key inside the APK. A saved deal request is not a live price alert until a fare data source or protected monitoring backend is connected."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
