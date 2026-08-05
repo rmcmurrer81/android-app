@@ -47,8 +47,11 @@ jobs:
           javac -encoding UTF-8 -d build/agentic-test \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationPackResponder.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java
           java -cp build/agentic-test AgenticTravelPlannerTest
+          java -cp build/agentic-test DestinationPackResponderTest
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
