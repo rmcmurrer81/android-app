@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/chat_background"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <LinearLayout
@@ -39,22 +40,6 @@
                 android:text="Phone-first companion"
                 android:textColor="#DCEAF2"
                 android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/voiceStatusText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/voice_ready_badge"
-                android:clickable="true"
-                android:focusable="true"
-                android:paddingLeft="9dp"
-                android:paddingTop="5dp"
-                android:paddingRight="9dp"
-                android:paddingBottom="5dp"
-                android:text="Voice starting…"
-                android:textColor="@color/sarah_navy"
-                android:textSize="12sp" />
         </LinearLayout>
 
         <ImageButton
