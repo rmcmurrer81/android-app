@@ -6,4 +6,9 @@
     <color name="sarah_warm">#FFF8EE</color>
     <color name="sarah_text">#1F2933</color>
     <color name="white">#FFFFFF</color>
+
+    <color name="sarah_icon_background">#23354F</color>
+    <color name="sarah_icon_cream">#FFF4DE</color>
+    <color name="sarah_icon_lavender">#B7A5E2</color>
+    <color name="sarah_icon_sky">#9ED7F5</color>
 </resources>
