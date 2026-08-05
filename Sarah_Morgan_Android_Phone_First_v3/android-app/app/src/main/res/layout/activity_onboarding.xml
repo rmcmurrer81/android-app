@@ -1,236 +1,139 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/onboardingRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/sarah_warm"
-    android:clipToPadding="false"
-    android:fillViewport="true">
+    android:background="@drawable/chat_background"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@color/sarah_navy"
         android:orientation="vertical"
         android:paddingLeft="20dp"
-        android:paddingTop="26dp"
+        android:paddingTop="18dp"
         android:paddingRight="20dp"
-        android:paddingBottom="40dp">
+        android:paddingBottom="16dp">
 
         <TextView
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Meet Sarah"
-            android:textColor="@color/sarah_navy"
-            android:textSize="34sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="A few basics help me start. I’ll learn the rest naturally as we talk, and you can review or delete what I remember."
-            android:textColor="@color/sarah_text"
-            android:textSize="18sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:background="@drawable/section_header"
-            android:padding="12dp"
-            android:text="About you"
-            android:textColor="@color/sarah_navy"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/onboarding_card"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="What should Sarah call you?"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/nameInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/input_field"
-                android:hint="Your name"
-                android:inputType="textPersonName"
-                android:minHeight="52dp"
-                android:padding="14dp"
-                android:textColor="@color/sarah_text"
-                android:textColorHint="#746F68"
-                android:textSize="17sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Where are you from?"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/homeInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/input_field"
-                android:hint="City, state, or country"
-                android:inputType="textCapWords"
-                android:minHeight="52dp"
-                android:padding="14dp"
-                android:textColor="@color/sarah_text"
-                android:textColorHint="#746F68"
-                android:textSize="17sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="How old are you?"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="This helps Sarah match suggestions, trivia, books, and movies to your age."
-                android:textColor="#655F58"
-                android:textSize="13sp" />
-
-            <EditText
-                android:id="@+id/ageInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/input_field"
-                android:hint="Age"
-                android:inputType="number"
-                android:maxLength="3"
-                android:minHeight="52dp"
-                android:padding="14dp"
-                android:textColor="@color/sarah_text"
-                android:textColorHint="#746F68"
-                android:textSize="17sp" />
-
-            <CheckBox
-                android:id="@+id/firstFlightCheck"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:buttonTint="@color/sarah_blue"
-                android:paddingTop="5dp"
-                android:paddingBottom="5dp"
-                android:text="Flying is new to me, or I have never flown before"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:background="@drawable/section_header"
-            android:padding="12dp"
-            android:text="Optional details"
-            android:textColor="@color/sarah_navy"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/onboarding_card"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Things you enjoy"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/interestsInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/input_field"
-                android:gravity="top|start"
-                android:hint="Museums, food, history, movies, quiet places…"
-                android:inputType="textCapSentences|textMultiLine"
-                android:minHeight="78dp"
-                android:minLines="2"
-                android:padding="14dp"
-                android:textColor="@color/sarah_text"
-                android:textColorHint="#746F68"
-                android:textSize="16sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Worries or needs"
-                android:textColor="@color/sarah_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/worriesInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="7dp"
-                android:background="@drawable/input_field"
-                android:gravity="top|start"
-                android:hint="Travel worries, sensory needs, or accessibility needs"
-                android:inputType="textCapSentences|textMultiLine"
-                android:minHeight="78dp"
-                android:minLines="2"
-                android:padding="14dp"
-                android:textColor="@color/sarah_text"
-                android:textColorHint="#746F68"
-                android:textSize="16sp" />
-        </LinearLayout>
-
-        <CheckBox
-            android:id="@+id/memoryConsentCheck"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:buttonTint="@color/sarah_blue"
-            android:checked="true"
-            android:lineSpacingExtra="2dp"
-            android:text="Let Sarah remember useful preferences, past trips, and places I want to visit. I can review or delete them later."
-            android:textColor="@color/sarah_text"
-            android:textSize="15sp" />
-
-        <Button
-            android:id="@+id/startButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:background="@drawable/primary_button"
-            android:minHeight="58dp"
-            android:text="Start talking with Sarah"
-            android:textAllCaps="false"
+            android:text="Sarah Morgan"
             android:textColor="@color/white"
-            android:textSize="17sp"
+            android:textSize="27sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="First conversation • v0.4"
+            android:textColor="#DCEAF2"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/onboardingStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:text="Preparing Sarah’s voice…"
+            android:textColor="#BFD7E6"
+            android:textSize="12sp" />
     </LinearLayout>
-</ScrollView>
+
+    <ScrollView
+        android:id="@+id/onboardingScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:paddingBottom="8dp">
+
+        <LinearLayout
+            android:id="@+id/onboardingChat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="14dp"
+            android:paddingTop="16dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="18dp" />
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/onboardingComposer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/composer_background"
+        android:gravity="center_vertical"
+        android:minHeight="68dp"
+        android:orientation="horizontal"
+        android:padding="7dp">
+
+        <ImageButton
+            android:id="@+id/onboardingMic"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/icon_button"
+            android:contentDescription="Answer Sarah by voice"
+            android:padding="11dp"
+            android:src="@android:drawable/ic_btn_speak_now"
+            android:tint="@color/sarah_navy" />
+
+        <EditText
+            android:id="@+id/onboardingInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:layout_marginRight="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/input_field"
+            android:gravity="center_vertical|start"
+            android:hint="Tell Sarah your name"
+            android:imeOptions="actionSend"
+            android:inputType="textCapSentences"
+            android:maxLines="3"
+            android:minHeight="52dp"
+            android:paddingLeft="14dp"
+            android:paddingTop="10dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/sarah_text"
+            android:textColorHint="#746F68"
+            android:textSize="17sp" />
+
+        <ImageButton
+            android:id="@+id/onboardingSend"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@drawable/send_button"
+            android:contentDescription="Send answer to Sarah"
+            android:padding="12dp"
+            android:src="@android:drawable/ic_menu_send"
+            android:tint="@color/white" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/beginChatButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="16dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginBottom="14dp"
+        android:background="@drawable/primary_button"
+        android:minHeight="58dp"
+        android:text="Start chatting with Sarah"
+        android:textAllCaps="false"
+        android:textColor="@color/white"
+        android:textSize="17sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+</LinearLayout>
