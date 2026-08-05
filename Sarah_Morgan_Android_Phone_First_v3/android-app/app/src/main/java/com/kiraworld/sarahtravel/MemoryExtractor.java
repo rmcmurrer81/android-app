@@ -56,8 +56,8 @@ public final class MemoryExtractor {
 
         if (containsAny(lower,
                 "dates do not matter", "dates don't matter", "don't care about dates",
-                "do not care about dates", "any dates work", "any days work",
-                "flexible dates", "whenever is cheapest")) {
+                "do not care about dates", "don't care of dates", "do not care of dates",
+                "any dates work", "any days work", "flexible dates", "whenever is cheapest")) {
             out.add(new Candidate("travel_preference", "Travel dates are flexible"));
         }
 
