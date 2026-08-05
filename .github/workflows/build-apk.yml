@@ -26,7 +26,7 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java
           java -cp build/pure-java-test ConversationModePolicyTest
 
-      - name: Test Sarah Travel Brain conversation and memory
+      - name: Test Travel Brain conversation and memory
         run: |
           rm -rf build/travel-brain-test
           mkdir -p build/travel-brain-test
@@ -34,12 +34,21 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelKnowledgeBase.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelBrainCore.java \
-            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DemoSarah.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/TravelBrainCoreTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/MemoryExtractorTravelBrainTest.java
           java -cp build/travel-brain-test TravelBrainCoreTest
           java -cp build/travel-brain-test MemoryExtractorTravelBrainTest
+
+      - name: Test autonomous no-question-loop planning
+        run: |
+          rm -rf build/agentic-test
+          mkdir -p build/agentic-test
+          javac -encoding UTF-8 -d build/agentic-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java
+          java -cp build/agentic-test AgenticTravelPlannerTest
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
@@ -52,15 +61,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 1.0 travel-brain APK
+      - name: Build Sarah 1.1 agentic-travel APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.0-travel-brain.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.1-agentic-travel.apk
 
-      - name: Upload Sarah 1.0 APK
+      - name: Upload Sarah 1.1 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-1.0-travel-brain
-          path: Sarah-Morgan-1.0-travel-brain.apk
+          name: Sarah-Morgan-1.1-agentic-travel
+          path: Sarah-Morgan-1.1-agentic-travel.apk
           if-no-files-found: error
