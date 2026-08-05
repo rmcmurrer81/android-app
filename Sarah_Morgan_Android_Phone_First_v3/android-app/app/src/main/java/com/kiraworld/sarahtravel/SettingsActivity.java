@@ -1,8 +1,11 @@
 package com.kiraworld.sarahtravel;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -16,8 +19,10 @@ public final class SettingsActivity extends Activity {
     public static final String PREFS = "sarah_settings";
     private static final String KEY_MODE = "conversation_mode";
     private static final String KEY_MODE_MIGRATED = "automatic_mode_migrated_v1";
+    private static final int REQ_NOTIFICATIONS = 4401;
 
     public static void ensureAutomaticModeDefault(Context context) {
+        SarahRuntimeServices.install(context);
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!p.getBoolean(KEY_MODE_MIGRATED, false)) {
             p.edit()
@@ -64,12 +69,20 @@ public final class SettingsActivity extends Activity {
 
         EditText api = findViewById(R.id.apiKeyInput);
         EditText model = findViewById(R.id.modelInput);
+        EditText backendUrl = findViewById(R.id.dealBackendUrlInput);
+        EditText backendToken = findViewById(R.id.dealBackendTokenInput);
         model.setText(p.getString("model", "gpt-5-mini"));
+        backendUrl.setText(p.getString("deal_backend_url", ""));
+
         CheckBox web = findViewById(R.id.webSearchCheck);
+        CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
+        CheckBox dealAlerts = findViewById(R.id.dealAlertsCheck);
         CheckBox autoSpeak = findViewById(R.id.autoSpeakCheck);
         CheckBox learn = findViewById(R.id.learnCheck);
         SeekBar speed = findViewById(R.id.speedSeek);
         web.setChecked(p.getBoolean("web_search", true));
+        autoResearch.setChecked(p.getBoolean("auto_destination_research", true));
+        dealAlerts.setChecked(p.getBoolean("deal_alerts_enabled", true));
         autoSpeak.setChecked(p.getBoolean("auto_speak", true));
         learn.setChecked(p.getBoolean("learn", true));
         speed.setProgress(p.getInt("speed", 45));
@@ -78,6 +91,7 @@ public final class SettingsActivity extends Activity {
         save.setOnClickListener(v -> {
             int selectedMode = provider.getSelectedItemPosition();
             String entered = api.getText().toString().trim();
+            String enteredBackendToken = backendToken.getText().toString().trim();
             String savedKey = SecureStore.loadApiKey(this);
 
             setConversationMode(this, selectedMode);
@@ -87,7 +101,10 @@ public final class SettingsActivity extends Activity {
                     .putString("model", model.getText().toString().trim().isEmpty()
                             ? "gpt-5-mini"
                             : model.getText().toString().trim())
+                    .putString("deal_backend_url", backendUrl.getText().toString().trim())
                     .putBoolean("web_search", web.isChecked())
+                    .putBoolean("auto_destination_research", autoResearch.isChecked())
+                    .putBoolean("deal_alerts_enabled", dealAlerts.isChecked())
                     .putBoolean("auto_speak", autoSpeak.isChecked())
                     .putBoolean("learn", learn.isChecked())
                     .putInt("speed", speed.getProgress())
@@ -98,20 +115,51 @@ public final class SettingsActivity extends Activity {
                     SecureStore.saveApiKey(this, entered);
                     savedKey = entered;
                 } catch (Exception e) {
-                    Toast.makeText(this, "The API key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "The model key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+            if (!enteredBackendToken.isEmpty()) {
+                try {
+                    SecureStore.saveDealBackendToken(this, enteredBackendToken);
+                } catch (Exception e) {
+                    Toast.makeText(this, "The travel-backend token could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     return;
                 }
             }
 
-            if (selectedMode != ConversationModePolicy.MODE_LOCAL_ONLY && savedKey.isEmpty()) {
-                Toast.makeText(
-                        this,
-                        "Automatic mode is saved. Sarah will stay Local until a connected-model key is added.",
-                        Toast.LENGTH_LONG).show();
-            } else {
-                Toast.makeText(this, "Sarah's settings were saved.", Toast.LENGTH_SHORT).show();
+            if (dealAlerts.isChecked()) {
+                DealWatchScheduler.ensureScheduled(this);
+                DealWatchScheduler.runSoon(this);
+                if (Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
+                    return;
+                }
             }
-            finish();
+
+            finishWithMessage(selectedMode, savedKey);
         });
+    }
+
+    private void finishWithMessage(int selectedMode, String savedKey) {
+        if (selectedMode != ConversationModePolicy.MODE_LOCAL_ONLY && savedKey.isEmpty()) {
+            Toast.makeText(
+                    this,
+                    "Automatic mode is saved. Sarah will stay Local until a connected-model key is added.",
+                    Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "Sarah's settings were saved.", Toast.LENGTH_SHORT).show();
+        }
+        finish();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_NOTIFICATIONS) {
+            int selectedMode = getConversationMode(this);
+            finishWithMessage(selectedMode, SecureStore.loadApiKey(this));
+        }
     }
 }
