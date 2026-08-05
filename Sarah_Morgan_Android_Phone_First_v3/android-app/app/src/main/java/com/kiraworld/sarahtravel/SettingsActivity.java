@@ -21,8 +21,14 @@ public final class SettingsActivity extends Activity {
         SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
         Spinner provider = findViewById(R.id.providerSpinner);
         Spinner voice = findViewById(R.id.voiceModeSpinner);
-        provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Offline companion (no account needed)", "OpenAI Responses + web search (personal key)"}));
-        voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Android voice (free)", "Sarah cloud voice (uses API)"}));
+        provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
+                "Local mode — private and works without internet",
+                "Smart mode — connected conversation, photos, and optional live research"
+        }));
+        voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
+                "Android voice (free)",
+                "Sarah cloud voice (uses API)"
+        }));
         provider.setSelection(p.getInt("provider", 0));
         voice.setSelection(p.getInt("voice_mode", 0));
         EditText api = findViewById(R.id.apiKeyInput);
@@ -38,8 +44,14 @@ public final class SettingsActivity extends Activity {
         speed.setProgress(p.getInt("speed", 45));
         Button save = findViewById(R.id.saveSettingsButton);
         save.setOnClickListener(v -> {
+            int selectedProvider = provider.getSelectedItemPosition();
+            String entered = api.getText().toString().trim();
+            if (selectedProvider == 1 && entered.isEmpty() && SecureStore.loadApiKey(this).isEmpty()) {
+                Toast.makeText(this, "Smart mode needs a personal API key. Enter one here or choose Local mode.", Toast.LENGTH_LONG).show();
+                return;
+            }
             p.edit()
-                    .putInt("provider", provider.getSelectedItemPosition())
+                    .putInt("provider", selectedProvider)
                     .putInt("voice_mode", voice.getSelectedItemPosition())
                     .putString("model", model.getText().toString().trim().isEmpty() ? "gpt-5-mini" : model.getText().toString().trim())
                     .putBoolean("web_search", web.isChecked())
@@ -47,12 +59,15 @@ public final class SettingsActivity extends Activity {
                     .putBoolean("learn", learn.isChecked())
                     .putInt("speed", speed.getProgress())
                     .apply();
-            String entered = api.getText().toString().trim();
             if (!entered.isEmpty()) {
-                try { SecureStore.saveApiKey(this, entered); }
-                catch (Exception e) { Toast.makeText(this, "The API key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                try {
+                    SecureStore.saveApiKey(this, entered);
+                } catch (Exception e) {
+                    Toast.makeText(this, "The API key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    return;
+                }
             }
-            Toast.makeText(this, "Sarah's settings were saved.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Sarah's settings were saved. You can also tap the mode line under her name.", Toast.LENGTH_LONG).show();
             finish();
         });
     }
