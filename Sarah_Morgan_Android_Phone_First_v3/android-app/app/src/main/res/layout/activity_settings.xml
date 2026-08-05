@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.0-travel-brain"
+            android:text="Build 1.1-agentic-travel"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -30,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Automatic mode is the default. Sarah uses the connected model whenever the phone has validated internet and a model key, continues with the offline Travel Brain when service drops, and returns to the connected model when service comes back."
+            android:text="Automatic mode is the default. Sarah uses the connected model and live research when available, continues with the offline Travel Brain when service drops, and returns online automatically."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -49,28 +49,15 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="A Wi-Fi or mobile-data symbol alone is not enough; Sarah waits for Android to report a validated internet connection before using Smart mode."
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Connected model"
+            android:text="Connected model and destination research"
             android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="The included adapter uses OpenAI Responses. The team README explains how to change the model name or add another provider such as Claude."
-            android:textSize="13sp" />
 
         <EditText
             android:id="@+id/apiKeyInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:hint="Personal connected-model API key"
             android:inputType="textPassword" />
 
@@ -85,20 +72,49 @@
             android:id="@+id/webSearchCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Allow Smart mode to use live web search for current attractions, hours, events, weather, and deal checks" />
+            android:text="Allow connected web research for current attractions, events, weather, and travel information" />
+
+        <CheckBox
+            android:id="@+id/autoResearchCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Automatically build and refresh destination knowledge packs from places mentioned in conversation" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Offline Travel Brain"
+            android:text="Travel-deal service"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="The offline knowledge pack covers multi-destination comparisons, first-flight guidance, travel-deal planning, and stable background information for Paris, London, New York City, Rome, Tokyo, Washington, Chicago, Boston, Salem, Charleston, San Francisco, and Los Angeles. Live prices, schedules, closures, and visa rules still require a current connected source."
+            android:text="Sarah can store broad watches immediately. Actual airfare checks require a team backend that returns normalized fare dates, airports, price, booking link, and clearly labeled forecast or seasonal weather context."
             android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/dealBackendUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Travel backend HTTPS endpoint" />
+
+        <EditText
+            android:id="@+id/dealBackendTokenInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Travel backend token (leave blank to keep saved token)"
+            android:inputType="textPassword" />
+
+        <CheckBox
+            android:id="@+id/dealAlertsCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Schedule background deal checks and notify me when the configured backend reports a meaningful option" />
 
         <TextView
             android:layout_width="match_parent"
@@ -143,7 +159,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn travel preferences, past trips, interests, worries, wish-list places, and requested deal watches from conversation" />
+            android:text="Let Sarah learn useful travel preferences, past trips, interests, worries, wish-list places, and requested deal watches" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -156,7 +172,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Private prototype note: a personal API key is encrypted on this phone. A public release should use a protected server instead of putting a shared developer key inside the APK. A saved deal request is not a live price alert until a fare data source or protected monitoring backend is connected."
+            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented fare sources, rate limits, privacy controls, and release signing."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
