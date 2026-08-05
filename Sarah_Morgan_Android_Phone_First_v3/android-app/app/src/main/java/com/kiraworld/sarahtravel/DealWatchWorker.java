@@ -8,7 +8,7 @@ import android.content.SharedPreferences;
 import java.util.List;
 import java.util.Map;
 
-/** Runs destination-pack refreshes and configured travel-deal checks. */
+/** Runs destination-pack refreshes, fare checks, and multimodal journey checks. */
 public final class DealWatchWorker extends JobService {
     private volatile Thread running;
 
@@ -78,6 +78,8 @@ public final class DealWatchWorker extends JobService {
                             watch.getOrDefault("currency", "USD"));
                 }
             }
+
+            if (MobilityWatchCoordinator.run(context)) temporaryFailure = true;
         } finally {
             db.close();
         }
