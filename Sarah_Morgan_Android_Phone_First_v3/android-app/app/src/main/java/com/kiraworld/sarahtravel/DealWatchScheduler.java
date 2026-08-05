@@ -22,7 +22,6 @@ public final class DealWatchScheduler {
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
                 .setPeriodic(TWELVE_HOURS_MS)
-                .setBackoffCriteria(30L * 60L * 1000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .build();
         scheduler.schedule(job);
     }
