@@ -8,20 +8,120 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="20dp">
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Sarah settings" android:textColor="@color/sarah_navy" android:textSize="28sp" android:textStyle="bold" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Conversation model" android:textStyle="bold" />
-        <Spinner android:id="@+id/providerSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <EditText android:id="@+id/apiKeyInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Your private API key (optional)" android:inputType="textPassword" />
-        <EditText android:id="@+id/modelInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Model name" />
-        <CheckBox android:id="@+id/webSearchCheck" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Allow live web search for current attractions, hours, events, and deal checks" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Sarah's voice" android:textStyle="bold" />
-        <Spinner android:id="@+id/voiceModeSpinner" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <CheckBox android:id="@+id/autoSpeakCheck" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="Read Sarah's replies aloud" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Voice speed" />
-        <SeekBar android:id="@+id/speedSeek" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="100" android:progress="45" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Memory" android:textStyle="bold" />
-        <CheckBox android:id="@+id/learnCheck" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="Let Sarah learn travel preferences, past trips, and wish-list places from conversation" />
-        <Button android:id="@+id/saveSettingsButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:text="Save settings" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:text="Private prototype note: a personal API key is encrypted on this phone. A public release should use a protected server instead of putting a shared developer key inside the APK." android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sarah settings"
+            android:textColor="@color/sarah_navy"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="You can switch modes here or by tapping the mode line directly under Sarah's name in the chat screen. Sarah keeps the same profile, memories, trips, and wish list in both modes."
+            android:textColor="@color/sarah_text"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Conversation mode"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/providerSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Local mode works without internet and keeps conversation on the phone. Smart mode uses a connected model for deeper conversation, photo understanding, and optional live web research."
+            android:textSize="13sp" />
+
+        <EditText
+            android:id="@+id/apiKeyInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:hint="Personal API key for Smart mode"
+            android:inputType="textPassword" />
+
+        <EditText
+            android:id="@+id/modelInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Connected model name" />
+
+        <CheckBox
+            android:id="@+id/webSearchCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Allow Smart mode to use live web search for current attractions, hours, events, weather, and deal checks" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Sarah's voice"
+            android:textStyle="bold" />
+
+        <Spinner
+            android:id="@+id/voiceModeSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <CheckBox
+            android:id="@+id/autoSpeakCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Read Sarah's replies aloud" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Voice speed" />
+
+        <SeekBar
+            android:id="@+id/speedSeek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="45" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Memory"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/learnCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Let Sarah learn travel preferences, past trips, interests, worries, and wish-list places from conversation" />
+
+        <Button
+            android:id="@+id/saveSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Save settings" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="Private prototype note: a personal API key is encrypted on this phone. A public release should use a protected server instead of putting a shared developer key inside the APK."
+            android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
