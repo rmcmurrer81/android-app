@@ -6,16 +6,16 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Local fallback conversation. Agentic travel services handle proactive work
- * first, generated packs and TravelBrainCore handle travel knowledge second,
- * and this class handles lightweight ordinary conversation last.
+ * Local fallback conversation. The planner handles proactive travel actions,
+ * generated packs and TravelBrainCore handle travel knowledge, and this class
+ * handles lightweight ordinary conversation last.
  */
 public final class DemoSarah {
     private DemoSarah() { }
 
     public static String reply(String message, Map<String, String> profile, boolean photoIncluded) {
         return reply(message, profile, photoIncluded,
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public static String reply(
@@ -26,9 +26,6 @@ public final class DemoSarah {
             List<Map<String, String>> memories,
             List<Map<String, String>> trips,
             List<Map<String, String>> wishes) {
-        String runtimeAnswer = SarahRuntimeServices.answerAndApply(
-                message, profile, history, memories, wishes);
-        if (runtimeAnswer != null && !runtimeAnswer.trim().isEmpty()) return runtimeAnswer;
         return reply(message, profile, photoIncluded,
                 history, memories, trips, wishes, List.of(), List.of());
     }
@@ -54,10 +51,6 @@ public final class DemoSarah {
 
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
         if (proactive.handled()) return proactive.reply;
-
-        String agentic = AgenticTravelCore.answer(
-                safe, profile, history, memories, wishes, knowledgePacks, dealWatches);
-        if (agentic != null && !agentic.trim().isEmpty()) return agentic;
 
         String packAnswer = DestinationPackResponder.answer(safe, history, knowledgePacks);
         if (packAnswer != null && !packAnswer.trim().isEmpty()) return packAnswer;
@@ -123,7 +116,6 @@ public final class DemoSarah {
                     "That gives me a clearer picture of " + idea + ".",
                     "I hear you about " + idea + ".");
         }
-
         return "I’m here, " + name + ".";
     }
 
