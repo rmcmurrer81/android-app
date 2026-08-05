@@ -2,8 +2,6 @@ name: Build Sarah Android APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build:
@@ -23,15 +21,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 0.5 smart-search APK
+      - name: Build current Sarah APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-0.5-smart-search.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-current-debug.apk
 
-      - name: Upload Sarah 0.5 APK
+      - name: Upload Sarah APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-0.5-smart-search
-          path: Sarah-Morgan-0.5-smart-search.apk
+          name: Sarah-Morgan-current-debug
+          path: Sarah-Morgan-current-debug.apk
           if-no-files-found: error
