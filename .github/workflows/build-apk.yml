@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -42,18 +42,26 @@ jobs:
           java -cp build/travel-brain-test TravelBrainCoreTest
           java -cp build/travel-brain-test MemoryExtractorTravelBrainTest
 
-      - name: Test autonomous no-question-loop planning
+      - name: Test agentic, event-trip, and booking planning
         run: |
           rm -rf build/agentic-test
           mkdir -p build/agentic-test
           javac -encoding UTF-8 -d build/agentic-test \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationPackResponder.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java
+            Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/BookingLinkParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPlannerTest.java
           java -cp build/agentic-test AgenticTravelPlannerTest
           java -cp build/agentic-test DestinationPackResponderTest
+          java -cp build/agentic-test EventTripIntentParserTest
+          java -cp build/agentic-test BookingLinkParserTest
+          java -cp build/agentic-test EventTripPlannerTest
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
@@ -66,15 +74,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 1.1 agentic-travel APK
+      - name: Build Sarah 1.2 event-aware-travel APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.1-agentic-travel.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.2-event-aware-travel.apk
 
-      - name: Upload Sarah 1.1 APK
+      - name: Upload Sarah 1.2 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-1.1-agentic-travel
-          path: Sarah-Morgan-1.1-agentic-travel.apk
+          name: Sarah-Morgan-1.2-event-aware-travel
+          path: Sarah-Morgan-1.2-event-aware-travel.apk
           if-no-files-found: error
