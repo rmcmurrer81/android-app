@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 0.8-local-dialogue"
+            android:text="Build 0.9-auto-smart"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -30,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="You can switch modes here or by tapping the mode line directly under Sarah's name in the chat screen. Sarah keeps the same profile, memories, trips, and wish list in both modes."
+            android:text="Automatic mode is the default. Sarah uses the connected model whenever the phone has validated internet and a model key, continues locally when service drops, and returns to the connected model when service comes back."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -38,7 +38,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Conversation mode"
+            android:text="Conversation connection"
             android:textStyle="bold" />
 
         <Spinner
@@ -50,7 +50,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Local mode works without internet and keeps conversation on the phone. Smart mode uses a connected model for deeper conversation, photo understanding, and optional live web research."
+            android:text="A Wi-Fi or mobile-data symbol alone is not enough; Sarah waits for Android to report a validated internet connection before using Smart mode."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Connected model"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="The included adapter uses OpenAI Responses. The team README explains how to change the model name or add another provider such as Claude."
             android:textSize="13sp" />
 
         <EditText
@@ -58,7 +71,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:hint="Personal API key for Smart mode"
+            android:hint="Personal connected-model API key"
             android:inputType="textPassword" />
 
         <EditText
@@ -66,7 +79,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="Connected model name" />
+            android:hint="Model name, for example gpt-5-mini" />
 
         <CheckBox
             android:id="@+id/webSearchCheck"
