@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,12 @@ public final class AgenticActionExecutor {
             }
         }
 
-        if (createdWatch) {
+        SharedPreferences preferences = context.getSharedPreferences(
+                SettingsActivity.PREFS,
+                Context.MODE_PRIVATE);
+        boolean alertsEnabled = preferences.getBoolean("deal_alerts_enabled", true);
+        boolean researchEnabled = preferences.getBoolean("auto_destination_research", true);
+        if ((createdWatch && alertsEnabled) || (queuedKnowledge && researchEnabled)) {
             DealWatchScheduler.ensureScheduled(context);
             DealWatchScheduler.runSoon(context);
         }
