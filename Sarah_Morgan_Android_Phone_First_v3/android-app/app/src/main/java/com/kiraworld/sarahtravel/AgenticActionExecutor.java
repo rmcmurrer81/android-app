@@ -8,6 +8,7 @@ import java.util.Map;
 
 public final class AgenticActionExecutor {
     public static final class Result {
+        /** True when a fare or event watch needs Android notification permission. */
         public final boolean createdDealWatch;
         public final boolean queuedKnowledge;
         public final boolean changedEventMonitor;
@@ -89,6 +90,10 @@ public final class AgenticActionExecutor {
             EventMonitorScheduler.ensureScheduled(context);
             EventMonitorScheduler.runSoon(context);
         }
-        return new Result(createdWatch, queuedKnowledge, changedEventMonitor, importedBooking);
+        return new Result(
+                createdWatch || changedEventMonitor,
+                queuedKnowledge,
+                changedEventMonitor,
+                importedBooking);
     }
 }
