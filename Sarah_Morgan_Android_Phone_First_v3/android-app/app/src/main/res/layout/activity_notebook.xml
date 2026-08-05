@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/sarah_warm"
+    android:orientation="vertical"
+    android:padding="18dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Travel notebook" android:textColor="@color/sarah_navy" android:textSize="28sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Past trips, wish-list places, preferences, and shared memories Sarah has learned." />
+    <Button android:id="@+id/addWishButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Add a place I want to visit" />
+    <Button android:id="@+id/addTripButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Add a past or planned trip" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:id="@+id/notebookContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="10dp" />
+    </ScrollView>
+</LinearLayout>

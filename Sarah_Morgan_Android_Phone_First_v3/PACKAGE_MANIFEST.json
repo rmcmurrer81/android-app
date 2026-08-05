@@ -1,0 +1,260 @@
+{
+  "package": "Sarah_Morgan_Android_Phone_First_v3",
+  "version": "0.3",
+  "created_at": "2026-08-05T18:27:00Z",
+  "status": "ANDROID_SOURCE_UPDATED__PURE_JAVA_AND_STATIC_VALIDATION_PASS__APK_NOT_COMPILED_IN_THIS_ENVIRONMENT",
+  "file_count": 49,
+  "features_added": [
+    "age onboarding",
+    "offline turbulence calm mode",
+    "offline personalized trivia",
+    "age-aware destination media suggestions"
+  ],
+  "files": [
+    {
+      "path": "APK_BUILD_STATUS.md",
+      "bytes": 1345,
+      "sha256": "8ae0be9d2b0485edaba2c9c06891c38c3ab808a92fb2a5e0b2fbee67cb835665"
+    },
+    {
+      "path": "IN_FLIGHT_CALM_AND_AGE_AWARE_MEDIA.md",
+      "bytes": 1911,
+      "sha256": "c5f4abf82bbda3cdf57ab248fa99ef1a5403c45a9d20159a36791f6e125cd66f"
+    },
+    {
+      "path": "PHONE_FIRST_ARCHITECTURE.md",
+      "bytes": 953,
+      "sha256": "2451b5d72dd55a2ea8d93f4c1b1e060ea67124346b0f885f48bf68f308d18cff"
+    },
+    {
+      "path": "README_START_HERE.md",
+      "bytes": 6911,
+      "sha256": "4bf55e16d925023f5314de0da35d7ad3004c16ad2b87850ec97e48783bcaa023"
+    },
+    {
+      "path": "SARAH_VOICE_DESIGN.md",
+      "bytes": 1129,
+      "sha256": "37ed0d10f308def1073a77c3fa4cc94d2e18e2641f9f9cc8c9985dad78457b5b"
+    },
+    {
+      "path": "TEST_REPORT.md",
+      "bytes": 1842,
+      "sha256": "f79a75f10f23092ecdac41168cbeab4980b621fbffb8f446af82da80279f66c2"
+    },
+    {
+      "path": "android-app/.github/workflows/build-apk.yml",
+      "bytes": 612,
+      "sha256": "e80878ad36c405de39f1ad798a61b297b42e46d1f2469469af26e134e59912a5"
+    },
+    {
+      "path": "android-app/app/build.gradle",
+      "bytes": 718,
+      "sha256": "cb1e74c14bed63ab70eb47cba5be286ca1dfa03612f3a6e4f475067bdd74f54b"
+    },
+    {
+      "path": "android-app/app/proguard-rules.pro",
+      "bytes": 39,
+      "sha256": "5b813c787ba188c8bce54be610a49cac4a5e90e4751eb90c56fd335b25366627"
+    },
+    {
+      "path": "android-app/app/src/main/AndroidManifest.xml",
+      "bytes": 1520,
+      "sha256": "e976625aad431d1f811a74d52b15b5fccaaab392f3ccbca0726d8390d10b6c08"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java",
+      "bytes": 4827,
+      "sha256": "1f0d32898953e43d236eef4d91a87070b012dcd6553b0d13625b6f826074f775"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/CloudVoiceClient.java",
+      "bytes": 2592,
+      "sha256": "7e5b3618550495e185df88d9e68c2945f33ce34f2f81654663123a1f1ae149c4"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/DemoSarah.java",
+      "bytes": 3806,
+      "sha256": "9c5c5e30822d20e3d5739ee2111a29bd32f8e3e8539882361ba62bc439557cfd"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/ImageSanitizer.java",
+      "bytes": 1823,
+      "sha256": "17bde93861f9f2abefc0e2db7beeef81ecdc70b7ccf3c215d531ed156530d2bf"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java",
+      "bytes": 14402,
+      "sha256": "a213f2268ed6798c28dd5bc2646bdc093c01c09770a30882f790f82cbc950269"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/MediaSuggestionEngine.java",
+      "bytes": 1626,
+      "sha256": "e734d40f0322c9ee885873b1743ab194a5076b9effa761d086daf43c9c9bc1c6"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java",
+      "bytes": 3094,
+      "sha256": "4583b5834957626e39367787c41ac7a624bcae5fbb4d12c7b427eea31497afb4"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java",
+      "bytes": 2636,
+      "sha256": "017661e9f360f5898eb5699d8bf77410db18393f791c0fc45570088abb67c2b5"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/OpenAIClient.java",
+      "bytes": 4929,
+      "sha256": "18f1080a4a79700b45c8b9afe945b0ef210a6dfbef30880702471e46871dddad"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahDatabase.java",
+      "bytes": 8632,
+      "sha256": "4378204a7aab1d266326c5a640131c88e0d182375b23be98b5520f09019aad05"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahPromptBuilder.java",
+      "bytes": 6733,
+      "sha256": "f5ed7242e0703104d2f7d59b796f61f6289cad3f6f51db77e0d8cd432fc12a49"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahTts.java",
+      "bytes": 1612,
+      "sha256": "1e5c1fb3a0ea1cf0a6345ae8ad39002ce2b017753e43621f31bccbb385f367b4"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/SecureStore.java",
+      "bytes": 2592,
+      "sha256": "419ae975de20a7e1810cbec52a4fc1c0a75026afc360201a4daaeff76f07e622"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/SettingsActivity.java",
+      "bytes": 3049,
+      "sha256": "d4d0e0d2f1bba92f1bed0becfbadb7e52d0afd394cac7ccaa475605b00e4156a"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelNotebookActivity.java",
+      "bytes": 4474,
+      "sha256": "c4f3a202f5755dc00914cc0f41af86852bd3010af40ad0e24999a5211bf57bb7"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/chat_sarah.xml",
+      "bytes": 348,
+      "sha256": "13dfe9ca61b1c65fb2d127f297f90d37a531e121e8bf6cf7f9b43879ce12322f"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/chat_user.xml",
+      "bytes": 289,
+      "sha256": "97a28d48a97b439ca381561c6289ffed71e1e20431879e519d50425b526e66d2"
+    },
+    {
+      "path": "android-app/app/src/main/res/layout/activity_main.xml",
+      "bytes": 4417,
+      "sha256": "1adb5837415f2a65ca91cb5b2078d5bb6efa3504e8ffb245153adc067cb162af"
+    },
+    {
+      "path": "android-app/app/src/main/res/layout/activity_notebook.xml",
+      "bytes": 1414,
+      "sha256": "c2b21324ad5dfc96454f3f1f52e5cedc5c3c446319ef6b387aa68c316addf9e0"
+    },
+    {
+      "path": "android-app/app/src/main/res/layout/activity_onboarding.xml",
+      "bytes": 3781,
+      "sha256": "834874ff49fa7a34c1e98721940ad85f839599018a5b896a8fc3c2d0ca40d6cb"
+    },
+    {
+      "path": "android-app/app/src/main/res/layout/activity_settings.xml",
+      "bytes": 3339,
+      "sha256": "ae90c4d4fd1e7f055b51eeeaaeeec8e1fa1d49d3c54c5869a8abed3211accb9d"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "bytes": 3133,
+      "sha256": "488bc57dc7b18bb4cfc711b015dd4b205620abfe37439d8b29e0c5ccd127662e"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "bytes": 2055,
+      "sha256": "75ba5c12dee7c6e9957506441d050ff54c9e186dd5c25aab1fcfe6748e84e880"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "bytes": 4108,
+      "sha256": "6ab38b718e78a2c1243e9adf7f6fa0c8f6a2079416ce8a70935fb291bea45ae9"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "bytes": 6335,
+      "sha256": "fc0dc9750c2969860b42ff6df3a7b6a41cedaff7446a09c548e694ed3ecb85e8"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "bytes": 8281,
+      "sha256": "52658fe4b0694fb3acd760fbb8e1b13804e93bcb075f413f87c536c8c18afcd6"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/colors.xml",
+      "bytes": 328,
+      "sha256": "6abdb226137b047cdc43bfcf7578e6866ed51ab4a9c03f459d50d0d2c4001eab"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/strings.xml",
+      "bytes": 213,
+      "sha256": "bc540c0713f9376796f1a91b755ad6f7d6b5f2420d0051b6f99a5d1ca0861619"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/styles.xml",
+      "bytes": 493,
+      "sha256": "7afe5277d8add714153c7aa299cc9ef372e0f4261492b1e40bf91bf614bb289a"
+    },
+    {
+      "path": "android-app/app/src/main/res/xml/backup_rules.xml",
+      "bytes": 200,
+      "sha256": "90bd185527ddc485554a0889347266e26c95ec95bf38fa1fa3b9b0232a784891"
+    },
+    {
+      "path": "android-app/app/src/main/res/xml/data_extraction_rules.xml",
+      "bytes": 407,
+      "sha256": "2c89647f1b805955b470dc250b11f4741ca7d3a619809ea19a83e08c5c2b4e2f"
+    },
+    {
+      "path": "android-app/build.gradle",
+      "bytes": 74,
+      "sha256": "78b843c82999bf181d78587c11294429c7b0c4a2e4267d20075de17505a15cbb"
+    },
+    {
+      "path": "android-app/gradle.properties",
+      "bytes": 107,
+      "sha256": "fd3dc84bf51d174859c61ea75231586e0a93de9bbad80da4e5e783ff5e730d09"
+    },
+    {
+      "path": "android-app/settings.gradle",
+      "bytes": 335,
+      "sha256": "1ee7914830e85b1333cfbc2ede36b7a780eca04dbf6e29b34bf312ba5f5ca4f2"
+    },
+    {
+      "path": "desktop_optional/Sarah_Morgan_Travel_Companion_Prototype.zip",
+      "bytes": 61520,
+      "sha256": "3687cec9e56fb87d7ed0e91fa45b82f5a55a0e7548703fb2e17ec094750280ab"
+    },
+    {
+      "path": "sarah_phone_profile.json",
+      "bytes": 3381,
+      "sha256": "a5f0c130e564cf2fbdb25a9757ca75ed3653c0e57f53942a432053a5b33a2040"
+    },
+    {
+      "path": "tests/PureCoreTest.java",
+      "bytes": 1860,
+      "sha256": "820d0f0e6a26bf5cb98f405b5581400e8c6758ea92c8480df97ced765859209c"
+    },
+    {
+      "path": "tests/run_pure_java_tests.sh",
+      "bytes": 1009,
+      "sha256": "89f4499edef59e6713e5b4ac1446c52b2706d19be190f4d89b163200de383d98"
+    },
+    {
+      "path": "tests/validate_package.py",
+      "bytes": 1916,
+      "sha256": "1aeeaaf4bafe744371ea254ce829809d2f61d3082dd643263b89893a081cd52f"
+    }
+  ]
+}
