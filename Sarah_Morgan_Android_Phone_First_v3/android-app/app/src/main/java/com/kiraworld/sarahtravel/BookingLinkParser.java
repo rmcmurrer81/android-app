@@ -25,13 +25,21 @@ public final class BookingLinkParser {
     private BookingLinkParser() { }
 
     public static BookingLink parse(String text) {
-        Matcher matcher = URL.matcher(text == null ? "" : text);
+        String safe = text == null ? "" : text;
+        Matcher matcher = URL.matcher(safe);
         if (!matcher.find()) return new BookingLink("", "Other", "travel");
         String url = trimPunctuation(matcher.group());
-        String lower = url.toLowerCase(Locale.US);
-        String provider = provider(lower);
-        String type = type((text == null ? "" : text).toLowerCase(Locale.US), lower);
-        return new BookingLink(url, provider, type);
+        String lowerUrl = url.toLowerCase(Locale.US);
+        String lowerText = safe.toLowerCase(Locale.US);
+        String provider = provider(lowerUrl);
+        boolean knownProvider = !"Other".equals(provider);
+        boolean bookingContext = containsAny(lowerText,
+                "booking", "reservation", "confirmation", "hotel", "room", "flight",
+                "airline", "train", "rental car", "ticket", "badge", "expedia");
+        if (!knownProvider && !bookingContext) {
+            return new BookingLink("", "Other", "travel");
+        }
+        return new BookingLink(url, provider, type(lowerText, lowerUrl));
     }
 
     private static String provider(String lower) {
@@ -53,10 +61,10 @@ public final class BookingLinkParser {
     private static String type(String text, String url) {
         String all = text + " " + url;
         if (containsAny(all, "hotel", "lodging", "room", "resort", "airbnb", "hotels.com")) return "hotel";
-        if (containsAny(all, "flight", "airline", "ticket", "airfare")) return "flight";
+        if (containsAny(all, "flight", "airline", "airfare")) return "flight";
         if (containsAny(all, "train", "amtrak")) return "rail";
         if (containsAny(all, "car rental", "rental car")) return "car";
-        if (containsAny(all, "event ticket", "admission", "badge", "registration")) return "event";
+        if (containsAny(all, "event ticket", "admission", "badge", "registration", "comic-con", "ces")) return "event";
         return "travel";
     }
 
