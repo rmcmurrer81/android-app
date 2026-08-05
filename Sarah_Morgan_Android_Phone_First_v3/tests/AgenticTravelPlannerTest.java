@@ -22,6 +22,7 @@ public final class AgenticTravelPlannerTest {
         require(orlando.reply.contains("planning list"), "must proactively create a plan");
         require(hasAction(orlando, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "Orlando"),
                 "must queue Orlando knowledge");
+        require(!orlando.reply.endsWith("?"), "Orlando plan must not start a questionnaire");
 
         say(history, "assistant", orlando.reply);
         say(history, "user", "Universal Studios");
@@ -29,12 +30,23 @@ public final class AgenticTravelPlannerTest {
                 "Universal Studios", profile, history, memories);
         require(universal.reply.contains("main focus"), "must accept Universal without another questionnaire");
         require(!universal.reply.endsWith("?"), "must not ask another question");
+        require(hasAction(universal, AgenticTravelPlanner.UPDATE_DESTINATION_FOCUS, "Orlando"),
+                "must save Orlando attraction focus");
 
         say(history, "assistant", universal.reply);
         say(history, "user", "That is it");
         AgenticTravelPlanner.Plan done = AgenticTravelPlanner.plan(
                 "That is it", profile, history, memories);
         require(done.reply.toLowerCase().contains("won’t keep asking"), "must stop questioning");
+        require(!done.reply.endsWith("?"), "closure reply must not ask again");
+
+        AgenticTravelPlanner.Plan austin = AgenticTravelPlanner.plan(
+                "I am planning on going to Austin", profile, new ArrayList<>(), memories);
+        require(hasAction(austin, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "Austin"),
+                "Austin must queue destination research");
+        require(hasAction(austin, AgenticTravelPlanner.SAVE_WISH, "Austin"),
+                "Austin must be stored as a possible trip");
+        require(!austin.reply.endsWith("?"), "Austin must not start an interview");
 
         List<Map<String, String>> chinaHistory = new ArrayList<>();
         say(chinaHistory, "user", "I always wanted to visit China");
@@ -42,6 +54,8 @@ public final class AgenticTravelPlannerTest {
                 "I always wanted to visit China", profile, chinaHistory, memories);
         require(hasAction(china, AgenticTravelPlanner.CREATE_DEAL_WATCH, "China"),
                 "dream destination must create broad deal watch");
+        require(hasAction(china, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "China"),
+                "China must queue a country-level pack");
         require(china.reply.contains("nearby airports"), "watch must use broad airport defaults");
         require(!china.reply.endsWith("?"), "dream destination must not start a questionnaire");
 
