@@ -1,92 +1,51 @@
 # Sarah Morgan Android Companion
 
-Sarah Morgan is a phone-first Android travel companion and general conversational companion. She is intended to remain useful without internet, become substantially more capable when Smart mode is connected, remember useful details with permission, speak aloud, accept push-to-talk input, help during first-flight anxiety or turbulence, play personalized trivia, suggest destination-related media, and discuss selected trip photographs when image-capable Smart mode is available.
+Sarah Morgan is a phone-first Android travel companion and general conversational companion. She can remember useful details with permission, speak aloud, accept push-to-talk input, help with first-flight anxiety and turbulence, play personalized trivia, suggest destination-related media when asked, keep trip and wish-list information, and discuss selected photographs when an image-capable connected model is available.
 
-Current Android version: **0.7-conversational**  
-Current private-test application ID: `com.kiraworld.sarahtravel.debug`
+Current Android version: **0.9-auto-smart**  
+Private-test application ID: `com.kiraworld.sarahtravel.debug`
 
-This repository is a development prototype. It is not yet ready for public app-store distribution.
+This repository is a development prototype, not a finished public app-store release.
 
 ---
 
-## 1. What changed in version 0.7
+## 1. Version 0.9: connected by default, local when needed
 
-Version 0.7 was created after an older APK artifact caused three confusing regressions during phone testing.
+Sarah now uses **Automatic mode by default**.
 
-### Conversational first setup
+Automatic mode follows this routing rule:
 
-The first-run experience is no longer a large form. Sarah asks one question at a time inside a chat screen:
+| Phone/model state | Route used |
+|---|---|
+| Validated internet connection + encrypted model key | Smart connected model |
+| No validated internet | Local companion |
+| Internet exists but no model key is configured | Local companion |
+| Connected model request fails or times out | Local companion for that message |
+| Internet/model service becomes usable again | Smart connected model on the next message |
+| User selects Local only | Local companion regardless of connection |
 
-1. What name should she use?
-2. How old is the person, or what year were they born?
-3. Where are they from?
-4. Is flying new, or have they flown before?
-5. What do they enjoy?
-6. Are there travel worries, sensory needs, or accessibility needs?
-7. May Sarah remember useful information on the phone?
-
-Each answer is accepted by typing or push-to-talk. Optional questions can be skipped. The onboarding header must display `First conversation • v0.7`.
-
-### Clear Local and Smart modes
-
-The status line directly below Sarah's name must say either:
-
-- `Local mode • tap to switch`
-- `Smart mode • tap to switch`
-
-Tapping that line opens the mode chooser. The same setting is also available through the wrench icon.
-
-The words **Demo mode** should never appear in version 0.7. Seeing Demo mode means an older APK was installed.
-
-### Better Local conversation
-
-Local mode now uses:
-
-- the current profile;
-- recent conversation turns;
-- stored memories;
-- planned and past trips;
-- wish-list destinations;
-- age group;
-- hometown and interests.
-
-It also has direct local answers for conversational follow-ups such as:
-
-- `Good`
-- `Tell me about Paris`
-- `Any days work` after discussing flight fares
-- `What do you remember about me?`
-- first-flight worries and turbulence
-- destination movie and book suggestions
-
-Local mode is still a deterministic offline conversation engine, not a full language model. It should be warm, useful, and context-aware, but Smart mode is the route for deeper open-ended conversation, image understanding, and current research.
-
-### Unmistakable launcher icon
-
-Version 0.7 uses a new launcher resource named:
+Sarah does not need to restart when connectivity changes. `ConnectivityMonitor.java` registers an Android default-network callback while the chat activity is open. The status line beneath Sarah's name updates to messages such as:
 
 ```text
-app/src/main/res/drawable/ic_sarah_launcher_v2.xml
+Automatic • Smart online • tap to switch • Robert
+Automatic • Local • offline • tap to switch • Robert
+Automatic • Local • Smart setup needed • tap to switch • Robert
+Automatic • Local fallback • tap to switch • Robert
 ```
 
-The Android manifest points directly to that resource for both normal and round icons. The icon combines:
+A Wi-Fi or mobile-data icon by itself is not treated as proof of working internet. The app checks Android's `NET_CAPABILITY_INTERNET` and `NET_CAPABILITY_VALIDATED` capabilities.
 
-- a cream `S` and speech-bubble tail;
-- lavender conversation dots and navigation arcs;
-- a sky-blue travel arrow;
-- a dark slate background.
+The app never changes or deletes the profile, trips, memories, or wish list when switching routes. Both routes use the same local SQLite data.
 
-The old plain purple `S` belongs to an earlier APK. Some launchers cache icons, so uninstalling the old test build before installing 0.7 may be necessary.
+### Available connection preferences
 
-### Visible version check
+The mode selector contains:
 
-The Settings screen must show:
+1. **Automatic** — Smart online, Local when offline. This is recommended and is the default.
+2. **Smart preferred** — also attempts the connected model whenever internet and a key are available, while preserving a local fallback so the person is not left without a reply.
+3. **Local only** — never sends a conversation to a connected model.
 
-```text
-Build 0.7-conversational
-```
-
-This is the fastest way to verify that the correct APK is installed.
+The person can change this in Settings or by tapping the status line below Sarah's name.
 
 ---
 
@@ -102,13 +61,10 @@ android-app/
 └── Sarah_Morgan_Android_Phone_First_v3/
     ├── README_START_HERE.md
     ├── APK_BUILD_STATUS.md
-    ├── IN_FLIGHT_CALM_AND_AGE_AWARE_MEDIA.md
     ├── PHONE_FIRST_ARCHITECTURE.md
     ├── SARAH_VOICE_DESIGN.md
-    ├── TEST_REPORT.md
     ├── android-app/
     │   ├── app/
-    │   │   └── src/main/
     │   ├── build.gradle
     │   ├── gradle.properties
     │   └── settings.gradle
@@ -116,431 +72,388 @@ android-app/
     └── tests/
 ```
 
-The actual Gradle project root is:
+The actual Gradle project starts at:
 
 ```text
 Sarah_Morgan_Android_Phone_First_v3/android-app/
 ```
 
-The GitHub Actions workflow uses that nested path explicitly.
-
 ---
 
-## 3. Main Android components
+## 3. Building the APK
 
-### `MainActivity.java`
-
-The primary chat screen. It:
-
-- displays conversation history;
-- accepts typed messages;
-- launches push-to-talk recognition;
-- accepts a selected photo;
-- routes a turn to Local or Smart mode;
-- speaks Sarah's reply;
-- records chat history;
-- invokes memory extraction;
-- opens the mode chooser;
-- starts Calm & Trivia, Settings, and the Travel Notebook.
-
-Provider failures should not become Sarah's spoken dialogue. When Smart mode fails, the app should fall back to a Local response and show the technical problem as a small Android notification.
-
-### `OnboardingActivity.java`
-
-Runs only when no profile exists. It implements the one-question-at-a-time first conversation. It parses natural answers such as:
-
-- `I'm Robert`
-- `I was born in 1981`
-- `I've flown before`
-- `Flying is new to me`
-- `skip`
-- `yes` or `no`
-
-It saves the completed profile to SQLite and optionally creates initial reviewed profile memories.
-
-### `DemoSarah.java`
-
-The Local mode conversation engine. The historical class name remains `DemoSarah`, but the user-visible name is Local mode.
-
-It is deterministic Java code designed to remain available without a network connection. It handles:
-
-- greetings and simple social replies;
-- profile and memory questions;
-- first-flight support;
-- turbulence support;
-- personalized travel follow-ups;
-- fare-search preparation;
-- stable destination descriptions;
-- age-aware movie and book suggestions;
-- travel planning structure;
-- ordinary non-travel conversation fallbacks.
-
-To improve Local mode, add narrow, testable conversational routes rather than one giant generic response. Preserve recent-history and memory grounding and do not invent live prices, current hours, or events.
-
-### `OpenAIClient.java`
-
-Private-test Smart mode adapter using the Responses API. It sends:
-
-- Sarah's system instructions;
-- recent conversation history;
-- the current message;
-- an optional JPEG image;
-- an optional web-search tool request.
-
-The request uses `store=false`.
-
-A public release must not rely on users pasting a developer-owned key into the APK. It should use a protected backend with authentication, rate limits, billing controls, abuse monitoring, and provider-key isolation.
-
-### `SarahPromptBuilder.java`
-
-Builds the Smart mode identity and grounding prompt from:
-
-- age and age group;
-- hometown;
-- interests and worries;
-- memories;
-- trips and wish-list places;
-- image presence;
-- live-search availability.
-
-Age, desire, consent, current facts, memories, and fictional media must remain separate concepts.
-
-### `SarahDatabase.java`
-
-SQLite database containing:
-
-- `profile`
-- `messages`
-- `memories`
-- `trips`
-- `wish_list`
-- `photos`
-
-Ordinary chat messages are records, not automatically trusted memories. `MemoryExtractor` identifies limited candidate facts and stores them only when memory permission is active.
-
-### `TravelNotebookActivity.java`
-
-Displays the profile, memories, past and planned trips, and wish-list destinations. Record-by-record editing, deletion, export, and import should be expanded before public release.
-
-### `SarahTts.java`
-
-Uses Android Text-to-Speech for Sarah's default voice. This can work without a paid voice provider when the phone has a suitable voice installed.
-
-### `CloudVoiceClient.java`
-
-Optional private-test cloud speech route. It should fall back to Android TTS if cloud speech fails.
-
-### `CalmSupport.java`
-
-Provides offline turbulence support, grounding, and personalized trivia. It must never claim to diagnose the aircraft or override cabin-crew instructions.
-
-### `ImageSanitizer.java`
-
-Reads a selected image and creates a new JPEG copy for Sarah. Re-encoding avoids copying ordinary EXIF and GPS metadata into Sarah's stored version.
-
----
-
-## 4. Conversation modes
-
-### Local mode
-
-Purpose:
-
-- work without internet;
-- provide fast, private, predictable support;
-- preserve profile, memories, trips, trivia, and calm tools;
-- answer a growing set of common travel and social conversations.
-
-Local mode limitations:
-
-- no genuine image understanding;
-- no verified live fares;
-- no current opening hours, weather, events, or closures;
-- no unlimited open-ended reasoning;
-- destination knowledge is only what is explicitly implemented and tested.
-
-Local mode should not apologize repeatedly or call itself dumb, limited, a demo, or a smaller brain. It should answer naturally and mention Smart mode only when a capability truly requires it.
-
-### Smart mode
-
-Purpose:
-
-- deeper open-ended conversation;
-- image understanding;
-- optional live web research;
-- broader destination and media knowledge;
-- more natural continuity across unusual questions.
-
-Smart mode currently requires a personal API key in this private prototype. The key is encrypted with Android Keystore through `SecureStore.java`.
-
-If Smart mode cannot connect, the app should:
-
-1. preserve the person's message;
-2. produce a Local mode answer;
-3. show a small technical fallback notice;
-4. avoid putting raw exception text into Sarah's spoken reply.
-
----
-
-## 5. Age-aware behavior
-
-The app stores the person's age locally and derives an age group:
-
-- child: under 13
-- teen: 13–17
-- adult: 18 or older
-
-Age affects:
-
-- media suggestions;
-- trivia difficulty and content;
-- tone and vocabulary;
-- handling of unknown guest speakers;
-- family-friendly defaults.
-
-Example for Paris:
-
-- child: *Miraculous Ladybug*, *Ratatouille*, or *Hugo*
-- adult: *Amélie*; mature action such as *John Wick: Chapter 4* only when interests support it, with a clear statement that it is violent fiction and not travel guidance
-
-Fiction is atmosphere, not proof about the real destination.
-
----
-
-## 6. Voice and speech input
-
-### Android voice
-
-The default route uses Android TTS. The exact voice depends on the phone's installed speech engine. The person can change speech speed in Settings.
-
-### Optional cloud voice
-
-A connected speech provider can give Sarah a more consistent voice. The current design target is:
-
-> Warm, calm, natural adult voice. Emotionally present and reassuring without sounding clinical or overly cheerful. Medium-slow pace with ordinary conversational variation.
-
-Do not imitate a real person without authorization and provider consent requirements.
-
-### Push-to-talk
-
-The microphone button launches Android speech recognition only after the person taps it. The app is not designed as an always-listening microphone service.
-
----
-
-## 7. Photo flow and privacy
-
-1. The person taps the camera icon.
-2. Android's picker grants access to the selected image, not the entire gallery.
-3. `ImageSanitizer` decodes and re-encodes the image as JPEG.
-4. Sarah stores the cleaned local copy and caption.
-5. Local mode can save and associate the picture but cannot inspect its visual content.
-6. Smart mode can receive the cleaned image for composition, lighting, mood, and respectful next-photo suggestions.
-
-Before public release, add:
-
-- deletion controls;
-- retention settings;
-- clear cloud-upload consent;
-- an image-size cap;
-- a privacy-policy explanation of provider processing.
-
----
-
-## 8. Building the APK with GitHub Actions
-
-Workflow:
+The workflow is:
 
 ```text
 .github/workflows/build-apk.yml
 ```
 
-The current artifact must be named:
+It performs these steps:
 
-```text
-Sarah-Morgan-0.7-conversational
-```
+1. checks out the repository;
+2. installs Java 17;
+3. compiles and runs the pure-Java automatic-routing test;
+4. restores the private-test debug signing key cache;
+5. installs Gradle 8.13;
+6. builds the Android debug APK;
+7. renames it to `Sarah-Morgan-0.9-auto-smart.apk`;
+8. uploads the artifact `Sarah-Morgan-0.9-auto-smart`.
 
-Phone-browser build steps:
+From a phone browser:
 
-1. Open the repository.
+1. Open the repository on GitHub.
 2. Open **Actions**.
 3. Select **Build Sarah Android APK**.
-4. Open the newest run associated with the 0.7 commits.
-5. Wait for a green check.
-6. Download the artifact `Sarah-Morgan-0.7-conversational`.
-7. Extract the downloaded ZIP.
-8. Install `Sarah-Morgan-0.7-conversational.apk`.
+4. Open the newest run and wait for a green check.
+5. Download the `Sarah-Morgan-0.9-auto-smart` artifact.
+6. Extract the artifact ZIP.
+7. Install `Sarah-Morgan-0.9-auto-smart.apk`.
 
-The workflow caches `~/.android/debug.keystore` using a stable cache key. This improves the chance that later private-test builds install as updates instead of requiring a full uninstall.
-
-Because older artifacts may have used a different debug signing key, installing 0.7 may still require uninstalling the current Sarah test app once. Uninstalling erases the current test database.
+Do not download an artifact from an older run merely because it is green. Verify the artifact name and check Settings after installation for `Build 0.9-auto-smart`.
 
 ---
 
-## 9. Verifying the correct APK
+## 4. Important source files
 
-After installing 0.7, verify all four items:
+### Conversation and route control
 
-1. The first screen is a chat conversation, not a large form.
-2. The onboarding header says `First conversation • v0.7`.
-3. The main header says Local or Smart mode, never Demo mode.
-4. Settings says `Build 0.7-conversational`.
-5. The launcher icon is the dark slate travel/conversation design, not the plain purple `S`.
+- `MainActivity.java` — chat UI, message routing, automatic fallback, speech/photo entry points.
+- `ConversationModePolicy.java` — pure routing rules and status labels.
+- `ConnectivityMonitor.java` — validated Android network monitoring.
+- `ConnectedModelGateway.java` — single entry point for connected-model providers.
+- `OpenAIClient.java` — included OpenAI Responses adapter.
+- `DemoSarah.java` — local rule-based fallback conversation.
+- `SarahPromptBuilder.java` — connected-model identity, memory, travel, age, and truth instructions.
 
-If any one of these is wrong, the phone is running an older APK.
+### Identity and onboarding
+
+- `OnboardingActivity.java` — one-question-at-a-time first conversation.
+- `SpeakerContext.java` — active speaker and age-safe guest behavior.
+- `SarahDatabase.java` — profile, messages, memories, trips, wish list, and photo records.
+- `MemoryExtractor.java` — conservative local extraction of useful preferences.
+
+### Voice and photos
+
+- `SarahTts.java` — Android text-to-speech.
+- `CloudVoiceClient.java` — optional connected voice.
+- `ImageSanitizer.java` — selected-image decode/re-encode so ordinary EXIF/GPS metadata is not copied into Sarah's stored JPEG.
 
 ---
 
-## 10. Local development
+## 5. Changing the connected model
 
-Requirements:
+There are two different changes a team may mean by “change the model.”
 
-- JDK 17
-- Android SDK 35
-- Gradle 8.13 or a compatible wrapper setup
-- Android device or emulator running Android 8.0/API 26 or later
+### A. Change to another model supported by the existing OpenAI Responses adapter
+
+This is the simple case. No Java code change is required.
+
+In the installed app:
+
+1. Open Sarah's wrench/settings screen.
+2. Enter the desired model ID in **Model name**.
+3. Save settings.
+
+The default model is currently set in `SettingsActivity.java`:
+
+```java
+p.getString("model", "gpt-5-mini")
+```
+
+and passed through `ConnectedModelGateway.java` to `OpenAIClient.java`.
+
+Before changing the default, confirm that the selected model supports the features the app will request. Text, image input, and web tools are separate capabilities; a model name accepting text does not automatically prove that it accepts photographs or provider-hosted web search.
+
+### B. Add a different provider such as Claude
+
+Claude is **not currently implemented**. The code is deliberately routed through `ConnectedModelGateway.java` so the team can add it without rewriting `MainActivity`.
+
+Recommended implementation sequence:
+
+1. Create:
+
+```text
+app/src/main/java/com/kiraworld/sarahtravel/ClaudeClient.java
+```
+
+2. Give it a method matching the information already passed to the gateway:
+
+```java
+public static String respond(
+        String apiKey,
+        String model,
+        String systemPrompt,
+        List<Map<String, String>> history,
+        String message,
+        boolean webSearch,
+        byte[] imageJpeg) throws Exception
+```
+
+3. Translate Sarah's data to the provider's current message format:
+
+- place `systemPrompt` in the provider's system/instructions field;
+- preserve user/assistant roles from `history`;
+- append the current user message once;
+- encode the selected JPEG using the provider's documented image-input format;
+- do not pretend the provider supports live web research unless a real tool or team backend supplies it;
+- return only Sarah's public response text.
+
+4. Add a branch in `ConnectedModelGateway.java`, for example:
+
+```java
+if ("anthropic".equals(normalized) || "claude".equals(normalized)) {
+    return ClaudeClient.respond(
+            apiKey, model, systemPrompt, history,
+            message, webSearch, imageJpeg);
+}
+```
+
+5. Add a provider selector to `SettingsActivity.java` and save a stable provider ID such as:
+
+```text
+openai
+anthropic
+```
+
+The routing code already reads:
+
+```java
+prefs.getString("connected_provider", "openai")
+```
+
+6. Decide how credentials are stored. The current `SecureStore.java` stores one encrypted key under an Android Keystore-backed AES/GCM key. Supporting multiple providers may require separate encrypted entries such as `openai_key` and `anthropic_key`, or—preferably for a public app—a protected server so provider secrets never live in the APK.
+
+7. Add provider-specific tests for:
+
+- ordinary text conversation;
+- multi-turn continuity;
+- image input;
+- timeout and HTTP-error handling;
+- automatic Local fallback;
+- return to Smart after connectivity is restored;
+- age-appropriate responses;
+- no duplicate user message;
+- no accidental transmission when Local only is selected.
+
+8. Update the README and Settings description to state exactly which provider features are available. Do not call a feature “web search” merely because the model may know public information from training.
+
+### Provider-neutral public architecture
+
+For a public release, the recommended path is:
+
+```text
+Android app
+    ↓ authenticated HTTPS request
+Sarah backend/provider router
+    ├── OpenAI adapter
+    ├── Anthropic/Claude adapter
+    ├── Amazon Bedrock adapter
+    └── another approved provider
+```
+
+That backend should handle authentication, rate limits, billing, abuse controls, provider keys, audit-safe errors, and model selection. A shared production key must never be embedded in the APK.
+
+---
+
+## 6. Renaming Sarah
+
+The app can be renamed without renaming every Java class, but all user-visible identity strings and identity instructions must be changed together. A partial rename can cause the launcher to show one name while the companion still calls herself Sarah in conversation.
+
+### Minimum user-visible rename checklist
+
+Change the following:
+
+1. **Android launcher label**
+
+```text
+app/src/main/AndroidManifest.xml
+```
+
+Change:
+
+```xml
+android:label="Sarah Morgan"
+```
+
+2. **Main and onboarding titles**
+
+Search layouts under:
+
+```text
+app/src/main/res/layout/
+```
+
+especially:
+
+- `activity_main.xml`
+- `activity_onboarding.xml`
+- `activity_settings.xml`
+
+3. **Conversational identity and greeting text**
+
+Search Java files under:
+
+```text
+app/src/main/java/com/kiraworld/sarahtravel/
+```
+
+especially:
+
+- `MainActivity.java`
+- `OnboardingActivity.java`
+- `DemoSarah.java`
+- `SarahPromptBuilder.java`
+- `SettingsActivity.java`
+- `SpeakerContext.java`
+- `CalmSupport.java`
+- `CloudVoiceClient.java`
+
+4. **Content descriptions and hints**
+
+Examples include:
+
+```text
+Talk to Sarah
+Sarah is thinking…
+Sarah remembered:
+Sarah settings
+```
+
+5. **README and package documentation**
+
+Update `README.md`, `README_START_HERE.md`, architecture notes, voice notes, artifact names, and build labels.
+
+6. **Artifact and workflow names**
+
+Update `.github/workflows/build-apk.yml` if the APK/artifact should use the new name.
+
+### Recommended search command
 
 From the repository root:
 
 ```bash
-gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug
+grep -RIn --exclude-dir=.git --exclude='*.png' --exclude='*.jpg' \
+  -e 'Sarah Morgan' -e 'Sarah' Sarah_Morgan_Android_Phone_First_v3 .github README.md BUILD_VERSION.txt
 ```
 
-Expected APK:
+Review every match rather than performing a blind global replacement. Some class names, database names, filenames, and historical migration strings may be intentionally preserved.
 
-```text
-Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk
-```
+### Internal names that do not have to change
 
-Recommended team workflow:
+The following can remain for compatibility during a user-visible rename:
 
-1. create a branch for one feature;
-2. make the smallest coherent change;
-3. add or update tests;
-4. build the debug APK;
-5. install and test on a physical phone;
-6. document behavior changes;
-7. open a pull request rather than editing main blindly.
+- Java class names such as `SarahDatabase` or `SarahTts`;
+- package name `com.kiraworld.sarahtravel`;
+- application ID;
+- existing database filename;
+- existing SharedPreferences filename.
 
----
+Keeping those stable allows an update to preserve installed user data.
 
-## 11. Testing checklist
+### Internal names to change only with a migration plan
 
-### First run
+These identifiers affect continuity or upgrades:
 
-- one question appears at a time;
-- age accepts an age or birth year;
-- optional answers can be skipped;
-- voice input works when permission is granted;
-- memory consent is respected;
-- completed onboarding opens MainActivity.
+- `applicationId` in `app/build.gradle`;
+- database name `sarah.db` in `SarahDatabase.java`;
+- SharedPreferences name `sarah_settings` in `SettingsActivity.java`;
+- Android Keystore alias `SarahMorganApiKey` in `SecureStore.java`;
+- package directory and Java package declaration;
+- GitHub artifact names.
 
-### Conversation
+Changing the application ID creates a different Android app rather than an update. Changing the database or preference names without copying old data can make memories and settings appear lost. Changing the Keystore alias without migration can make the saved API key unreadable.
 
-- `Hi` receives a natural greeting;
-- `Good` receives a direct social reply;
-- `Tell me about Paris` receives actual Paris information;
-- Local mode does not say Demo mode or smaller brain;
-- Smart mode fallback does not speak exception text;
-- recent follow-ups use recent conversation context.
+### Voice after a rename
 
-### Modes
-
-- tapping the status line opens the chooser;
-- Local mode works without a key;
-- Smart mode refuses cleanly when no key exists;
-- Settings saves provider and voice selections;
-- the mode survives closing and reopening the app.
-
-### Voice and photos
-
-- TTS initializes and shuts down correctly;
-- speech speed changes;
-- microphone permission flow works;
-- one selected photo is sanitized;
-- Local mode does not claim to see the photo;
-- Smart mode receives the image only when selected.
-
-### Calm and trivia
-
-- turbulence support keeps crew instructions primary;
-- trivia uses age and remembered interests/destinations;
-- the game can be stopped;
-- serious flight conditions do not get treated as a game.
-
-### Installation
-
-- correct icon appears after a clean install;
-- Settings shows 0.7;
-- app update preserves data when signing keys match;
-- uninstall warning is understood when keys do not match.
+The default Android voice is not a cloned identity and can continue to be used. If the team changes the cloud voice provider, voice instructions, or identity name, update `CloudVoiceClient.java` and the voice documentation together. Do not imitate a real person's voice without authorization and provider-compliant consent.
 
 ---
 
-## 12. Known limitations
+## 7. Local versus Smart responsibilities
 
-- Local mode is a hand-built deterministic conversation engine.
-- Smart mode currently uses a direct personal-key prototype route.
-- Deal searching opens research paths but does not autonomously purchase tickets.
-- There is no protected multi-user backend.
-- There are no background push notifications for deal watches yet.
-- Travel Notebook editing and deletion need expansion.
-- Encrypted export/import and account recovery are not complete.
-- Broader accessibility testing is required.
-- The app has not undergone a professional mobile-security review.
-- Public child use would require additional parental, privacy, content, and legal design.
+### Local companion
 
----
+Best for:
 
-## 13. Public-release requirements
+- no-internet situations;
+- turbulence calming;
+- grounding and trivia;
+- saved profile, trips, memories, and wish-list review;
+- common first-flight explanations;
+- basic structured travel follow-ups;
+- privacy-preserving continuity while disconnected.
 
-Before Play Store or broad distribution:
+Local conversation is rule-based. It should not claim to perform current research, see a photo, know a live fare, or understand an unrestricted topic like a full language model.
 
-- release signing key and protected key-management process;
-- protected backend for model and speech providers;
-- authentication and account recovery;
-- clear privacy policy and terms;
-- data deletion and export;
-- parental/age design review;
-- rate limits and billing controls;
-- crash reporting with privacy filtering;
-- accessibility review;
-- dependency and security scanning;
-- broader device testing;
-- moderation and abuse-response plan;
-- accurate disclosures for AI-generated speech and content.
+### Smart connected model
+
+Used for:
+
+- natural open-ended conversation;
+- nuanced follow-ups;
+- photo understanding when supported;
+- current research when an actual web tool is enabled;
+- richer itinerary reasoning;
+- current destination, fare, event, and opening-hour questions.
+
+If a Smart request fails, the error is not inserted into Sarah's spoken reply. Sarah answers locally and the app shows a small Android notice.
 
 ---
 
-## 14. Truth and product boundaries
+## 8. Privacy and data handling
 
-Sarah may plan, suggest, compare, remember, explain, and open research links. She must not claim that she:
+Sarah stores locally:
 
-- purchased a ticket;
-- booked a hotel;
-- contacted an airline;
-- verified a live price while offline;
-- saw a photo in Local mode;
-- diagnosed turbulence or a medical condition;
-- remembered something that was never stored;
-- knows another person's private thoughts.
+- onboarding profile;
+- chat history;
+- approved extracted memories;
+- past and planned trips;
+- wish-list destinations;
+- cleaned selected-photo copies;
+- mode, voice, and model settings;
+- an encrypted personal API key for private testing.
 
-Conversation, memory, factual trip state, external actions, and provider capabilities should remain separate.
+Automatic routing must never send data when `Local only` is selected. A connected request may include the system prompt, recent conversation, relevant local memories/trips/wishes, the current message, and a selected photo if one is attached.
+
+Before public release, add:
+
+- a full privacy policy;
+- per-record edit/delete controls;
+- account/data deletion;
+- export/import and encrypted backup;
+- retention limits;
+- protected backend credentials;
+- user-visible provider disclosure;
+- consent and parental controls appropriate to the intended audience;
+- security review and broad device testing.
 
 ---
 
-## 15. Reporting a bug
+## 9. Testing automatic switching
 
-A useful bug report includes:
+Test on a physical phone with Automatic mode and a valid connected-model key:
 
-- installed build number from Settings;
-- phone model and Android version;
-- Local or Smart mode;
-- exact message typed;
-- expected reply;
-- actual reply;
-- screenshot with private information removed;
-- whether the app was updated or clean-installed;
-- whether the problem repeats after reopening.
+1. Start online. Confirm the status says `Automatic • Smart online`.
+2. Ask a question and confirm the connected model answers.
+3. Enable airplane mode. Confirm the status changes to Local/offline.
+4. Ask for turbulence support or ordinary conversation. Confirm Sarah answers locally without a network error in the chat.
+5. Restore Wi-Fi or mobile data.
+6. Wait for Android to validate the connection. Confirm the status returns to Smart online.
+7. Ask another question and confirm the connected model is used.
+8. Select Local only and confirm no connected request occurs even with internet.
+9. Remove or invalidate the API key and confirm Automatic mode remains usable locally.
+10. Force a connected HTTP failure and confirm Sarah falls back locally for that message.
 
-Never post API keys, private trip records, full personal memory databases, or unredacted private photos in a public issue.
+The pure-Java `ConversationModePolicyTest.java` verifies the central route table during every GitHub build.
+
+---
+
+## 10. Known limitations
+
+- Claude and other non-OpenAI providers are documented but not implemented.
+- The private prototype still calls its connected provider directly from the phone.
+- Local conversation remains a bounded rule system.
+- Background deal monitoring and push notifications are not implemented.
+- Photo understanding requires a compatible connected model.
+- Android voice quality depends on installed speech engines and voices.
+- A complete public-release privacy, security, billing, and account system remains future work.
