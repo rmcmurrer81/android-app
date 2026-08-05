@@ -93,7 +93,7 @@ public final class MainActivity extends Activity {
         findViewById(R.id.notebookButton).setOnClickListener(v -> startActivity(new Intent(this, TravelNotebookActivity.class)));
         findViewById(R.id.micButton).setOnClickListener(v -> startSpeech());
         findViewById(R.id.photoButton).setOnClickListener(v -> pickPhoto());
-        updateSpeakerStatus("v0.4 ready");
+        updateSpeakerStatus("v0.5 ready");
     }
 
     @Override
@@ -214,6 +214,7 @@ public final class MainActivity extends Activity {
                 db.listWishes(20),
                 image != null,
                 web);
+        final boolean offerLiveTravelSearch = provider == 0 && TravelSearchHelper.shouldOffer(display);
 
         executor.submit(() -> {
             String reply;
@@ -221,7 +222,7 @@ public final class MainActivity extends Activity {
                 if (provider == 1) {
                     String key = SecureStore.loadApiKey(this);
                     if (key.isEmpty()) {
-                        throw new IllegalStateException("Open Sarah settings and enter your personal API key, or switch back to Demo mode.");
+                        throw new IllegalStateException("Open Sarah settings and enter your personal API key, or switch back to Offline mode.");
                     }
                     reply = OpenAIClient.respond(
                             key,
@@ -243,8 +244,9 @@ public final class MainActivity extends Activity {
                 db.addMessage("assistant", finalReply);
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
                 addBubble("Sarah", finalReply, false);
-                updateSpeakerStatus(provider == 1 ? "Cloud model" : "Demo mode");
+                updateSpeakerStatus(provider == 1 ? "Cloud model" : "Offline mode");
                 speak(finalReply);
+                if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);
             });
         });
     }
