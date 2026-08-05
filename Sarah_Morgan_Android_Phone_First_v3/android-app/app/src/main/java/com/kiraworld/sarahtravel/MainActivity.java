@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
 
     private SarahDatabase db;
     private SarahTts tts;
+    private SpeakerContext speakerContext;
     private LinearLayout chat;
     private ScrollView scroll;
     private EditText input;
@@ -54,64 +55,88 @@ public final class MainActivity extends Activity {
             finish();
             return;
         }
+
         setContentView(R.layout.activity_main);
         chat = findViewById(R.id.chatContainer);
         scroll = findViewById(R.id.chatScroll);
         input = findViewById(R.id.messageInput);
         status = findViewById(R.id.statusText);
-        tts = new SarahTts(this);
+        speakerContext = new SpeakerContext(db.getProfile());
+
+        tts = new SarahTts(this, new SarahTts.Listener() {
+            @Override
+            public void onReady(String voiceName) {
+                runOnUiThread(() -> updateSpeakerStatus("Voice ready"));
+            }
+
+            @Override
+            public void onUnavailable() {
+                runOnUiThread(() -> updateSpeakerStatus("Voice unavailable — text works"));
+            }
+        });
+
         loadHistory();
         if (db.recentMessages(1).isEmpty()) greet();
+
         ImageButton send = findViewById(R.id.sendButton);
         send.setOnClickListener(v -> sendCurrent());
         input.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEND) { sendCurrent(); return true; }
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                sendCurrent();
+                return true;
+            }
             return false;
         });
+
         findViewById(R.id.calmButton).setOnClickListener(v -> showCalmMenu());
         findViewById(R.id.settingsButton).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         findViewById(R.id.notebookButton).setOnClickListener(v -> startActivity(new Intent(this, TravelNotebookActivity.class)));
         findViewById(R.id.micButton).setOnClickListener(v -> startSpeech());
         findViewById(R.id.photoButton).setOnClickListener(v -> pickPhoto());
+        updateSpeakerStatus("v0.4 ready");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if (tts != null) tts.setRate(currentSpeechRate());
+        if (speakerContext != null) updateSpeakerStatus("Ready");
     }
-
 
     private void showCalmMenu() {
         String[] choices = {"Stay with me through turbulence", "Start personalized trivia", "Five-senses grounding game"};
         new AlertDialog.Builder(this)
                 .setTitle("Calm & Trivia")
                 .setItems(choices, (dialog, which) -> {
-                    if (which == 0) postLocalSarahReply(CalmSupport.turbulenceSupport(db.getProfile()));
+                    if (which == 0) postLocalSarahReply(CalmSupport.turbulenceSupport(currentProfile()), "Offline calm mode");
                     else if (which == 1) startTriviaGame();
-                    else postLocalSarahReply(CalmSupport.groundingSupport());
+                    else postLocalSarahReply(CalmSupport.groundingSupport(), "Offline grounding");
                 })
                 .setNegativeButton("Close", null)
                 .show();
     }
 
-    private void postLocalSarahReply(String reply) {
+    private void postLocalSarahReply(String reply, String mode) {
         db.addMessage("assistant", reply);
         addBubble("Sarah", reply, false);
-        status.setText("Offline calm mode");
+        updateSpeakerStatus(mode);
         speak(reply);
     }
 
     private void startTriviaGame() {
-        List<CalmSupport.Question> questions = CalmSupport.questions(db.getProfile(), db.listTrips(20), db.listWishes(20));
+        List<CalmSupport.Question> questions = CalmSupport.questions(currentProfile(), db.listTrips(20), db.listWishes(20));
         showTriviaQuestion(questions, 0, 0);
     }
 
     private void showTriviaQuestion(List<CalmSupport.Question> questions, int index, int score) {
         if (index >= questions.size()) {
-            postLocalSarahReply("Trivia finished. You got " + score + " out of " + questions.size() + ". The point was not the score—it was giving your mind somewhere else to stand for a few minutes.");
+            postLocalSarahReply(
+                    "Trivia finished. You got " + score + " out of " + questions.size()
+                            + ". The point was not the score—it was giving your mind somewhere else to stand for a few minutes.",
+                    "Trivia finished");
             return;
         }
+
         CalmSupport.Question q = questions.get(index);
         new AlertDialog.Builder(this)
                 .setTitle("Trivia " + (index + 1) + " of " + questions.size())
@@ -132,68 +157,120 @@ public final class MainActivity extends Activity {
     }
 
     private void greet() {
-        Map<String, String> p = db.getProfile();
-        String name = p.getOrDefault("name", "there");
-        String home = p.getOrDefault("hometown", "");
-        String greeting = "Hi, " + name + ". I'm Sarah. I know you're from " + home + ", and I can learn the rest of you slowly instead of making you fill out a giant form. We can talk about a trip, a place you dream about, or absolutely nothing travel-related.";
+        Map<String, String> profile = db.getProfile();
+        String name = profile.getOrDefault("name", "there");
+        String greeting = "I’m glad we met, " + name
+                + ". I’m ready to talk about a trip, a place you dream about, or absolutely nothing travel-related.";
         db.addMessage("assistant", greeting);
         addBubble("Sarah", greeting, false);
         speak(greeting);
     }
 
     private void loadHistory() {
-        for (Map<String, String> row : db.recentMessages(30)) addBubble("assistant".equals(row.get("role")) ? "Sarah" : "You", row.get("content"), !"assistant".equals(row.get("role")));
+        for (Map<String, String> row : db.recentMessages(30)) {
+            boolean assistant = "assistant".equals(row.get("role"));
+            addBubble(assistant ? "Sarah" : "You", row.get("content"), !assistant);
+        }
     }
 
     private void sendCurrent() {
         String text = input.getText().toString().trim();
         if (text.isEmpty() && pendingPhoto == null) return;
         input.setText("");
+
         String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
-        addBubble("You", display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
-        db.addMessage("user", display);
-        learnFrom(display);
+        String speakerBefore = speakerContext.activeName();
+        addBubble(speakerBefore, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
+
+        String storedUserText = speakerContext.isGuest() ? speakerBefore + ": " + display : display;
+        db.addMessage("user", storedUserText);
+
+        SpeakerContext.Result speakerResult = speakerContext.handle(display);
+        if (speakerResult.handled) {
+            db.addMessage("assistant", speakerResult.reply);
+            addBubble("Sarah", speakerResult.reply, false);
+            updateSpeakerStatus(speakerContext.ageKnown() ? "Speaker changed" : "Family-friendly until age is known");
+            speak(speakerResult.reply);
+            return;
+        }
+
+        if (!speakerContext.isGuest()) learnFrom(display);
+
         final byte[] image = pendingPhoto;
         final File imageFile = pendingPhotoFile;
         pendingPhoto = null;
         pendingPhotoFile = null;
-        status.setText("Sarah is thinking…");
+        updateSpeakerStatus("Sarah is thinking…");
+
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         int provider = prefs.getInt("provider", 0);
         boolean web = prefs.getBoolean("web_search", true) && needsLiveSearch(display);
-        Map<String, String> profile = db.getProfile();
+        Map<String, String> profile = currentProfile();
         List<Map<String, String>> history = db.recentMessages(12);
-        String prompt = SarahPromptBuilder.build(profile, db.listMemories(40), db.listTrips(20), db.listWishes(20), image != null, web);
+        String prompt = SarahPromptBuilder.build(
+                profile,
+                db.listMemories(40),
+                db.listTrips(20),
+                db.listWishes(20),
+                image != null,
+                web);
+
         executor.submit(() -> {
             String reply;
             try {
                 if (provider == 1) {
                     String key = SecureStore.loadApiKey(this);
-                    if (key.isEmpty()) throw new IllegalStateException("Open Sarah settings and enter your personal API key, or switch back to Demo mode.");
-                    reply = OpenAIClient.respond(key, prefs.getString("model", "gpt-5-mini"), prompt, history, display, web, image);
+                    if (key.isEmpty()) {
+                        throw new IllegalStateException("Open Sarah settings and enter your personal API key, or switch back to Demo mode.");
+                    }
+                    reply = OpenAIClient.respond(
+                            key,
+                            prefs.getString("model", "gpt-5-mini"),
+                            prompt,
+                            history,
+                            display,
+                            web,
+                            image);
                 } else {
                     reply = DemoSarah.reply(display, profile, image != null);
                 }
             } catch (Exception e) {
-                reply = "I couldn't reach the conversation model just now. " + e.getMessage();
+                reply = "I couldn’t reach the conversation model just now. " + e.getMessage();
             }
+
             String finalReply = reply;
             runOnUiThread(() -> {
                 db.addMessage("assistant", finalReply);
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
                 addBubble("Sarah", finalReply, false);
-                status.setText(provider == 1 ? "Cloud model" : "Demo mode");
+                updateSpeakerStatus(provider == 1 ? "Cloud model" : "Demo mode");
                 speak(finalReply);
             });
         });
     }
 
+    private Map<String, String> currentProfile() {
+        return speakerContext.profileFor(db.getProfile());
+    }
+
+    private void updateSpeakerStatus(String mode) {
+        if (status == null || speakerContext == null) return;
+        StringBuilder text = new StringBuilder(mode == null ? "Ready" : mode);
+        text.append(" • talking with ").append(speakerContext.activeName());
+        if (!speakerContext.ageKnown()) text.append(" • family-friendly");
+        status.setText(text.toString());
+    }
+
     private void learnFrom(String text) {
-        SharedPreferences p = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
-        if (!p.getBoolean("learn", true) || !"yes".equals(db.getProfile().get("memory_consent"))) return;
+        if (speakerContext.isGuest()) return;
+        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        if (!prefs.getBoolean("learn", true) || !"yes".equals(db.getProfile().get("memory_consent"))) return;
+
         List<MemoryExtractor.Candidate> candidates = MemoryExtractor.extract(text);
         List<String> saved = new ArrayList<>();
-        for (MemoryExtractor.Candidate c : candidates) if (db.addMemory(c.category, c.summary, text)) saved.add(c.summary);
+        for (MemoryExtractor.Candidate candidate : candidates) {
+            if (db.addMemory(candidate.category, candidate.summary, text)) saved.add(candidate.summary);
+        }
         if (!saved.isEmpty()) addMemoryNote("Sarah remembered: " + String.join("; ", saved));
     }
 
@@ -201,6 +278,7 @@ public final class MainActivity extends Activity {
         LinearLayout wrapper = new LinearLayout(this);
         wrapper.setGravity(user ? Gravity.END : Gravity.START);
         wrapper.setPadding(0, 6, 0, 6);
+
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextSize(16f);
@@ -223,17 +301,34 @@ public final class MainActivity extends Activity {
     }
 
     private boolean needsLiveSearch(String text) {
-        String s = text.toLowerCase(Locale.US);
-        return s.contains("current") || s.contains("today") || s.contains("this week") || s.contains("deal") || s.contains("price") || s.contains("fare") || s.contains("discount") || s.contains("open") || s.contains("hours") || s.contains("weather") || s.contains("event") || s.contains("things to do") || s.contains("places to visit") || s.contains("movie") || s.contains("book about");
+        String lower = text.toLowerCase(Locale.US);
+        return lower.contains("current")
+                || lower.contains("today")
+                || lower.contains("this week")
+                || lower.contains("deal")
+                || lower.contains("price")
+                || lower.contains("fare")
+                || lower.contains("discount")
+                || lower.contains("open")
+                || lower.contains("hours")
+                || lower.contains("weather")
+                || lower.contains("event")
+                || lower.contains("things to do")
+                || lower.contains("places to visit")
+                || lower.contains("movie")
+                || lower.contains("book about");
     }
 
     private void speak(String text) {
-        SharedPreferences p = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
-        if (!p.getBoolean("auto_speak", true)) return;
+        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        if (!prefs.getBoolean("auto_speak", true)) return;
         tts.setRate(currentSpeechRate());
-        if (p.getInt("voice_mode", 0) == 1) {
+        if (prefs.getInt("voice_mode", 0) == 1) {
             String key = SecureStore.loadApiKey(this);
-            if (!key.isEmpty()) { CloudVoiceClient.speak(this, key, text, () -> runOnUiThread(() -> tts.speak(text))); return; }
+            if (!key.isEmpty()) {
+                CloudVoiceClient.speak(this, key, text, () -> runOnUiThread(() -> tts.speak(text)));
+                return;
+            }
         }
         tts.speak(text);
     }
@@ -248,40 +343,62 @@ public final class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO_PERMISSION);
             return;
         }
-        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
-        i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Talk to Sarah");
-        try { startActivityForResult(i, REQ_SPEECH); }
-        catch (Exception e) { Toast.makeText(this, "No speech recognizer is available on this phone.", Toast.LENGTH_LONG).show(); }
+
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Talk to Sarah");
+        try {
+            startActivityForResult(intent, REQ_SPEECH);
+        } catch (Exception e) {
+            Toast.makeText(this, "No speech recognizer is available on this phone.", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void pickPhoto() {
-        Intent i;
-        if (Build.VERSION.SDK_INT >= 33) i = new Intent(MediaStore.ACTION_PICK_IMAGES);
-        else { i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("image/*"); i.addCategory(Intent.CATEGORY_OPENABLE); }
-        startActivityForResult(i, REQ_PHOTO);
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= 33) {
+            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+        } else {
+            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("image/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+        }
+        startActivityForResult(intent, REQ_PHOTO);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null) return;
+
         if (requestCode == REQ_SPEECH) {
             ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
             if (results != null && !results.isEmpty()) input.setText(results.get(0));
         } else if (requestCode == REQ_PHOTO) {
             Uri uri = data.getData();
             if (uri == null) return;
-            status.setText("Cleaning the selected photo…");
+            updateSpeakerStatus("Cleaning the selected photo…");
             executor.submit(() -> {
                 try {
-                    ImageSanitizer.Result result = ImageSanitizer.sanitize(getContentResolver(), uri, new File(getFilesDir(), "photos"));
+                    ImageSanitizer.Result result = ImageSanitizer.sanitize(
+                            getContentResolver(),
+                            uri,
+                            new File(getFilesDir(), "photos"));
                     pendingPhoto = result.jpeg;
                     pendingPhotoFile = result.file;
-                    runOnUiThread(() -> { status.setText("Photo ready — add a question or press send"); Toast.makeText(this, "A cleaned copy is ready. Location metadata was not copied into Sarah's version.", Toast.LENGTH_LONG).show(); });
+                    runOnUiThread(() -> {
+                        updateSpeakerStatus("Photo ready — add a question or press send");
+                        Toast.makeText(
+                                this,
+                                "A cleaned copy is ready. Location metadata was not copied into Sarah’s version.",
+                                Toast.LENGTH_LONG).show();
+                    });
                 } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(this, "The photo could not be prepared: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> Toast.makeText(
+                            this,
+                            "The photo could not be prepared: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show());
                 }
             });
         }
@@ -290,7 +407,11 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_AUDIO_PERMISSION && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startSpeech();
+        if (requestCode == REQ_AUDIO_PERMISSION
+                && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startSpeech();
+        }
     }
 
     @Override
