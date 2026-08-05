@@ -1,0 +1,2 @@
+Sarah Morgan Android 1.1-agentic-travel is ready for pull-request build validation.
+Final integration refresh: agentic planner, destination packs, JobScheduler deal watches, fare/weather backend contract, notification flow, notebook evidence, and corrected local reply path.

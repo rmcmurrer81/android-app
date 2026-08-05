@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_SPEECH = 1201;
     private static final int REQ_PHOTO = 1202;
     private static final int REQ_AUDIO_PERMISSION = 1203;
+    private static final int REQ_NOTIFICATIONS = 1204;
 
     private SarahDatabase db;
     private SarahTts tts;
@@ -54,6 +55,8 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         SettingsActivity.ensureAutomaticModeDefault(this);
         db = new SarahDatabase(this);
+        DealNotificationManager.createChannel(this);
+        if (!db.listActiveDealWatches(1).isEmpty()) DealWatchScheduler.ensureScheduled(this);
         if (!db.hasProfile()) {
             startActivity(new Intent(this, OnboardingActivity.class));
             finish();
@@ -79,10 +82,10 @@ public final class MainActivity extends Activity {
                             : "Connection lost. Sarah is continuing locally.";
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                 }
+                if (connected) refreshKnowledgeAsync();
             });
         });
         internetAvailable = connectivityMonitor.currentValidatedInternet();
-
         status.setOnClickListener(v -> showConversationModeMenu());
 
         tts = new SarahTts(this, new SarahTts.Listener() {
@@ -130,6 +133,7 @@ public final class MainActivity extends Activity {
         if (tts != null) tts.setRate(currentSpeechRate());
         if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         if (speakerContext != null) updateSpeakerStatus(null);
+        refreshKnowledgeAsync();
     }
 
     @Override
@@ -155,7 +159,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Choose how Sarah connects")
                 .setMessage("Current: " + current
-                        + "\n\nAutomatic mode does not interrupt the conversation. It uses Smart mode when a validated connection and model key are available, falls back locally when they are not, and returns to Smart mode when service comes back.")
+                        + "\n\nAutomatic mode uses Smart when a validated connection and model key are available, falls back locally when they are not, and returns to Smart when service comes back.")
                 .setItems(choices, (dialog, which) -> {
                     if (which == 3) {
                         startActivity(new Intent(this, SettingsActivity.class));
@@ -168,7 +172,7 @@ public final class MainActivity extends Activity {
                             && SecureStore.loadApiKey(this).isEmpty()) {
                         new AlertDialog.Builder(this)
                                 .setTitle("Smart mode still needs a model key")
-                                .setMessage("The automatic setting is active, but Sarah will continue locally until a connected-model key is added in Settings.")
+                                .setMessage("Automatic mode is active, but Sarah will continue locally until a connected-model key is added in Settings.")
                                 .setPositiveButton("Open settings", (d, w) -> startActivity(new Intent(this, SettingsActivity.class)))
                                 .setNegativeButton("Later", null)
                                 .show();
@@ -211,7 +215,6 @@ public final class MainActivity extends Activity {
                     "Trivia finished");
             return;
         }
-
         CalmSupport.Question q = questions.get(index);
         new AlertDialog.Builder(this)
                 .setTitle("Trivia " + (index + 1) + " of " + questions.size())
@@ -256,7 +259,6 @@ public final class MainActivity extends Activity {
         String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
         String speakerBefore = speakerContext.activeName();
         addBubble(speakerBefore, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
-
         String storedUserText = speakerContext.isGuest() ? speakerBefore + ": " + display : display;
         db.addMessage("user", storedUserText);
 
@@ -269,6 +271,16 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        Map<String, String> profile = currentProfile();
+        List<Map<String, String>> historyForActions = db.recentMessages(12);
+        List<Map<String, String>> memoriesForActions = db.listMemories(40);
+        AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(
+                display, profile, historyForActions, memoriesForActions);
+        AgenticActionExecutor.Result actionResult = AgenticActionExecutor.apply(
+                this, db, profile, proactive.actions);
+        if (actionResult.createdDealWatch) {
+            DealNotificationManager.requestPermissionIfNeeded(this, REQ_NOTIFICATIONS);
+        }
         if (!speakerContext.isGuest()) learnFrom(display);
 
         final byte[] image = pendingPhoto;
@@ -286,18 +298,14 @@ public final class MainActivity extends Activity {
                 ConversationModePolicy.route(mode, internetAvailable, keyAvailable));
         boolean web = useSmart && prefs.getBoolean("web_search", true) && needsLiveSearch(display);
 
-        Map<String, String> profile = currentProfile();
         List<Map<String, String>> history = db.recentMessages(12);
         List<Map<String, String>> memories = db.listMemories(40);
         List<Map<String, String>> trips = db.listTrips(20);
         List<Map<String, String>> wishes = db.listWishes(20);
+        List<Map<String, String>> knowledgePacks = db.listKnowledgePacks(40);
+        List<Map<String, String>> dealWatches = db.listDealWatches(50);
         String prompt = SarahPromptBuilder.build(
-                profile,
-                memories,
-                trips,
-                wishes,
-                image != null,
-                web);
+                profile, memories, trips, wishes, image != null, web);
         final boolean offerLiveTravelSearch = !useSmart && TravelSearchHelper.shouldOffer(display);
         final String providerId = prefs.getString("connected_provider", "openai");
         final String model = prefs.getString("model", "gpt-5-mini");
@@ -309,20 +317,17 @@ public final class MainActivity extends Activity {
             try {
                 if (useSmart) {
                     reply = ConnectedModelGateway.respond(
-                            providerId,
-                            key,
-                            model,
-                            prompt,
-                            history,
-                            display,
-                            web,
-                            image);
+                            providerId, key, model, prompt, history, display, web, image);
                     smartSucceeded = true;
                 } else {
-                    reply = DemoSarah.reply(display, profile, image != null, history, memories, trips, wishes);
+                    reply = DemoSarah.reply(
+                            display, profile, image != null, history, memories,
+                            trips, wishes, knowledgePacks, dealWatches);
                 }
             } catch (Exception e) {
-                reply = DemoSarah.reply(display, profile, image != null, history, memories, trips, wishes);
+                reply = DemoSarah.reply(
+                        display, profile, image != null, history, memories,
+                        trips, wishes, knowledgePacks, dealWatches);
                 smartFallback = useSmart;
             }
 
@@ -344,7 +349,33 @@ public final class MainActivity extends Activity {
                             Toast.LENGTH_LONG).show();
                 }
                 if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);
+                if (finalSmartSucceeded || actionResult.queuedKnowledge) refreshKnowledgeAsync();
             });
+        });
+    }
+
+    private void refreshKnowledgeAsync() {
+        if (!internetAvailable) return;
+        String key = SecureStore.loadApiKey(this);
+        if (key.isEmpty()) return;
+        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        String providerId = prefs.getString("connected_provider", "openai");
+        String model = prefs.getString("model", "gpt-5-mini");
+        executor.submit(() -> {
+            SarahDatabase backgroundDb = new SarahDatabase(getApplicationContext());
+            try {
+                int refreshed = DestinationKnowledgeCoordinator.refreshPending(
+                        backgroundDb, providerId, key, model, 2);
+                if (refreshed > 0) {
+                    runOnUiThread(() -> Toast.makeText(
+                            this,
+                            "Sarah refreshed " + refreshed + " destination knowledge pack"
+                                    + (refreshed == 1 ? "." : "s."),
+                            Toast.LENGTH_SHORT).show());
+                }
+            } finally {
+                backgroundDb.close();
+            }
         });
     }
 
@@ -375,7 +406,6 @@ public final class MainActivity extends Activity {
         if (speakerContext.isGuest()) return;
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         if (!prefs.getBoolean("learn", true) || !"yes".equals(db.getProfile().get("memory_consent"))) return;
-
         List<MemoryExtractor.Candidate> candidates = MemoryExtractor.extract(text);
         List<String> saved = new ArrayList<>();
         for (MemoryExtractor.Candidate candidate : candidates) {
@@ -388,7 +418,6 @@ public final class MainActivity extends Activity {
         LinearLayout wrapper = new LinearLayout(this);
         wrapper.setGravity(user ? Gravity.END : Gravity.START);
         wrapper.setPadding(0, 6, 0, 6);
-
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
         bubble.setTextSize(16f);
@@ -453,7 +482,6 @@ public final class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_AUDIO_PERMISSION);
             return;
         }
-
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
@@ -481,7 +509,6 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null) return;
-
         if (requestCode == REQ_SPEECH) {
             ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
             if (results != null && !results.isEmpty()) input.setText(results.get(0));
@@ -492,9 +519,7 @@ public final class MainActivity extends Activity {
             executor.submit(() -> {
                 try {
                     ImageSanitizer.Result result = ImageSanitizer.sanitize(
-                            getContentResolver(),
-                            uri,
-                            new File(getFilesDir(), "photos"));
+                            getContentResolver(), uri, new File(getFilesDir(), "photos"));
                     pendingPhoto = result.jpeg;
                     pendingPhotoFile = result.file;
                     runOnUiThread(() -> {

@@ -6,14 +6,16 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Local fallback conversation. Travel-specific reasoning is delegated to
- * TravelBrainCore; this class handles lightweight ordinary conversation.
+ * Local fallback conversation. The planner handles proactive travel actions,
+ * generated packs and TravelBrainCore handle travel knowledge, and this class
+ * handles lightweight ordinary conversation last.
  */
 public final class DemoSarah {
     private DemoSarah() { }
 
     public static String reply(String message, Map<String, String> profile, boolean photoIncluded) {
-        return reply(message, profile, photoIncluded, List.of(), List.of(), List.of(), List.of());
+        return reply(message, profile, photoIncluded,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public static String reply(
@@ -24,6 +26,20 @@ public final class DemoSarah {
             List<Map<String, String>> memories,
             List<Map<String, String>> trips,
             List<Map<String, String>> wishes) {
+        return reply(message, profile, photoIncluded,
+                history, memories, trips, wishes, List.of(), List.of());
+    }
+
+    public static String reply(
+            String message,
+            Map<String, String> profile,
+            boolean photoIncluded,
+            List<Map<String, String>> history,
+            List<Map<String, String>> memories,
+            List<Map<String, String>> trips,
+            List<Map<String, String>> wishes,
+            List<Map<String, String>> knowledgePacks,
+            List<Map<String, String>> dealWatches) {
 
         String safe = message == null ? "" : message.trim();
         String lower = safe.toLowerCase(Locale.US);
@@ -32,6 +48,12 @@ public final class DemoSarah {
         if (photoIncluded) {
             return "I saved a privacy-cleaned copy of the photo. I need an image-capable connected model to inspect the picture itself, but I can still keep its caption with the trip while offline.";
         }
+
+        AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
+        if (proactive.handled()) return proactive.reply;
+
+        String packAnswer = DestinationPackResponder.answer(safe, history, knowledgePacks);
+        if (packAnswer != null && !packAnswer.trim().isEmpty()) return packAnswer;
 
         String travelAnswer = TravelBrainCore.answer(safe, profile, history, memories, trips, wishes);
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
@@ -43,15 +65,12 @@ public final class DemoSarah {
         if (isGreeting(lower)) {
             return pick(safe,
                     "Hey, " + name + ". I’m here.",
-                    "Hi, " + name + ". What is on your mind?",
+                    "Hi, " + name + ".",
                     "Hey. Good to see you.");
         }
 
         if (isSimplePositive(lower)) {
-            return pick(safe,
-                    "I’m glad.",
-                    "Good. What made it a good day?",
-                    "That is good to hear.");
+            return pick(safe, "I’m glad.", "Good.", "That is good to hear.");
         }
 
         if (lower.contains("how are you") || lower.contains("how are things")) {
@@ -67,7 +86,7 @@ public final class DemoSarah {
         }
 
         if (containsAny(lower, "sad", "lonely", "upset", "worried", "nervous", "overwhelmed")) {
-            return "I’m listening. Tell me what part feels heaviest right now, and we can take it one piece at a time.";
+            return "I’m listening. We can slow this down and take it one piece at a time.";
         }
 
         if (containsAny(lower, "trivia", "distract me", "play a game", "grounding")) {
@@ -78,23 +97,26 @@ public final class DemoSarah {
                 || lower.contains("i'm a fan of") || lower.contains("i am a fan of")) {
             String subject = interestSubject(safe);
             if (!subject.isEmpty()) {
-                return "I’ll remember that you enjoy " + subject + " when memory is enabled. What do you like most about it?";
+                return "I’ll keep " + subject + " in mind when it is useful. I won’t force it into every reply.";
             }
         }
 
         if (safe.endsWith("?")) {
-            return "I may not have enough offline knowledge to answer that accurately. I can still help narrow the question, or Automatic mode can use the connected model once Smart setup is complete.";
+            return "I may not have enough offline knowledge to answer that accurately. Automatic mode can use the connected model once Smart setup is complete, and I won’t invent an answer in the meantime.";
+        }
+
+        if (isShortClosure(lower)) {
+            return "Understood. I won’t keep asking questions.";
         }
 
         String idea = keyIdea(safe);
         if (!idea.isEmpty()) {
             return pick(safe,
-                    "I’m following you about " + idea + ". What matters most about it?",
-                    "That gives me a clearer picture of " + idea + ". Keep going.",
-                    "I hear you. What would you like to do about " + idea + "?");
+                    "I understand the main point about " + idea + ".",
+                    "That gives me a clearer picture of " + idea + ".",
+                    "I hear you about " + idea + ".");
         }
-
-        return "I’m listening, " + name + ". Tell me a little more.";
+        return "I’m here, " + name + ".";
     }
 
     private static String memorySummary(Map<String, String> profile, List<Map<String, String>> memories) {
@@ -145,6 +167,10 @@ public final class DemoSarah {
 
     private static boolean isSimplePositive(String lower) {
         return lower.matches("^(good|great|fine|okay|ok|pretty good|not bad)[.! ]*$");
+    }
+
+    private static boolean isShortClosure(String lower) {
+        return lower.matches("^(that is it|that's it|thats it|nothing|no|nope|whatever|i don't care|i dont care)[.! ]*$");
     }
 
     private static String firstName(String value) {
