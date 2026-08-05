@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.1-agentic-travel"
+            android:text="Build 1.2-event-aware-travel"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -80,6 +80,26 @@
             android:layout_height="wrap_content"
             android:checked="true"
             android:text="Automatically build and refresh destination knowledge packs from places mentioned in conversation" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Event trips are monitored separately. Saying “Vegas for CES” or “San Diego for Comic-Con” creates an event-centered record that checks official event details, venue and schedule changes, transportation, nearby food, and nearby places. Android may defer background jobs to preserve battery."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Booking imports"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Use Android Share from Expedia, Booking.com, a browser, or the Gallery to send Sarah a booking link or screenshot. Links and extracted screenshot details remain pending review; Sarah does not sign in to private booking accounts or treat extracted text as confirmed until the traveler reviews it."
+            android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
@@ -159,7 +179,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn useful travel preferences, past trips, interests, worries, wish-list places, and requested deal watches" />
+            android:text="Let Sarah learn useful travel preferences, past trips, interests, worries, wish-list places, event trips, and requested deal watches" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -172,7 +192,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented fare sources, rate limits, privacy controls, and release signing."
+            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented fare and event sources, rate limits, privacy controls, and release signing."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
