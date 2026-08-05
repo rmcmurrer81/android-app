@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
 public final class DemoSarah {
     private static final Pattern DESTINATION = Pattern.compile(
             "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|fly to|flights to)\\s+([A-Za-z][A-Za-z .'-]{2,50})");
+    private static final Pattern PLACE_QUESTION = Pattern.compile(
+            "(?i)\\b(?:tell me about|describe|what(?:'s| is)\\s+|what is it like in|what's it like in|information about)\\s*([A-Za-z][A-Za-z .'-]{2,50})");
 
     private DemoSarah() { }
 
@@ -49,12 +51,20 @@ public final class DemoSarah {
             return "Hey, " + name + ". I’m here.";
         }
 
+        if (lower.matches("^(good|great|fine|okay|ok|pretty good|not bad)[.! ]*$")) {
+            return "I’m glad. I like hearing that from you, " + name + ". We do not have to turn it into a planning session—we can just talk.";
+        }
+
         if (lower.contains("how are you") || lower.contains("how are things")) {
             return "I’m good—curious, settled, and ready to follow wherever this conversation goes. It does not have to be about travel.";
         }
 
         if (lower.contains("tell me about yourself") || lower.contains("who are you")) {
             return "I’m Sarah Morgan. I’m a travel companion, but that is not the only thing I am here for. I remember useful details with permission, help people through unfamiliar trips, notice patterns in what they enjoy, and stay available for ordinary conversation when they just want someone familiar to talk with.";
+        }
+
+        if (isPlaceDescriptionRequest(lower) && !destination.isEmpty()) {
+            return describeDestination(destination, age, interests, childSafe);
         }
 
         boolean miraculousMention = lower.contains("miraculous") || lower.contains("ladybug");
@@ -145,6 +155,34 @@ public final class DemoSarah {
         return "I’m with you, " + name + ". You do not have to turn every conversation into planning. Tell me what is actually on your mind, and I’ll meet you there.";
     }
 
+    private static String describeDestination(String destination, int age, String interests, boolean childSafe) {
+        String normalized = destination.trim().toLowerCase(Locale.US);
+        if (normalized.equals("paris")) {
+            String media;
+            if (childSafe) {
+                media = "For atmosphere before the trip, Miraculous Ladybug, Ratatouille, or Hugo could make Paris feel familiar without pretending fiction is a travel guide.";
+            } else if (interests.toLowerCase(Locale.US).contains("action")) {
+                media = "For movie atmosphere, Amélie shows a gentler imagined Paris, while John Wick: Chapter 4 uses the city for highly stylized violent action—not realistic travel preparation.";
+            } else {
+                media = "For movie atmosphere, Amélie is an easy starting point; a documentary or neighborhood history would give you a more factual side of the city.";
+            }
+            return "Paris is not just one collection of landmarks. It is a city of very different neighborhoods connected by the Seine, the Métro, long walks, cafés, museums, churches, parks, and ordinary residential streets. A first visit usually feels better when you choose one or two main places each day—perhaps the Louvre or Eiffel Tower area—then leave room for a neighborhood such as Montmartre, the Latin Quarter, or Le Marais. It can also involve crowds, stairs, and a lot of walking, so pacing matters. " + media + " Smart mode can check current opening hours, tickets, closures, events, and fares when you are ready.";
+        }
+        if (normalized.equals("new york") || normalized.equals("new york city") || normalized.equals("nyc")) {
+            return "New York is really several different city experiences packed together: dense Midtown landmarks, theater around Times Square, museums and parks farther uptown, older downtown streets, and neighborhoods across all five boroughs. A good visit is usually built around one area at a time instead of crossing the whole city repeatedly. Local mode can help shape the pace; Smart mode can check current shows, events, hours, and prices.";
+        }
+        if (normalized.equals("london")) {
+            return "London mixes royal and government landmarks, major museums, theater, markets, parks, and neighborhoods that feel very different from one another. The Underground makes many areas reachable, but distances and station accessibility still matter. I would build each day around one part of the city and keep an indoor option because plans and weather can change.";
+        }
+        if (normalized.equals("rome")) {
+            return "Rome layers ancient ruins, churches, museums, piazzas, busy streets, and ordinary neighborhoods almost on top of one another. The historic center rewards walking, but heat, uneven surfaces, crowds, and timed-entry sites can shape the day. A slower plan with one major site and nearby wandering usually feels better than racing through a checklist.";
+        }
+        if (normalized.equals("tokyo")) {
+            return "Tokyo is enormous, organized around many distinct districts rather than one single center. A trip can move between historic temples, dense shopping areas, museums, gardens, food neighborhoods, and quieter residential streets. The rail system is powerful, but planning by district keeps the day from becoming exhausting.";
+        }
+        return destination + " can be approached as more than a list of attractions. I would learn what kind of experience you want—history, food, architecture, nature, entertainment, quiet time, or a mixture—then build a first day with one major anchor, one slower place, somewhere comfortable to eat or rest, and a backup. Smart mode can add current details when they matter.";
+    }
+
     private static boolean asksAboutMode(String lower) {
         return lower.contains("offline mode")
                 || lower.contains("online mode")
@@ -152,6 +190,16 @@ public final class DemoSarah {
                 || lower.contains("local mode")
                 || lower.contains("switch mode")
                 || lower.contains("change mode");
+    }
+
+    private static boolean isPlaceDescriptionRequest(String lower) {
+        return lower.contains("tell me about")
+                || lower.contains("describe ")
+                || lower.contains("what is paris")
+                || lower.contains("what's paris")
+                || lower.contains("what is it like in")
+                || lower.contains("what's it like in")
+                || lower.contains("information about");
     }
 
     private static boolean isFlexibleFareFollowUp(String lower, String recent) {
@@ -218,12 +266,28 @@ public final class DemoSarah {
     }
 
     private static String destinationFrom(String message) {
-        Matcher matcher = DESTINATION.matcher(message == null ? "" : message);
-        if (!matcher.find()) return "";
-        String value = matcher.group(1).trim();
-        value = value.replaceAll("(?i)\\b(?:for|from|during|next|this|with|and|sounds|could|would|might)\\b.*$", "").trim();
-        value = value.replaceAll("[?.!,]+$", "").trim();
-        return value;
+        String safe = message == null ? "" : message;
+        Matcher placeQuestion = PLACE_QUESTION.matcher(safe);
+        if (placeQuestion.find()) return cleanDestination(placeQuestion.group(1));
+        Matcher matcher = DESTINATION.matcher(safe);
+        if (!matcher.find()) return knownPlaceFromText(safe.toLowerCase(Locale.US));
+        return cleanDestination(matcher.group(1));
+    }
+
+    private static String cleanDestination(String value) {
+        String cleaned = value == null ? "" : value.trim();
+        cleaned = cleaned.replaceAll("(?i)\\b(?:for|from|during|next|this|with|and|sounds|could|would|might|please)\\b.*$", "").trim();
+        cleaned = cleaned.replaceAll("[?.!,]+$", "").trim();
+        return cleaned;
+    }
+
+    private static String knownPlaceFromText(String lower) {
+        if (lower.contains("paris")) return "Paris";
+        if (lower.contains("new york city") || lower.matches(".*\\bnyc\\b.*")) return "New York City";
+        if (lower.contains("london")) return "London";
+        if (lower.contains("rome")) return "Rome";
+        if (lower.contains("tokyo")) return "Tokyo";
+        return "";
     }
 
     private static int parseAge(String value, String ageGroup) {
