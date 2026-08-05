@@ -2,82 +2,235 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/sarah_warm">
+    android:background="@color/sarah_warm"
+    android:clipToPadding="false"
+    android:fillViewport="true">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingLeft="20dp"
+        android:paddingTop="26dp"
+        android:paddingRight="20dp"
+        android:paddingBottom="40dp">
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Meet Sarah"
             android:textColor="@color/sarah_navy"
-            android:textSize="30sp"
+            android:textSize="34sp"
             android:textStyle="bold" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="I only need a few basics. I can learn the rest by talking with you, and you can review or delete what I remember."
+            android:lineSpacingExtra="3dp"
+            android:text="A few basics help me start. I’ll learn the rest naturally as we talk, and you can review or delete what I remember."
             android:textColor="@color/sarah_text"
-            android:textSize="17sp" />
-        <EditText
-            android:id="@+id/nameInput"
+            android:textSize="18sp" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:hint="What should Sarah call you?"
-            android:inputType="textPersonName" />
-        <EditText
-            android:id="@+id/homeInput"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/section_header"
+            android:padding="12dp"
+            android:text="About you"
+            android:textColor="@color/sarah_navy"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Where are you from? City, state, or country"
-            android:inputType="textCapWords" />
-        <EditText
-            android:id="@+id/ageInput"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/onboarding_card"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="What should Sarah call you?"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/nameInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/input_field"
+                android:hint="Your name"
+                android:inputType="textPersonName"
+                android:minHeight="52dp"
+                android:padding="14dp"
+                android:textColor="@color/sarah_text"
+                android:textColorHint="#746F68"
+                android:textSize="17sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Where are you from?"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/homeInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/input_field"
+                android:hint="City, state, or country"
+                android:inputType="textCapWords"
+                android:minHeight="52dp"
+                android:padding="14dp"
+                android:textColor="@color/sarah_text"
+                android:textColorHint="#746F68"
+                android:textSize="17sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="How old are you?"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="This helps Sarah match suggestions, trivia, books, and movies to your age."
+                android:textColor="#655F58"
+                android:textSize="13sp" />
+
+            <EditText
+                android:id="@+id/ageInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/input_field"
+                android:hint="Age"
+                android:inputType="number"
+                android:maxLength="3"
+                android:minHeight="52dp"
+                android:padding="14dp"
+                android:textColor="@color/sarah_text"
+                android:textColorHint="#746F68"
+                android:textSize="17sp" />
+
+            <CheckBox
+                android:id="@+id/firstFlightCheck"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:buttonTint="@color/sarah_blue"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:text="Flying is new to me, or I have never flown before"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="How old are you? This helps Sarah match suggestions and trivia."
-            android:inputType="number"
-            android:maxLength="3" />
-        <CheckBox
-            android:id="@+id/firstFlightCheck"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/section_header"
+            android:padding="12dp"
+            android:text="Optional details"
+            android:textColor="@color/sarah_navy"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="I have never flown before or flying is new to me" />
-        <EditText
-            android:id="@+id/interestsInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Optional: things you enjoy when traveling"
-            android:inputType="textCapSentences|textMultiLine"
-            android:minLines="2" />
-        <EditText
-            android:id="@+id/worriesInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="Optional: travel worries, sensory needs, or accessibility needs"
-            android:inputType="textCapSentences|textMultiLine"
-            android:minLines="2" />
+            android:layout_marginTop="10dp"
+            android:background="@drawable/onboarding_card"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Things you enjoy"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/interestsInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/input_field"
+                android:gravity="top|start"
+                android:hint="Museums, food, history, movies, quiet places…"
+                android:inputType="textCapSentences|textMultiLine"
+                android:minHeight="78dp"
+                android:minLines="2"
+                android:padding="14dp"
+                android:textColor="@color/sarah_text"
+                android:textColorHint="#746F68"
+                android:textSize="16sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Worries or needs"
+                android:textColor="@color/sarah_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/worriesInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/input_field"
+                android:gravity="top|start"
+                android:hint="Travel worries, sensory needs, or accessibility needs"
+                android:inputType="textCapSentences|textMultiLine"
+                android:minHeight="78dp"
+                android:minLines="2"
+                android:padding="14dp"
+                android:textColor="@color/sarah_text"
+                android:textColorHint="#746F68"
+                android:textSize="16sp" />
+        </LinearLayout>
+
         <CheckBox
             android:id="@+id/memoryConsentCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="20dp"
+            android:buttonTint="@color/sarah_blue"
             android:checked="true"
-            android:text="Let Sarah remember useful preferences, past trips, and places I want to visit. I can delete them later." />
+            android:lineSpacingExtra="2dp"
+            android:text="Let Sarah remember useful preferences, past trips, and places I want to visit. I can review or delete them later."
+            android:textColor="@color/sarah_text"
+            android:textSize="15sp" />
+
         <Button
             android:id="@+id/startButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Start talking with Sarah" />
+            android:layout_marginTop="22dp"
+            android:background="@drawable/primary_button"
+            android:minHeight="58dp"
+            android:text="Start talking with Sarah"
+            android:textAllCaps="false"
+            android:textColor="@color/white"
+            android:textSize="17sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </ScrollView>
