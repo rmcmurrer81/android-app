@@ -1,45 +1,51 @@
 package com.kiraworld.sarahtravel;
 
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
+import android.content.ComponentName;
 import android.content.Context;
 
-import androidx.work.Constraints;
-import androidx.work.ExistingPeriodicWorkPolicy;
-import androidx.work.NetworkType;
-import androidx.work.OneTimeWorkRequest;
-import androidx.work.PeriodicWorkRequest;
-import androidx.work.WorkManager;
-
-import java.util.concurrent.TimeUnit;
-
 public final class DealWatchScheduler {
-    private static final String UNIQUE_PERIODIC_WORK = "sarah_travel_deal_watch";
+    private static final int JOB_PERIODIC = 4601;
+    private static final int JOB_SOON = 4602;
+    private static final long TWELVE_HOURS_MS = 12L * 60L * 60L * 1000L;
 
     private DealWatchScheduler() { }
 
     public static void ensureScheduled(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+        Context app = context.getApplicationContext();
+        JobScheduler scheduler = (JobScheduler) app.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (scheduler == null) return;
+        JobInfo job = new JobInfo.Builder(
+                JOB_PERIODIC,
+                new ComponentName(app, DealWatchWorker.class))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPersisted(true)
+                .setPeriodic(TWELVE_HOURS_MS)
+                .setBackoffCriteria(30L * 60L * 1000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .build();
-        PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
-                DealWatchWorker.class,
-                24,
-                TimeUnit.HOURS)
-                .setConstraints(constraints)
-                .build();
-        WorkManager.getInstance(context.getApplicationContext())
-                .enqueueUniquePeriodicWork(
-                        UNIQUE_PERIODIC_WORK,
-                        ExistingPeriodicWorkPolicy.UPDATE,
-                        request);
+        scheduler.schedule(job);
     }
 
     public static void runSoon(Context context) {
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+        Context app = context.getApplicationContext();
+        JobScheduler scheduler = (JobScheduler) app.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (scheduler == null) return;
+        JobInfo job = new JobInfo.Builder(
+                JOB_SOON,
+                new ComponentName(app, DealWatchWorker.class))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setMinimumLatency(1000L)
+                .setOverrideDeadline(60L * 1000L)
+                .setBackoffCriteria(5L * 60L * 1000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .build();
-        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DealWatchWorker.class)
-                .setConstraints(constraints)
-                .build();
-        WorkManager.getInstance(context.getApplicationContext()).enqueue(request);
+        scheduler.schedule(job);
+    }
+
+    public static void cancel(Context context) {
+        JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (scheduler == null) return;
+        scheduler.cancel(JOB_PERIODIC);
+        scheduler.cancel(JOB_SOON);
     }
 }
