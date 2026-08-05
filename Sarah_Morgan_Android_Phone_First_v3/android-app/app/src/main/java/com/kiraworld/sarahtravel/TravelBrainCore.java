@@ -46,10 +46,8 @@ public final class TravelBrainCore {
         if (currentDestinations.size() >= 2 && isDestinationChoice(lower)) {
             String first = currentDestinations.get(0);
             String second = currentDestinations.get(1);
-            return "Both are strong choices, but they are different trips. "
-                    + first + " works well for a neighborhood-based visit with art, architecture, food, and layered French history. "
-                    + second + " works well for monarchy, museums, theater, markets, and a much larger spread of historic districts. "
-                    + "Would you like a comparison by history, cost strategy, flight convenience, pace, or accessibility?";
+            return TravelKnowledgeBase.compare(first, second, "overview", childSafe)
+                    + "\n\nWould you like the next comparison to focus on history, transport, cost strategy, pace, or accessibility?";
         }
 
         String topic = detectTopic(lower, prior);
