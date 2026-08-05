@@ -63,15 +63,17 @@ public final class MainActivity extends Activity {
         status = findViewById(R.id.statusText);
         speakerContext = new SpeakerContext(db.getProfile());
 
+        status.setOnClickListener(v -> showConversationModeMenu());
+
         tts = new SarahTts(this, new SarahTts.Listener() {
             @Override
             public void onReady(String voiceName) {
-                runOnUiThread(() -> updateSpeakerStatus("Voice ready"));
+                runOnUiThread(() -> updateSpeakerStatus(null));
             }
 
             @Override
             public void onUnavailable() {
-                runOnUiThread(() -> updateSpeakerStatus("Voice unavailable — text works"));
+                runOnUiThread(() -> updateSpeakerStatus("Text ready • voice unavailable"));
             }
         });
 
@@ -93,14 +95,60 @@ public final class MainActivity extends Activity {
         findViewById(R.id.notebookButton).setOnClickListener(v -> startActivity(new Intent(this, TravelNotebookActivity.class)));
         findViewById(R.id.micButton).setOnClickListener(v -> startSpeech());
         findViewById(R.id.photoButton).setOnClickListener(v -> pickPhoto());
-        updateSpeakerStatus("v0.5 ready");
+        updateSpeakerStatus(null);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if (tts != null) tts.setRate(currentSpeechRate());
-        if (speakerContext != null) updateSpeakerStatus("Ready");
+        if (speakerContext != null) updateSpeakerStatus(null);
+    }
+
+    private void showConversationModeMenu() {
+        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        int provider = prefs.getInt("provider", 0);
+        String[] choices = {
+                "Smart mode — connected conversation, photo understanding, and optional live web research",
+                "Local mode — private, fast, and available without internet",
+                "Open detailed settings"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Choose how Sarah thinks")
+                .setMessage(provider == 1
+                        ? "Smart mode is active. Tap Local mode whenever you need Sarah without a connection."
+                        : "Local mode is active. Smart mode needs a personal API key in Settings.")
+                .setItems(choices, (dialog, which) -> {
+                    if (which == 0) enableSmartMode();
+                    else if (which == 1) {
+                        prefs.edit().putInt("provider", 0).apply();
+                        updateSpeakerStatus(null);
+                        Toast.makeText(this, "Sarah is now using Local mode.", Toast.LENGTH_SHORT).show();
+                    } else {
+                        startActivity(new Intent(this, SettingsActivity.class));
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void enableSmartMode() {
+        String key = SecureStore.loadApiKey(this);
+        if (key.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Smart mode needs a connection key")
+                    .setMessage("Open Settings, enter a personal API key, save it, and then choose Smart mode. Local mode will continue working without one.")
+                    .setPositiveButton("Open settings", (dialog, which) -> startActivity(new Intent(this, SettingsActivity.class)))
+                    .setNegativeButton("Not now", null)
+                    .show();
+            return;
+        }
+        getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE)
+                .edit()
+                .putInt("provider", 1)
+                .apply();
+        updateSpeakerStatus(null);
+        Toast.makeText(this, "Sarah is now using Smart mode.", Toast.LENGTH_SHORT).show();
     }
 
     private void showCalmMenu() {
@@ -108,9 +156,9 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Calm & Trivia")
                 .setItems(choices, (dialog, which) -> {
-                    if (which == 0) postLocalSarahReply(CalmSupport.turbulenceSupport(currentProfile()), "Offline calm mode");
+                    if (which == 0) postLocalSarahReply(CalmSupport.turbulenceSupport(currentProfile()), "Calm support");
                     else if (which == 1) startTriviaGame();
-                    else postLocalSarahReply(CalmSupport.groundingSupport(), "Offline grounding");
+                    else postLocalSarahReply(CalmSupport.groundingSupport(), "Grounding game");
                 })
                 .setNegativeButton("Close", null)
                 .show();
@@ -207,22 +255,26 @@ public final class MainActivity extends Activity {
         boolean web = prefs.getBoolean("web_search", true) && needsLiveSearch(display);
         Map<String, String> profile = currentProfile();
         List<Map<String, String>> history = db.recentMessages(12);
+        List<Map<String, String>> memories = db.listMemories(40);
+        List<Map<String, String>> trips = db.listTrips(20);
+        List<Map<String, String>> wishes = db.listWishes(20);
         String prompt = SarahPromptBuilder.build(
                 profile,
-                db.listMemories(40),
-                db.listTrips(20),
-                db.listWishes(20),
+                memories,
+                trips,
+                wishes,
                 image != null,
                 web);
         final boolean offerLiveTravelSearch = provider == 0 && TravelSearchHelper.shouldOffer(display);
 
         executor.submit(() -> {
             String reply;
+            boolean smartFallback = false;
             try {
                 if (provider == 1) {
                     String key = SecureStore.loadApiKey(this);
                     if (key.isEmpty()) {
-                        throw new IllegalStateException("Open Sarah settings and enter your personal API key, or switch back to Offline mode.");
+                        throw new IllegalStateException("No Smart mode key is saved.");
                     }
                     reply = OpenAIClient.respond(
                             key,
@@ -233,19 +285,24 @@ public final class MainActivity extends Activity {
                             web,
                             image);
                 } else {
-                    reply = DemoSarah.reply(display, profile, image != null);
+                    reply = DemoSarah.reply(display, profile, image != null, history, memories, trips, wishes);
                 }
             } catch (Exception e) {
-                reply = "I couldn’t reach the conversation model just now. " + e.getMessage();
+                reply = DemoSarah.reply(display, profile, image != null, history, memories, trips, wishes);
+                smartFallback = provider == 1;
             }
 
             String finalReply = reply;
+            boolean finalSmartFallback = smartFallback;
             runOnUiThread(() -> {
                 db.addMessage("assistant", finalReply);
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
                 addBubble("Sarah", finalReply, false);
-                updateSpeakerStatus(provider == 1 ? "Cloud model" : "Offline mode");
+                updateSpeakerStatus(null);
                 speak(finalReply);
+                if (finalSmartFallback) {
+                    Toast.makeText(this, "Smart mode could not connect, so Sarah answered locally.", Toast.LENGTH_LONG).show();
+                }
                 if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);
             });
         });
@@ -255,10 +312,17 @@ public final class MainActivity extends Activity {
         return speakerContext.profileFor(db.getProfile());
     }
 
-    private void updateSpeakerStatus(String mode) {
+    private void updateSpeakerStatus(String event) {
         if (status == null || speakerContext == null) return;
-        StringBuilder text = new StringBuilder(mode == null ? "Ready" : mode);
-        text.append(" • talking with ").append(speakerContext.activeName());
+        String label;
+        if (event == null || event.trim().isEmpty() || "Ready".equals(event)) {
+            int provider = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE).getInt("provider", 0);
+            label = provider == 1 ? "Smart mode • tap to switch" : "Local mode • tap to switch";
+        } else {
+            label = event;
+        }
+        StringBuilder text = new StringBuilder(label);
+        text.append(" • ").append(speakerContext.activeName());
         if (!speakerContext.ageKnown()) text.append(" • family-friendly");
         status.setText(text.toString());
     }
