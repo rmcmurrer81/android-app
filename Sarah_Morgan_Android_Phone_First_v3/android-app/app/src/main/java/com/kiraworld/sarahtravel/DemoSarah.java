@@ -7,14 +7,15 @@ import java.util.Map;
 
 /**
  * Local fallback conversation. AgenticTravelPlanner handles proactive travel
- * actions first, TravelBrainCore handles structured travel knowledge second,
+ * actions first, generated packs and TravelBrainCore handle travel knowledge,
  * and this class handles lightweight ordinary conversation last.
  */
 public final class DemoSarah {
     private DemoSarah() { }
 
     public static String reply(String message, Map<String, String> profile, boolean photoIncluded) {
-        return reply(message, profile, photoIncluded, List.of(), List.of(), List.of(), List.of());
+        return reply(message, profile, photoIncluded,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public static String reply(
@@ -25,6 +26,20 @@ public final class DemoSarah {
             List<Map<String, String>> memories,
             List<Map<String, String>> trips,
             List<Map<String, String>> wishes) {
+        return reply(message, profile, photoIncluded,
+                history, memories, trips, wishes, List.of(), List.of());
+    }
+
+    public static String reply(
+            String message,
+            Map<String, String> profile,
+            boolean photoIncluded,
+            List<Map<String, String>> history,
+            List<Map<String, String>> memories,
+            List<Map<String, String>> trips,
+            List<Map<String, String>> wishes,
+            List<Map<String, String>> knowledgePacks,
+            List<Map<String, String>> dealWatches) {
 
         String safe = message == null ? "" : message.trim();
         String lower = safe.toLowerCase(Locale.US);
@@ -37,6 +52,9 @@ public final class DemoSarah {
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
         if (proactive.handled()) return proactive.reply;
 
+        String packAnswer = DestinationPackResponder.answer(safe, history, knowledgePacks);
+        if (packAnswer != null && !packAnswer.trim().isEmpty()) return packAnswer;
+
         String travelAnswer = TravelBrainCore.answer(safe, profile, history, memories, trips, wishes);
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
 
@@ -47,15 +65,12 @@ public final class DemoSarah {
         if (isGreeting(lower)) {
             return pick(safe,
                     "Hey, " + name + ". I’m here.",
-                    "Hi, " + name + ". What is on your mind?",
+                    "Hi, " + name + ".",
                     "Hey. Good to see you.");
         }
 
         if (isSimplePositive(lower)) {
-            return pick(safe,
-                    "I’m glad.",
-                    "Good. I’m here if you want company.",
-                    "That is good to hear.");
+            return pick(safe, "I’m glad.", "Good.", "That is good to hear.");
         }
 
         if (lower.contains("how are you") || lower.contains("how are things")) {
@@ -87,7 +102,7 @@ public final class DemoSarah {
         }
 
         if (safe.endsWith("?")) {
-            return "I may not have enough offline knowledge to answer that accurately. Automatic mode can use the connected model once Smart setup is complete.";
+            return "I may not have enough offline knowledge to answer that accurately. Automatic mode can use the connected model once Smart setup is complete, and I won’t invent an answer in the meantime.";
         }
 
         if (isShortClosure(lower)) {
