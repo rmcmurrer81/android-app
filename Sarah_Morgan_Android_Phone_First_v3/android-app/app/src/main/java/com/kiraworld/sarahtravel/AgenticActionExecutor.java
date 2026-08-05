@@ -8,7 +8,7 @@ import java.util.Map;
 
 public final class AgenticActionExecutor {
     public static final class Result {
-        /** True when a fare or event watch needs Android notification permission. */
+        /** True when a fare, mobility, or event watch needs notification permission. */
         public final boolean createdDealWatch;
         public final boolean queuedKnowledge;
         public final boolean changedEventMonitor;
@@ -39,6 +39,7 @@ public final class AgenticActionExecutor {
         boolean importedBooking = false;
         String origin = profile.getOrDefault("hometown", "Home area").trim();
         EventTripStore eventStore = new EventTripStore(context.getApplicationContext());
+        MobilityWatchStore mobilityStore = new MobilityWatchStore(context.getApplicationContext());
 
         try {
             for (AgenticTravelPlanner.Action action : actions) {
@@ -71,10 +72,34 @@ public final class AgenticActionExecutor {
                             bookingType,
                             action.destination,
                             action.destination) > 0;
+                } else if (AgenticTravelPlanner.SAVE_JOURNEY_PLAN.equals(action.type)) {
+                    JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
+                    long id = mobilityStore.saveJourneyPlan(
+                            detail.origin,
+                            action.destination,
+                            detail.eventName,
+                            detail.modes,
+                            detail.purpose);
+                    if (id > 0) {
+                        db.addMemory(
+                                "journey_plan",
+                                "Journey from " + detail.origin + " to " + action.destination
+                                        + " using " + detail.modes.replace(',', '/'),
+                                action.detail);
+                    }
+                } else if (AgenticTravelPlanner.CREATE_MOBILITY_WATCH.equals(action.type)) {
+                    JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
+                    createdWatch |= mobilityStore.createWatch(
+                            detail.origin,
+                            action.destination,
+                            detail.eventName,
+                            detail.modes,
+                            detail.purpose);
                 }
             }
         } finally {
             eventStore.close();
+            mobilityStore.close();
         }
 
         SharedPreferences preferences = context.getSharedPreferences(
@@ -95,5 +120,30 @@ public final class AgenticActionExecutor {
                 queuedKnowledge,
                 changedEventMonitor,
                 importedBooking);
+    }
+
+    private static final class JourneyDetail {
+        final String origin;
+        final String eventName;
+        final String modes;
+        final String purpose;
+
+        JourneyDetail(String origin, String eventName, String modes, String purpose) {
+            this.origin = origin;
+            this.eventName = eventName;
+            this.modes = modes;
+            this.purpose = purpose;
+        }
+
+        static JourneyDetail parse(String encoded, String fallbackOrigin) {
+            String[] parts = (encoded == null ? "" : encoded).split("\\|", -1);
+            String origin = parts.length > 0 && !parts[0].trim().isEmpty() ? parts[0].trim() : fallbackOrigin;
+            String event = parts.length > 1 ? parts[1].trim() : "";
+            String modes = parts.length > 2 && !parts[2].trim().isEmpty()
+                    ? parts[2].trim() : "air,rail,intercity_bus";
+            String purpose = parts.length > 3 && !parts[3].trim().isEmpty()
+                    ? parts[3].trim() : "options";
+            return new JourneyDetail(origin, event, modes, purpose);
+        }
     }
 }
