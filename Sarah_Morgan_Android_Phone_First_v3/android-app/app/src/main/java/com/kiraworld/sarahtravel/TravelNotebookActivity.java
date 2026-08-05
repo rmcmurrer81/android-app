@@ -17,6 +17,7 @@ import java.util.Map;
 
 public final class TravelNotebookActivity extends Activity {
     private SarahDatabase db;
+    private EventTripStore eventStore;
     private LinearLayout container;
 
     @Override
@@ -24,6 +25,7 @@ public final class TravelNotebookActivity extends Activity {
         super.onCreate(state);
         setContentView(R.layout.activity_notebook);
         db = new SarahDatabase(this);
+        eventStore = new EventTripStore(this);
         container = findViewById(R.id.notebookContainer);
         findViewById(R.id.addWishButton).setOnClickListener(v -> showWishDialog());
         findViewById(R.id.addTripButton).setOnClickListener(v -> showTripDialog());
@@ -33,6 +35,48 @@ public final class TravelNotebookActivity extends Activity {
     private void refresh() {
         container.removeAllViews();
         List<Map<String, String>> memories = db.listMemories(150);
+
+        addHeader("Monitored event trips");
+        List<Map<String, String>> events = eventStore.listActiveEventTrips(100);
+        if (events.isEmpty()) {
+            addRow("No monitored events", "Say something like “I’m going to Vegas for CES” or “I’m going to San Diego for Comic-Con.”");
+        } else {
+            for (Map<String, String> event : events) {
+                String title = event.getOrDefault("event_name", "Event") + " — "
+                        + event.getOrDefault("destination", "Destination");
+                String detail = joinSections(
+                        label("Status", event.getOrDefault("monitor_status", "queued")),
+                        label("Venue", event.getOrDefault("venue", "")),
+                        dateRange(event.get("start_date"), event.get("end_date")),
+                        label("Latest monitored details", event.getOrDefault("updates_summary", "")),
+                        label("Nearby food", event.getOrDefault("nearby_food", "")),
+                        label("Nearby places", event.getOrDefault("nearby_places", "")),
+                        label("Transportation", event.getOrDefault("transport_notes", "")),
+                        label("Official or research source", event.getOrDefault("source_note", "")),
+                        label("Last checked", date(event.get("last_checked_at"))));
+                addRow(title, detail);
+            }
+        }
+
+        addHeader("Imported bookings");
+        List<Map<String, String>> bookings = eventStore.listBookings(100);
+        if (bookings.isEmpty()) {
+            addRow("No booking imports", "Share an Expedia or other booking link, or share a booking screenshot from the phone Gallery.");
+        } else {
+            for (Map<String, String> booking : bookings) {
+                String title = booking.getOrDefault("provider", "Booking") + " — "
+                        + booking.getOrDefault("booking_type", "travel");
+                String detail = joinSections(
+                        label("Status", booking.getOrDefault("status", "pending_review")),
+                        label("Summary", booking.getOrDefault("extracted_summary", "")),
+                        label("Dates", joinedDates(booking.get("start_date"), booking.get("end_date"))),
+                        label("Address", booking.getOrDefault("address", "")),
+                        money(booking.get("total"), booking.get("currency")),
+                        label("Confirmation code", booking.getOrDefault("confirmation_code", "")),
+                        label("Source", booking.getOrDefault("source_kind", "")));
+                addRow(title, detail);
+            }
+        }
 
         addHeader("Destination knowledge packs");
         List<Map<String, String>> packs = db.listKnowledgePacks(100);
@@ -96,6 +140,7 @@ public final class TravelNotebookActivity extends Activity {
         hasTravelMemory |= addMemoryRows(memories, "trip_focus");
         hasTravelMemory |= addMemoryRows(memories, "travel_worry");
         hasTravelMemory |= addMemoryRows(memories, "travel_experience");
+        hasTravelMemory |= addMemoryRows(memories, "event_trip");
         if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah only adds approved memories when memory is enabled.");
 
         addHeader("Other things Sarah remembers");
@@ -105,7 +150,8 @@ public final class TravelNotebookActivity extends Activity {
                     || category.equals("travel_preference")
                     || category.equals("trip_focus")
                     || category.equals("travel_worry")
-                    || category.equals("travel_experience")) continue;
+                    || category.equals("travel_experience")
+                    || category.equals("event_trip")) continue;
             addRow(category, row.get("summary"));
         }
     }
@@ -125,6 +171,7 @@ public final class TravelNotebookActivity extends Activity {
         if (category.equals("trip_focus")) return "Trip focus";
         if (category.equals("travel_worry")) return "Travel worry";
         if (category.equals("travel_experience")) return "Travel experience";
+        if (category.equals("event_trip")) return "Event trip";
         return category;
     }
 
@@ -250,8 +297,33 @@ public final class TravelNotebookActivity extends Activity {
         }
     }
 
+    private static String dateRange(String start, String end) {
+        String joined = joinedDates(start, end);
+        return joined.isEmpty() ? "" : "Dates: " + joined;
+    }
+
+    private static String joinedDates(String start, String end) {
+        String a = start == null ? "" : start.trim();
+        String b = end == null ? "" : end.trim();
+        if (a.isEmpty()) return b;
+        if (b.isEmpty() || a.equals(b)) return a;
+        return a + " to " + b;
+    }
+
+    private static String money(String total, String currency) {
+        double amount = number(total);
+        return amount <= 0 ? "" : "Total: " + (currency == null ? "USD" : currency) + " " + Math.round(amount);
+    }
+
     private static double number(String value) {
         try { return Double.parseDouble(value == null ? "0" : value); }
         catch (Exception ignored) { return 0; }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (eventStore != null) eventStore.close();
+        if (db != null) db.close();
+        super.onDestroy();
     }
 }
