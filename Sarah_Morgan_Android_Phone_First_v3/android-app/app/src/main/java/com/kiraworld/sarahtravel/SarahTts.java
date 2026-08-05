@@ -19,6 +19,10 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
     private float rate = 0.95f;
     private String pendingText = "";
 
+    public SarahTts(Context context) {
+        this(context, null);
+    }
+
     public SarahTts(Context context, Listener listener) {
         this.listener = listener;
         tts = new TextToSpeech(context.getApplicationContext(), this);
