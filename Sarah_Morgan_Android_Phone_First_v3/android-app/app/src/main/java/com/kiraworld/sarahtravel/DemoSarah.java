@@ -6,8 +6,9 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Local fallback conversation. Travel-specific reasoning is delegated to
- * TravelBrainCore; this class handles lightweight ordinary conversation.
+ * Local fallback conversation. AgenticTravelPlanner handles proactive travel
+ * actions first, TravelBrainCore handles structured travel knowledge second,
+ * and this class handles lightweight ordinary conversation last.
  */
 public final class DemoSarah {
     private DemoSarah() { }
@@ -33,6 +34,9 @@ public final class DemoSarah {
             return "I saved a privacy-cleaned copy of the photo. I need an image-capable connected model to inspect the picture itself, but I can still keep its caption with the trip while offline.";
         }
 
+        AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
+        if (proactive.handled()) return proactive.reply;
+
         String travelAnswer = TravelBrainCore.answer(safe, profile, history, memories, trips, wishes);
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
 
@@ -50,7 +54,7 @@ public final class DemoSarah {
         if (isSimplePositive(lower)) {
             return pick(safe,
                     "I’m glad.",
-                    "Good. What made it a good day?",
+                    "Good. I’m here if you want company.",
                     "That is good to hear.");
         }
 
@@ -67,7 +71,7 @@ public final class DemoSarah {
         }
 
         if (containsAny(lower, "sad", "lonely", "upset", "worried", "nervous", "overwhelmed")) {
-            return "I’m listening. Tell me what part feels heaviest right now, and we can take it one piece at a time.";
+            return "I’m listening. We can slow this down and take it one piece at a time.";
         }
 
         if (containsAny(lower, "trivia", "distract me", "play a game", "grounding")) {
@@ -78,23 +82,27 @@ public final class DemoSarah {
                 || lower.contains("i'm a fan of") || lower.contains("i am a fan of")) {
             String subject = interestSubject(safe);
             if (!subject.isEmpty()) {
-                return "I’ll remember that you enjoy " + subject + " when memory is enabled. What do you like most about it?";
+                return "I’ll keep " + subject + " in mind when it is useful. I won’t force it into every reply.";
             }
         }
 
         if (safe.endsWith("?")) {
-            return "I may not have enough offline knowledge to answer that accurately. I can still help narrow the question, or Automatic mode can use the connected model once Smart setup is complete.";
+            return "I may not have enough offline knowledge to answer that accurately. Automatic mode can use the connected model once Smart setup is complete.";
+        }
+
+        if (isShortClosure(lower)) {
+            return "Understood. I won’t keep asking questions.";
         }
 
         String idea = keyIdea(safe);
         if (!idea.isEmpty()) {
             return pick(safe,
-                    "I’m following you about " + idea + ". What matters most about it?",
-                    "That gives me a clearer picture of " + idea + ". Keep going.",
-                    "I hear you. What would you like to do about " + idea + "?");
+                    "I understand the main point about " + idea + ".",
+                    "That gives me a clearer picture of " + idea + ".",
+                    "I hear you about " + idea + ".");
         }
 
-        return "I’m listening, " + name + ". Tell me a little more.";
+        return "I’m here, " + name + ".";
     }
 
     private static String memorySummary(Map<String, String> profile, List<Map<String, String>> memories) {
@@ -145,6 +153,10 @@ public final class DemoSarah {
 
     private static boolean isSimplePositive(String lower) {
         return lower.matches("^(good|great|fine|okay|ok|pretty good|not bad)[.! ]*$");
+    }
+
+    private static boolean isShortClosure(String lower) {
+        return lower.matches("^(that is it|that's it|thats it|nothing|no|nope|whatever|i don't care|i dont care)[.! ]*$");
     }
 
     private static String firstName(String value) {
