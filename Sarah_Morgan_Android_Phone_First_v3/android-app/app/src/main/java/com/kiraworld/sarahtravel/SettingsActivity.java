@@ -18,16 +18,25 @@ public final class SettingsActivity extends Activity {
     public static final String PREFS = "sarah_settings";
     private static final String KEY_MODE = "conversation_mode";
     private static final String KEY_MODE_MIGRATED = "automatic_mode_migrated_v1";
+    private static final String KEY_TEAM_MODEL_MIGRATED = "team_model_config_migrated_v1";
     private static final int REQ_NOTIFICATIONS = 4401;
 
     public static void ensureAutomaticModeDefault(Context context) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = preferences.edit();
+        boolean changed = false;
         if (!preferences.getBoolean(KEY_MODE_MIGRATED, false)) {
-            preferences.edit()
-                    .putInt(KEY_MODE, ConversationModePolicy.MODE_AUTO)
-                    .putBoolean(KEY_MODE_MIGRATED, true)
-                    .apply();
+            editor.putInt(KEY_MODE, ConversationModePolicy.MODE_AUTO)
+                    .putBoolean(KEY_MODE_MIGRATED, true);
+            changed = true;
         }
+        if (!preferences.getBoolean(KEY_TEAM_MODEL_MIGRATED, false)) {
+            editor.putString("connected_provider", SarahModelConfig.PROVIDER_ID)
+                    .putString("model", SarahModelConfig.MODEL_ID)
+                    .putBoolean(KEY_TEAM_MODEL_MIGRATED, true);
+            changed = true;
+        }
+        if (changed) editor.apply();
     }
 
     public static int getConversationMode(Context context) {
@@ -86,6 +95,8 @@ public final class SettingsActivity extends Activity {
             int selectedMode = mode.getSelectedItemPosition();
             setConversationMode(this, selectedMode);
             preferences.edit()
+                    .putString("connected_provider", SarahModelConfig.PROVIDER_ID)
+                    .putString("model", SarahModelConfig.MODEL_ID)
                     .putInt("voice_mode", voice.getSelectedItemPosition())
                     .putBoolean("web_search", web.isChecked())
                     .putBoolean("auto_destination_research", autoResearch.isChecked())
