@@ -1,10 +1,11 @@
-name: Start Sarah 2.4 Stay22 Main Release
+name: Start Sarah Repair and Public Release Workflows
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'public-release/2.4/KICKOFF.json'
+      - 'public-release/2.5/KICKOFF.json'
 
 permissions:
   actions: write
@@ -14,7 +15,17 @@ jobs:
   dispatch-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch the verified Sarah 2.4 public-release workflow on main
+      - name: Dispatch the Sarah 2.5 source materialization workflow
+        if: ${{ hashFiles('public-release/2.5/KICKOFF.json') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run sarah-2.5-source-extract.yml \
+            --ref main \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Keep the Sarah 2.4 public release workflow available
+        if: ${{ hashFiles('public-release/2.4/KICKOFF.json') != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
