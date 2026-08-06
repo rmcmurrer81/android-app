@@ -1,0 +1,23 @@
+name: Start Sarah 2.4 Stay22 Main Release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'public-release/2.4/KICKOFF.json'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the verified Sarah 2.4 public-release workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run sarah-2.4-stay22-release.yml \
+            --ref main \
+            --repo "$GITHUB_REPOSITORY"
