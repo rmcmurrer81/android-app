@@ -22,12 +22,32 @@ public final class EventResearchCoordinator {
             String apiKey,
             String model,
             int limit) {
-        if (apiKey == null || apiKey.trim().isEmpty()) return 0;
+        boolean modelAvailable = apiKey != null && !apiKey.trim().isEmpty();
         int refreshed = 0;
         for (Map<String, String> event : store.listDueEventTrips(Math.max(1, limit))) {
+            boolean officialRefreshed = false;
+            KnownEventCatalog.Entry known = KnownEventCatalog.findByEventName(
+                    event.getOrDefault("event_name", ""));
+            if (known != null) {
+                try {
+                    OfficialEventPageLookup.Result official = OfficialEventPageLookup.lookup(known);
+                    if (official.found) {
+                        OfficialEventPageLookup.apply(store, known, official);
+                        refreshed++;
+                        officialRefreshed = true;
+                    }
+                } catch (Exception ignored) {
+                    // The connected path may still be able to refresh the event below.
+                }
+            }
+
+            if (!modelAvailable) {
+                // Known official sources can refresh without a model key. Unknown events stay due.
+                continue;
+            }
             try {
                 refreshOne(context, store, event, providerId, apiKey, model);
-                refreshed++;
+                if (!officialRefreshed) refreshed++;
             } catch (Exception ignored) {
                 // Keep the event due so a later connected run can retry.
             }
@@ -48,6 +68,13 @@ public final class EventResearchCoordinator {
         String knownOfficialUrl = event.getOrDefault("official_url", "");
         String knownStartDate = event.getOrDefault("start_date", "");
         String knownVenue = event.getOrDefault("venue", "");
+
+        KnownEventCatalog.Entry known = KnownEventCatalog.findByEventName(eventName);
+        if (known != null) {
+            if (knownOfficialUrl.isEmpty()) knownOfficialUrl = known.officialUrl;
+            if (knownVenue.isEmpty()) knownVenue = known.defaultVenue;
+            if (destination.isEmpty()) destination = known.destination;
+        }
 
         String systemPrompt = "You maintain Sarah's event-centered trip record. Use current reputable public sources. "
                 + "Prefer the official event site for event name, dates, venue, badge or registration announcements, schedule changes, and official policies. "
