@@ -19,9 +19,11 @@ public final class TravelSearchHelper {
         return containsAny(lower,
                 "show me a map", "show map", "show photos", "show pictures", "show videos",
                 "open live search", "open the live search", "show me the fares", "show fares",
-                "search now", "cross country", "cross-country", "amtrak", "train trip",
-                "metro to", "subway to", "going to", "planning to go", "thinking about going",
-                "want to visit", "always wanted to visit", "comic con", "comic-con", "ces", "nycc");
+                "search now", "monitor", "watch for", "deals to", "travel options",
+                "cross country", "cross-country", "amtrak", "train trip", "rail trip",
+                "metro to", "subway to", "transit to", "bus to", "drive to", "ferry to",
+                "going to", "planning to go", "thinking about going", "want to visit",
+                "always wanted to visit", "comic con", "comic-con", "ces", "nycc");
     }
 
     public static void show(Activity activity, String message, Map<String, String> profile) {
