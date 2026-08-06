@@ -66,6 +66,8 @@ public final class SarahBackendClient {
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.5");
+        String token = SarahModelConfig.backendToken();
+        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
 
         byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
         try (OutputStream out = connection.getOutputStream()) {
