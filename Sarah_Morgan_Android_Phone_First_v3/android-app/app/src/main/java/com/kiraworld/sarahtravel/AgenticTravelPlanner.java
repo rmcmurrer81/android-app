@@ -57,7 +57,8 @@ public final class AgenticTravelPlanner {
         String lower = safe.toLowerCase(Locale.US);
         String prior = priorConversation(history, safe);
         List<String> current = DestinationParser.extractDestinations(safe);
-        List<String> context = TravelContextResolver.resolveDestinations(safe, history);
+        List<String> context = new ArrayList<>(
+                TravelContextResolver.resolveDestinations(safe, history));
         removeHome(context, profile);
         List<Action> actions = new ArrayList<>();
 
@@ -75,7 +76,7 @@ public final class AgenticTravelPlanner {
 
         if (TravelContextResolver.clearsTravelContext(lower)) {
             return new Plan(
-                    "That’s okay. We can leave the destination or plan undecided for now. I won’t keep asking or pull an older trip such as Paris back into this conversation.",
+                    "That’s okay. We can leave the destination or plan undecided for now. I won’t keep asking or pull an older trip back into this conversation.",
                     actions);
         }
 
