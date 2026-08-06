@@ -3,13 +3,10 @@ package com.kiraworld.sarahtravel;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.Toast;
 
 import java.util.List;
 import java.util.Map;
@@ -55,6 +52,8 @@ public final class StayAssistantActivity extends Activity {
         hotel.addView(TravelUi.outlineButton(this, "Find the hotel's official website or contact",
                 v -> TravelUi.open(this, ExternalTravelLinks.googleSearch(
                         (hotelName.isEmpty() ? "hotel" : hotelName) + " " + trip.destination + " official website contact"))));
+        hotel.addView(TravelUi.outlineButton(this, "Open supervised voice concierge",
+                v -> TravelUi.start(this, VoiceConciergeActivity.class)));
         root.addView(hotel);
 
         root.addView(TravelUi.section(this, "Quick guest requests"));
