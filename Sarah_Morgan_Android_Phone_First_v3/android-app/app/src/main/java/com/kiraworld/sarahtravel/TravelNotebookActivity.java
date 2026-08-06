@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -11,6 +12,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.DateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +21,9 @@ public final class TravelNotebookActivity extends Activity {
     private SarahDatabase db;
     private EventTripStore eventStore;
     private MobilityWatchStore mobilityStore;
+    private PersonProfileStore people;
     private LinearLayout container;
+    private Map<String, String> activeProfile;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -28,14 +32,93 @@ public final class TravelNotebookActivity extends Activity {
         db = new SarahDatabase(this);
         eventStore = new EventTripStore(this);
         mobilityStore = new MobilityWatchStore(this);
+        people = new PersonProfileStore(this);
+        Map<String, String> owner = db.getProfile();
+        people.ensureOwner(owner);
+        activeProfile = people.getActiveProfile();
+        if (activeProfile.isEmpty()) activeProfile = people.ensureOwner(owner);
+
         container = findViewById(R.id.notebookContainer);
-        findViewById(R.id.addWishButton).setOnClickListener(v -> showWishDialog());
-        findViewById(R.id.addTripButton).setOnClickListener(v -> showTripDialog());
+        View addWish = findViewById(R.id.addWishButton);
+        View addTrip = findViewById(R.id.addTripButton);
+        boolean ownerActive = isOwnerActive();
+        addWish.setVisibility(ownerActive ? View.VISIBLE : View.GONE);
+        addTrip.setVisibility(ownerActive ? View.VISIBLE : View.GONE);
+        addWish.setOnClickListener(v -> showWishDialog());
+        addTrip.setOnClickListener(v -> showTripDialog());
         refresh();
     }
 
     private void refresh() {
         container.removeAllViews();
+        addProfileSection();
+        if (!isOwnerActive()) {
+            refreshSeparateProfile();
+            return;
+        }
+        refreshOwnerNotebook();
+    }
+
+    private void addProfileSection() {
+        addHeader("People using this phone");
+        if (isOwnerActive()) {
+            for (Map<String, String> profile : people.listProfiles()) {
+                String detail = joinSections(
+                        label("Age", "yes".equals(profile.get("age_known")) ? profile.get("age") : "not set"),
+                        label("Memory", profile.getOrDefault("memory_consent", "unknown")),
+                        label("Relationship", profile.getOrDefault("relationship", "")),
+                        "yes".equals(profile.get("active")) ? "Currently talking with Sarah" : "");
+                addRow(profile.getOrDefault("name", "Person")
+                        + ("yes".equals(profile.get("is_owner")) ? " — phone owner" : ""), detail);
+            }
+            addRow("Switch profiles", "Use the person icon in Sarah’s main header. A new person may say “My name is …” and Sarah will ask age before using age-sensitive suggestions.");
+        } else {
+            addRow(activeProfile.getOrDefault("name", "Person") + " — separate profile",
+                    joinSections(
+                            label("Age", "yes".equals(activeProfile.get("age_known")) ? activeProfile.get("age") : "not set"),
+                            label("Age group", activeProfile.getOrDefault("age_group", "family-friendly until known")),
+                            label("Memory", activeProfile.getOrDefault("memory_consent", "unknown")),
+                            "Owner memories, private trips, bookings, watches, and other profiles are hidden in this view."));
+        }
+    }
+
+    private void refreshSeparateProfile() {
+        String name = activeProfile.getOrDefault("name", "Person");
+
+        addHeader(name + "’s approved memories");
+        List<Map<String, String>> memories = people.listMemories(name, 100);
+        if (memories.isEmpty()) {
+            addRow("Nothing saved", "Sarah keeps the conversation separate but saves personal interests only when this profile has permission.");
+        } else {
+            for (Map<String, String> memory : memories) {
+                addRow(memory.getOrDefault("category", "memory"), memory.getOrDefault("summary", ""));
+            }
+        }
+
+        addHeader("Trips this profile is joining");
+        boolean found = false;
+        for (Map<String, String> trip : db.listTrips(100)) {
+            String destination = trip.getOrDefault("destination", "");
+            if (!"going".equals(people.getTripParticipation(name, destination))) continue;
+            addRow(destination, "Recorded as joining this shared trip. Owner-private notes and bookings are hidden.");
+            found = true;
+        }
+        for (Map<String, String> event : eventStore.listActiveEventTrips(100)) {
+            String destination = event.getOrDefault("destination", "");
+            if (!"going".equals(people.getTripParticipation(name, destination))) continue;
+            addRow(event.getOrDefault("event_name", "Shared event") + " — " + destination,
+                    joinSections(
+                            dateRange(event.get("start_date"), event.get("end_date")),
+                            label("Venue", event.getOrDefault("venue", "")),
+                            "Only shared event facts are shown; owner-private bookings and notes remain hidden."));
+            found = true;
+        }
+        if (!found) {
+            addRow("No shared trip recorded", "Sarah will not assume this person is joining the phone owner’s trip. The person can answer when Sarah asks, or discuss their own destination separately.");
+        }
+    }
+
+    private void refreshOwnerNotebook() {
         List<Map<String, String>> memories = db.listMemories(150);
 
         addHeader("Saved journeys");
@@ -78,7 +161,7 @@ public final class TravelNotebookActivity extends Activity {
         addHeader("Monitored event trips");
         List<Map<String, String>> events = eventStore.listActiveEventTrips(100);
         if (events.isEmpty()) {
-            addRow("No monitored events", "Say something like “I’m going to Vegas for CES,” “San Diego for Comic-Con,” or “metro to New York Comic Con.”");
+            addRow("No monitored events", "Mention a known event or an unfamiliar convention. Sarah should verify its location and dates before saving it as an event trip.");
         } else {
             for (Map<String, String> event : events) {
                 String title = event.getOrDefault("event_name", "Event") + " — "
@@ -120,13 +203,13 @@ public final class TravelNotebookActivity extends Activity {
         addHeader("Destination knowledge packs");
         List<Map<String, String>> packs = db.listKnowledgePacks(100);
         if (packs.isEmpty()) {
-            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations and events require Smart setup.");
+            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations require the team OpenAI connection or supported public sources.");
         } else {
             for (Map<String, String> pack : packs) {
                 String destination = pack.getOrDefault("destination", "Destination");
                 String status = pack.getOrDefault("status", "pending");
                 if (!"ready".equals(status)) {
-                    addRow(destination + " — research queued", "Sarah will retry when internet and a connected-model key are available.");
+                    addRow(destination + " — research queued", "Sarah will retry when internet and the team research connection are available. Known and discovered events may be filled separately from public official pages.");
                     continue;
                 }
                 String detail = joinSections(
@@ -165,10 +248,14 @@ public final class TravelNotebookActivity extends Activity {
         }
 
         addHeader("Places I want to visit");
-        for (Map<String, String> row : db.listWishes(50)) addRow(row.get("destination"), row.get("notes"));
+        List<Map<String, String>> wishes = db.listWishes(50);
+        if (wishes.isEmpty()) addRow("Nothing saved", "Sarah can save dream destinations for the phone owner.");
+        for (Map<String, String> row : wishes) addRow(row.get("destination"), row.get("notes"));
 
         addHeader("Trips");
-        for (Map<String, String> row : db.listTrips(50)) {
+        List<Map<String, String>> trips = db.listTrips(50);
+        if (trips.isEmpty()) addRow("No trip records", "A phrase such as “I am going to New York next week” can create a planned trip automatically.");
+        for (Map<String, String> row : trips) {
             addRow(row.get("status") + ": " + row.get("destination"),
                     row.get("title") + (row.get("notes").isEmpty() ? "" : " — " + row.get("notes")));
         }
@@ -184,6 +271,7 @@ public final class TravelNotebookActivity extends Activity {
         if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah only adds approved memories when memory is enabled.");
 
         addHeader("Other things Sarah remembers");
+        boolean other = false;
         for (Map<String, String> row : memories) {
             String category = row.getOrDefault("category", "");
             if (category.equals("deal_watch_request")
@@ -194,7 +282,13 @@ public final class TravelNotebookActivity extends Activity {
                     || category.equals("event_trip")
                     || category.equals("journey_plan")) continue;
             addRow(category, row.get("summary"));
+            other = true;
         }
+        if (!other) addRow("Nothing else saved", "Movies, shows, books, games, and other interests can be stored in the active profile when memory is allowed.");
+    }
+
+    private boolean isOwnerActive() {
+        return "yes".equals(activeProfile.getOrDefault("is_owner", "no"));
     }
 
     private boolean addMemoryRows(List<Map<String, String>> memories, String wantedCategory) {
@@ -235,6 +329,7 @@ public final class TravelNotebookActivity extends Activity {
     }
 
     private void showWishDialog() {
+        if (!isOwnerActive()) return;
         LinearLayout box = dialogBox();
         EditText destination = field("Destination");
         EditText notes = field("Why you want to go or what interests you");
@@ -259,6 +354,7 @@ public final class TravelNotebookActivity extends Activity {
     }
 
     private void showTripDialog() {
+        if (!isOwnerActive()) return;
         LinearLayout box = dialogBox();
         EditText title = field("Trip name");
         EditText destination = field("Destination");
@@ -364,6 +460,7 @@ public final class TravelNotebookActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (people != null) people.close();
         if (mobilityStore != null) mobilityStore.close();
         if (eventStore != null) eventStore.close();
         if (db != null) db.close();
