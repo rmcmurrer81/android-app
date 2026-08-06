@@ -1,0 +1,1 @@
+Trigger Sarah 2.4 Stay22 public-release checks after the workflow gate was installed on main.
