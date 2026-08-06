@@ -1,0 +1,54 @@
+name: Assemble Sarah 2.3 Public Source
+
+on:
+  push:
+    branches:
+      - 'agent/sarah-public-*'
+    paths:
+      - 'public-release/READY.json'
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out all source parts
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assemble the verified base64 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t parts < <(find public-release/parts -maxdepth 1 -type f -name 'part-*.txt' | sort)
+          if [ "${#parts[@]}" -lt 2 ]; then
+            echo 'The complete Sarah source parts are not present.'
+            exit 1
+          fi
+          cat "${parts[@]}" > public-release/Sarah_Travel_OS_2.3_Public_Source.zip.b64
+          python - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json
+          encoded = Path('public-release/Sarah_Travel_OS_2.3_Public_Source.zip.b64')
+          expected = Path('public-release/SOURCE_SHA256.txt').read_text(encoding='utf-8').split()[0]
+          raw = base64.b64decode(encoded.read_text(encoding='ascii'))
+          actual = hashlib.sha256(raw).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'Checksum mismatch: expected {expected}, got {actual}')
+          ready = json.loads(Path('public-release/READY.json').read_text(encoding='utf-8'))
+          if ready.get('version') != '2.3-public-continuity':
+              raise SystemExit('READY.json does not describe Sarah 2.3 public continuity.')
+          print(f'Assembled {len(raw)} bytes with SHA-256 {actual}')
+          PY
+
+      - name: Commit the one complete source archive representation
+        shell: bash
+        run: |
+          git config user.name 'Sarah Public Source Assembler'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/Sarah_Travel_OS_2.3_Public_Source.zip.b64
+          git commit -m 'Assemble complete Sarah 2.3 public source archive'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
