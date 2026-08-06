@@ -8,6 +8,10 @@ def javaString = { String value ->
 def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
 def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
+def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
+def sarahTravelCommerceToken = System.getenv('SARAH_TRAVEL_COMMERCE_TOKEN') ?: ''
+def sarahVoiceConciergeUrl = System.getenv('SARAH_VOICE_CONCIERGE_URL') ?: ''
+def sarahVoiceConciergeToken = System.getenv('SARAH_VOICE_CONCIERGE_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -17,13 +21,17 @@ android {
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 16
-        versionName '1.6-profiles-events'
+        versionCode 20
+        versionName '2.0-travel-os-all-tracks'
 
-        // Private hackathon configuration. End users do not enter model keys.
+        // Team-owned connections. People installing Sarah do not enter provider keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
+        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_URL', javaString(sarahTravelCommerceUrl)
+        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', javaString(sarahTravelCommerceToken)
+        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_URL', javaString(sarahVoiceConciergeUrl)
+        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', javaString(sarahVoiceConciergeToken)
     }
 
     buildFeatures {
