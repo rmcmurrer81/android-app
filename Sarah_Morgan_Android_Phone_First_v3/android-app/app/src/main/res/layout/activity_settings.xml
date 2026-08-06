@@ -22,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 2.0-travel-os-all-tracks"
+            android:text="Build 2.1-offline-flight-companion"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -81,6 +81,19 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:text="Offline flight companion"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="The airplane icon opens takeoff, turbulence and landing support that works without signal. It includes gentle breathing, conversation prompts, age-aware trivia, noticing games, an alphabet game, and short public-domain children's sing-alongs using the phone's local voice. Sarah still tells the traveler to keep the seat belt fastened and follow the flight crew."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:text="People using the same phone"
             android:textStyle="bold" />
 
@@ -125,7 +138,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="The selected Sarah Morgan ElevenLabs voice uses Eleven Multilingual v2 with the voice-design settings used for the approved samples. If the service is missing, slow, out of credits, or offline, Sarah continues with Android speech instead of becoming silent."
+            android:text="The selected Sarah Morgan ElevenLabs voice uses Eleven Multilingual v2 with the voice-design settings used for the approved samples. If the service is missing, slow, out of credits, or offline, Sarah continues with Android speech instead of becoming silent. The offline sing-alongs always use Android speech so they remain available in airplane mode."
             android:textSize="13sp" />
 
         <CheckBox
