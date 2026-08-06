@@ -13,6 +13,7 @@ import android.view.Gravity;
 import android.widget.Button;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -89,23 +90,30 @@ public final class ExploreButton extends Button {
 
         SarahDatabase db = new SarahDatabase(context.getApplicationContext());
         List<Map<String, String>> messages;
-        Map<String, String> profile;
+        Map<String, String> ownerProfile;
         try {
             messages = db.recentMessages(40);
-            profile = db.getProfile();
+            ownerProfile = db.getProfile();
         } finally {
             db.close();
         }
+        Map<String, String> profile = activeProfile(context, ownerProfile);
 
         String latest = latestUserMessage(messages);
-        KnownEventCatalog.Entry event = recentKnownEvent(messages, latest);
+        KnownEventCatalog.Entry knownEvent = recentKnownEvent(messages, latest);
+        String unfamiliarEvent = GenericEventReference.recentEvent(messages, latest);
+        Map<String, String> storedEvent = unfamiliarEvent.isEmpty()
+                ? Collections.emptyMap() : findStoredEvent(context, unfamiliarEvent);
         TravelMediaHelper.Tools tools = TravelMediaHelper.resolve(latest, profile, messages);
 
         String query;
         String destination;
-        if (event != null) {
-            query = event.eventName + " " + event.destination;
-            destination = event.destination;
+        if (knownEvent != null) {
+            query = knownEvent.eventName + " " + knownEvent.destination;
+            destination = knownEvent.destination;
+        } else if (!unfamiliarEvent.isEmpty()) {
+            destination = storedEvent.getOrDefault("destination", "");
+            query = unfamiliarEvent + (destination.isEmpty() ? "" : " " + destination);
         } else if (tools.available && !tools.query.isEmpty()) {
             query = tools.query.trim();
             destination = tools.destination;
@@ -120,11 +128,11 @@ public final class ExploreButton extends Button {
         setCompoundDrawables(null, null, null, null);
         setText(query + "\nLoading a public photo…\nTap for map, more photos, videos, route, and official sources");
 
-        String eventDestination = event == null ? "" : event.destination;
+        String knownDestination = knownEvent == null ? "" : knownEvent.destination;
         MEDIA_EXECUTOR.submit(() -> {
             PublicMediaGateway.MediaItem item = PublicMediaGateway.findFirst(
                     query,
-                    eventDestination,
+                    knownDestination,
                     destination,
                     destination == null || destination.isEmpty() ? "" : destination + " landmarks");
             post(() -> applyMedia(query, item));
@@ -140,7 +148,7 @@ public final class ExploreButton extends Button {
         Bitmap decoded = BitmapFactory.decodeByteArray(item.imageBytes, 0, item.imageBytes.length);
         if (decoded == null) return;
         int targetWidth = Math.max(dp(260), getResources().getDisplayMetrics().widthPixels - dp(56));
-        int targetHeight = dp(150);
+        int targetHeight = dp(170);
         float scale = Math.min((float) targetWidth / decoded.getWidth(), (float) targetHeight / decoded.getHeight());
         int width = Math.max(1, Math.round(decoded.getWidth() * scale));
         int height = Math.max(1, Math.round(decoded.getHeight() * scale));
@@ -158,17 +166,53 @@ public final class ExploreButton extends Button {
         if (!(context instanceof Activity)) return;
         if (currentMessage.isEmpty()) refreshPreview();
         String query = currentMessage.isEmpty() ? "travel ideas" : currentMessage;
-        Map<String, String> profile = currentProfile.isEmpty() ? loadProfile(context) : currentProfile;
+        Map<String, String> profile = currentProfile.isEmpty() ? loadOwnerProfile(context) : currentProfile;
         TravelSearchHelper.show((Activity) context, query, profile);
     }
 
-    private static Map<String, String> loadProfile(Context context) {
+    private static Map<String, String> activeProfile(
+            Context context,
+            Map<String, String> ownerProfile) {
+        Map<String, String> result = new LinkedHashMap<>(ownerProfile);
+        PersonProfileStore people = new PersonProfileStore(context.getApplicationContext());
+        try {
+            people.ensureOwner(ownerProfile);
+            Map<String, String> active = people.getActiveProfile();
+            if (!active.isEmpty()) {
+                boolean owner = "yes".equals(active.get("is_owner"));
+                if (!owner) result.clear();
+                result.putAll(active);
+                result.put("active_speaker", active.get("name"));
+                result.put("active_speaker_is_owner", owner ? "yes" : "no");
+            }
+        } finally {
+            people.close();
+        }
+        if (result.getOrDefault("hometown", "").isEmpty()) {
+            result.put("hometown", ownerProfile.getOrDefault("hometown", ""));
+        }
+        return result;
+    }
+
+    private static Map<String, String> loadOwnerProfile(Context context) {
         SarahDatabase db = new SarahDatabase(context.getApplicationContext());
         try {
             return db.getProfile();
         } finally {
             db.close();
         }
+    }
+
+    private static Map<String, String> findStoredEvent(Context context, String eventName) {
+        EventTripStore store = new EventTripStore(context.getApplicationContext());
+        try {
+            for (Map<String, String> event : store.listActiveEventTrips(50)) {
+                if (eventName.equalsIgnoreCase(event.getOrDefault("event_name", ""))) return event;
+            }
+        } finally {
+            store.close();
+        }
+        return Collections.emptyMap();
     }
 
     private static KnownEventCatalog.Entry recentKnownEvent(
