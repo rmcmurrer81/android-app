@@ -12,6 +12,7 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.widget.Button;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -23,7 +24,7 @@ public final class ExploreButton extends Button {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String loadedQuery = "";
     private String currentMessage = "";
-    private Map<String, String> currentProfile = Map.of();
+    private Map<String, String> currentProfile = Collections.emptyMap();
     private final Runnable poll = new Runnable() {
         @Override
         public void run() {
@@ -56,6 +57,7 @@ public final class ExploreButton extends Button {
         setText("Explore map • photos • videos • route");
         setOnClickListener(v -> openExplorer());
         setOnLongClickListener(v -> {
+            loadedQuery = "";
             refreshPreview();
             return true;
         });
@@ -94,26 +96,37 @@ public final class ExploreButton extends Button {
         } finally {
             db.close();
         }
-        String latest = latestUserMessage(messages);
-        TravelMediaHelper.Tools tools = TravelMediaHelper.resolve(latest, profile, messages);
-        if (!tools.available || tools.query.isEmpty()) return;
 
-        currentMessage = tools.query;
+        String latest = latestUserMessage(messages);
+        KnownEventCatalog.Entry event = recentKnownEvent(messages, latest);
+        TravelMediaHelper.Tools tools = TravelMediaHelper.resolve(latest, profile, messages);
+
+        String query;
+        String destination;
+        if (event != null) {
+            query = event.eventName + " " + event.destination;
+            destination = event.destination;
+        } else if (tools.available && !tools.query.isEmpty()) {
+            query = tools.query.trim();
+            destination = tools.destination;
+        } else {
+            return;
+        }
+
+        currentMessage = query;
         currentProfile = profile;
-        String query = tools.query.trim();
         if (query.equalsIgnoreCase(loadedQuery)) return;
         loadedQuery = query;
+        setCompoundDrawables(null, null, null, null);
         setText(query + "\nLoading a public photo…\nTap for map, more photos, videos, route, and official sources");
 
-        String destination = tools.destination;
-        KnownEventCatalog.Entry event = recentKnownEvent(messages, latest);
         String eventDestination = event == null ? "" : event.destination;
         MEDIA_EXECUTOR.submit(() -> {
             PublicMediaGateway.MediaItem item = PublicMediaGateway.findFirst(
                     query,
                     eventDestination,
                     destination,
-                    destination.isEmpty() ? "" : destination + " landmarks");
+                    destination == null || destination.isEmpty() ? "" : destination + " landmarks");
             post(() -> applyMedia(query, item));
         });
     }
