@@ -13,7 +13,7 @@ import java.util.Map;
 
 public final class SarahDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "sarah.db";
-    private static final int DB_VERSION = 7;
+    private static final int DB_VERSION = 8;
 
     public SarahDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -22,7 +22,7 @@ public final class SarahDatabase extends SQLiteOpenHelper {
     @Override
     public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE profile (id INTEGER PRIMARY KEY CHECK(id=1), name TEXT NOT NULL, hometown TEXT NOT NULL, age INTEGER NOT NULL DEFAULT 18, first_flight INTEGER NOT NULL DEFAULT 0, interests TEXT NOT NULL DEFAULT '', worries TEXT NOT NULL DEFAULT '', memory_consent INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)");
-        db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, speaker_name TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE memories (id INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT NOT NULL, summary TEXT NOT NULL, source_text TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, UNIQUE(category, summary))");
         db.execSQL("CREATE TABLE trips (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, destination TEXT NOT NULL, status TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE wish_list (id INTEGER PRIMARY KEY AUTOINCREMENT, destination TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)");
@@ -45,6 +45,14 @@ public final class SarahDatabase extends SQLiteOpenHelper {
         }
         if (oldVersion < 4) repairEarlyTravelPreferenceBug(db);
         if (oldVersion < 5) createAgenticTables(db);
+        if (oldVersion < 8) {
+            try {
+                db.execSQL("ALTER TABLE messages ADD COLUMN speaker_name TEXT NOT NULL DEFAULT ''");
+            } catch (Exception ignored) { }
+            try {
+                db.execSQL("UPDATE messages SET speaker_name=COALESCE((SELECT name FROM profile WHERE id=1),'') WHERE speaker_name='' OR speaker_name IS NULL");
+            } catch (Exception ignored) { }
+        }
     }
 
     private void repairEarlyTravelPreferenceBug(SQLiteDatabase db) {
@@ -89,6 +97,11 @@ public final class SarahDatabase extends SQLiteOpenHelper {
         values.put("memory_consent", memoryConsent ? 1 : 0);
         values.put("created_at", System.currentTimeMillis());
         getWritableDatabase().insertWithOnConflict("profile", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+        ContentValues speaker = new ContentValues();
+        speaker.put("speaker_name", name.trim());
+        try {
+            getWritableDatabase().update("messages", speaker, "speaker_name='' OR speaker_name IS NULL", null);
+        } catch (Exception ignored) { }
     }
 
     public Map<String, String> getProfile() {
@@ -110,26 +123,50 @@ public final class SarahDatabase extends SQLiteOpenHelper {
     }
 
     public void addMessage(String role, String content) {
+        addMessage(role, content, ownerName());
+    }
+
+    public void addMessage(String role, String content, String speakerName) {
         ContentValues values = new ContentValues();
-        values.put("role", role);
-        values.put("content", content);
+        values.put("role", value(role));
+        values.put("content", value(content));
+        values.put("speaker_name", value(speakerName).trim());
         values.put("created_at", System.currentTimeMillis());
         getWritableDatabase().insert("messages", null, values);
     }
 
     public List<Map<String, String>> recentMessages(int limit) {
+        return recentMessagesForSpeaker(ownerName(), limit);
+    }
+
+    public List<Map<String, String>> recentMessagesForSpeaker(String speakerName, int limit) {
+        String cleanName = value(speakerName).trim();
+        String owner = ownerName();
+        boolean includeUnassigned = cleanName.isEmpty() || cleanName.equalsIgnoreCase(owner);
         List<Map<String, String>> reversed = new ArrayList<>();
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT role,content FROM messages ORDER BY id DESC LIMIT ?", new String[]{String.valueOf(limit)})) {
+        String sql = includeUnassigned
+                ? "SELECT role,content,speaker_name FROM messages WHERE lower(speaker_name)=lower(?) OR speaker_name='' ORDER BY id DESC LIMIT ?"
+                : "SELECT role,content,speaker_name FROM messages WHERE lower(speaker_name)=lower(?) ORDER BY id DESC LIMIT ?";
+        try (Cursor c = getReadableDatabase().rawQuery(
+                sql,
+                new String[]{cleanName.isEmpty() ? owner : cleanName, String.valueOf(Math.max(1, limit))})) {
             while (c.moveToNext()) {
                 Map<String, String> row = new LinkedHashMap<>();
                 row.put("role", c.getString(0));
                 row.put("content", c.getString(1));
+                row.put("speaker_name", c.getString(2));
                 reversed.add(row);
             }
         }
         List<Map<String, String>> normal = new ArrayList<>();
         for (int i = reversed.size() - 1; i >= 0; i--) normal.add(reversed.get(i));
         return normal;
+    }
+
+    private String ownerName() {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT name FROM profile WHERE id=1", null)) {
+            return c.moveToFirst() ? value(c.getString(0)).trim() : "";
+        }
     }
 
     public boolean addMemory(String category, String summary, String sourceText) {

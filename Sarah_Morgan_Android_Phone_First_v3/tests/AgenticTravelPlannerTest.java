@@ -11,6 +11,8 @@ public final class AgenticTravelPlannerTest {
         profile.put("name", "Robert");
         profile.put("hometown", "Newark, New Jersey");
         profile.put("age_group", "adult");
+        profile.put("active_speaker_is_owner", "yes");
+        profile.put("interests", "history, movies and technology");
 
         List<Map<String, String>> history = new ArrayList<>();
         List<Map<String, String>> memories = new ArrayList<>();
@@ -47,6 +49,28 @@ public final class AgenticTravelPlannerTest {
         require(hasAction(austin, AgenticTravelPlanner.SAVE_WISH, "Austin"),
                 "Austin must be stored as a possible trip");
         require(!austin.reply.endsWith("?"), "Austin must not start an interview");
+
+        AgenticTravelPlanner.Plan nextWeek = AgenticTravelPlanner.plan(
+                "I am going to New York next week", profile, List.of(), memories);
+        require(hasAction(nextWeek, AgenticTravelPlanner.SAVE_PLANNED_TRIP, "New York City"),
+                "a dated New York statement must become a planned trip");
+        require(nextWeek.reply.contains("Free or inexpensive"),
+                "Sarah must give useful low-cost ideas before asking about budget");
+        require(nextWeek.reply.contains("If you have extra money and time"),
+                "Sarah must also offer optional paid ideas");
+        require(!nextWeek.reply.endsWith("?"), "timed city planning must not become a form");
+
+        AgenticTravelPlanner.Plan randomEvent = AgenticTravelPlanner.plan(
+                "I am thinking about going to River City Collectors Con",
+                profile,
+                List.of(),
+                memories);
+        require(randomEvent.reply.toLowerCase().contains("event, not a city"),
+                "unfamiliar convention must be recognized as an event");
+        require(!hasAnyAction(randomEvent, AgenticTravelPlanner.SAVE_WISH),
+                "unverified event name must not be stored as a fake destination");
+        require(!hasAnyAction(randomEvent, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK),
+                "unverified event location must not create a destination pack");
 
         List<Map<String, String>> chinaHistory = new ArrayList<>();
         say(chinaHistory, "user", "I always wanted to visit China");
@@ -104,6 +128,13 @@ public final class AgenticTravelPlannerTest {
     private static boolean hasAction(AgenticTravelPlanner.Plan plan, String type, String destination) {
         for (AgenticTravelPlanner.Action action : plan.actions) {
             if (type.equals(action.type) && destination.equalsIgnoreCase(action.destination)) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasAnyAction(AgenticTravelPlanner.Plan plan, String type) {
+        for (AgenticTravelPlanner.Action action : plan.actions) {
+            if (type.equals(action.type)) return true;
         }
         return false;
     }

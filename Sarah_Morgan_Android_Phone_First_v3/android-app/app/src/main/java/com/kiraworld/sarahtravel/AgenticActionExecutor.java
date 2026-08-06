@@ -40,6 +40,7 @@ public final class AgenticActionExecutor {
         String origin = profile.getOrDefault("hometown", "Home area").trim();
         EventTripStore eventStore = new EventTripStore(context.getApplicationContext());
         MobilityWatchStore mobilityStore = new MobilityWatchStore(context.getApplicationContext());
+        PersonProfileStore people = new PersonProfileStore(context.getApplicationContext());
 
         try {
             for (AgenticTravelPlanner.Action action : actions) {
@@ -59,10 +60,19 @@ public final class AgenticActionExecutor {
                 } else if (AgenticTravelPlanner.CREATE_EVENT_TRIP.equals(action.type)) {
                     long eventTripId = eventStore.upsertEventTrip(action.detail, action.destination, true);
                     changedEventMonitor |= eventTripId > 0;
-                    db.addMemory(
-                            "event_trip",
-                            "Plans to attend " + action.detail + " in " + action.destination,
-                            action.detail + " | " + action.destination);
+                    if (isOwner(profile)) {
+                        db.addMemory(
+                                "event_trip",
+                                "Plans to attend " + action.detail + " in " + action.destination,
+                                action.detail + " | " + action.destination);
+                    } else {
+                        people.setTripParticipation(activeName(profile), action.destination, "going");
+                        people.addMemory(
+                                activeName(profile),
+                                "event_trip",
+                                "Plans to attend " + action.detail + " in " + action.destination,
+                                action.detail + " | " + action.destination);
+                    }
                 } else if (AgenticTravelPlanner.SAVE_BOOKING_LINK.equals(action.type)) {
                     String[] detail = action.detail.split("\\|", 2);
                     String provider = detail.length > 0 ? detail[0] : "Other";
@@ -72,6 +82,25 @@ public final class AgenticActionExecutor {
                             bookingType,
                             action.destination,
                             action.destination) > 0;
+                } else if (AgenticTravelPlanner.SAVE_PLANNED_TRIP.equals(action.type)) {
+                    PlannedTripDetail detail = PlannedTripDetail.parse(action.detail);
+                    if (isOwner(profile)) {
+                        if (!plannedTripExists(db.listTrips(100), action.destination, detail)) {
+                            db.addTrip(
+                                    detail.label + " trip to " + action.destination,
+                                    action.destination,
+                                    "planned",
+                                    "Planned dates: " + detail.startDate + " through " + detail.endDate);
+                        }
+                    } else {
+                        String name = activeName(profile);
+                        people.setTripParticipation(name, action.destination, "going");
+                        people.addMemory(
+                                name,
+                                "planned_trip",
+                                "Plans to visit " + action.destination + " " + detail.label,
+                                detail.startDate + " through " + detail.endDate);
+                    }
                 } else if (AgenticTravelPlanner.SAVE_JOURNEY_PLAN.equals(action.type)) {
                     JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
                     long id = mobilityStore.saveJourneyPlan(
@@ -81,11 +110,20 @@ public final class AgenticActionExecutor {
                             detail.modes,
                             detail.purpose);
                     if (id > 0) {
-                        db.addMemory(
-                                "journey_plan",
-                                "Journey from " + detail.origin + " to " + action.destination
-                                        + " using " + detail.modes.replace(',', '/'),
-                                action.detail);
+                        if (isOwner(profile)) {
+                            db.addMemory(
+                                    "journey_plan",
+                                    "Journey from " + detail.origin + " to " + action.destination
+                                            + " using " + detail.modes.replace(',', '/'),
+                                    action.detail);
+                        } else {
+                            people.addMemory(
+                                    activeName(profile),
+                                    "journey_plan",
+                                    "Journey from " + detail.origin + " to " + action.destination
+                                            + " using " + detail.modes.replace(',', '/'),
+                                    action.detail);
+                        }
                     }
                 } else if (AgenticTravelPlanner.CREATE_MOBILITY_WATCH.equals(action.type)) {
                     JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
@@ -100,6 +138,7 @@ public final class AgenticActionExecutor {
         } finally {
             eventStore.close();
             mobilityStore.close();
+            people.close();
         }
 
         SharedPreferences preferences = context.getSharedPreferences(
@@ -120,6 +159,46 @@ public final class AgenticActionExecutor {
                 queuedKnowledge,
                 changedEventMonitor,
                 importedBooking);
+    }
+
+    private static boolean isOwner(Map<String, String> profile) {
+        return "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
+    }
+
+    private static String activeName(Map<String, String> profile) {
+        return profile.getOrDefault("name", profile.getOrDefault("active_speaker", "Guest"));
+    }
+
+    private static boolean plannedTripExists(
+            List<Map<String, String>> trips,
+            String destination,
+            PlannedTripDetail detail) {
+        for (Map<String, String> trip : trips) {
+            if (!destination.equalsIgnoreCase(trip.getOrDefault("destination", ""))) continue;
+            String notes = trip.getOrDefault("notes", "");
+            if (notes.contains(detail.startDate) && notes.contains(detail.endDate)) return true;
+        }
+        return false;
+    }
+
+    private static final class PlannedTripDetail {
+        final String startDate;
+        final String endDate;
+        final String label;
+
+        PlannedTripDetail(String startDate, String endDate, String label) {
+            this.startDate = startDate;
+            this.endDate = endDate;
+            this.label = label.isEmpty() ? "planned" : label;
+        }
+
+        static PlannedTripDetail parse(String encoded) {
+            String[] parts = (encoded == null ? "" : encoded).split("\\|", -1);
+            return new PlannedTripDetail(
+                    parts.length > 0 ? parts[0].trim() : "",
+                    parts.length > 1 ? parts[1].trim() : "",
+                    parts.length > 2 ? parts[2].trim() : "planned");
+        }
     }
 
     private static final class JourneyDetail {

@@ -55,6 +55,10 @@ public final class DemoSarah {
                 history);
         if (publicAnswer != null && !publicAnswer.trim().isEmpty()) return publicAnswer.trim();
 
+        String timedTrip = TimedTripCoordinator.handle(
+                SarahApplication.appContext(), safe, profile, memories);
+        if (timedTrip != null && !timedTrip.trim().isEmpty()) return timedTrip.trim();
+
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
         if (proactive.handled()) return proactive.reply;
 
@@ -84,7 +88,7 @@ public final class DemoSarah {
         }
 
         if (lower.contains("tell me about yourself") || lower.contains("who are you")) {
-            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can remember approved details, help organize unfamiliar trips, use official and public sources while online, show maps and media, support someone during travel anxiety, and keep talking when the connection disappears.";
+            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can keep separate profiles on a shared phone, remember approved details for the right person, organize unfamiliar trips, use public sources while online, show maps and media, support someone during travel anxiety, and keep talking when the connection disappears.";
         }
 
         if (lower.contains("what do you know about me") || lower.contains("what do you remember") || lower.contains("remember about me")) {
@@ -99,20 +103,25 @@ public final class DemoSarah {
             return "Use the question-mark button for personalized trivia, turbulence support, or the grounding game. Those tools work locally even without internet.";
         }
 
+        if (lower.startsWith("i like ") || lower.startsWith("i love ") || lower.startsWith("i enjoy ")
+                || lower.contains("i'm a fan of") || lower.contains("i am a fan of")) {
+            String subject = interestSubject(safe);
+            if (!subject.isEmpty()) {
+                if ("yes".equals(profile.getOrDefault("memory_consent", "no"))) {
+                    return "I saved " + subject + " as an interest in " + name
+                            + "’s separate profile. I’ll use it when it actually helps and won’t force it into every reply.";
+                }
+                return "I understand that you like " + subject
+                        + ". I won’t save it because memory is not enabled for this profile, and I won’t turn it into a trip unless you do.";
+            }
+        }
+
         if (containsAny(lower, "movie", "movies", "show", "shows", "book", "books", "comic", "comics", "game", "games")) {
             return "I can talk about that as its own subject. Tell me the title or the part you are interested in, and I will not force it back into trip planning.";
         }
 
         if (containsAny(lower, "computer", "technology", "ai", "robot", "coding", "programming")) {
             return "We can stay with technology instead of travel. I can help organize an idea, compare approaches, explain a concept, or think through what you want to build.";
-        }
-
-        if (lower.startsWith("i like ") || lower.startsWith("i love ") || lower.startsWith("i enjoy ")
-                || lower.contains("i'm a fan of") || lower.contains("i am a fan of")) {
-            String subject = interestSubject(safe);
-            if (!subject.isEmpty()) {
-                return "I’ll keep " + subject + " in mind when it is useful. I won’t turn it into a trip or force it into every reply.";
-            }
         }
 
         if (isShortClosure(lower)) {
@@ -133,21 +142,33 @@ public final class DemoSarah {
         return "I’m here, " + name + ".";
     }
 
-    private static String memorySummary(Map<String, String> profile, List<Map<String, String>> memories) {
+    private static String memorySummary(Map<String, String> profile, List<Map<String, String>> ownerMemories) {
         List<String> facts = new ArrayList<>();
         String home = profile.getOrDefault("hometown", "").trim();
         String interests = profile.getOrDefault("interests", "").trim();
+        String speakerMemories = profile.getOrDefault("speaker_memories", "").trim();
+        boolean owner = "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
         if (!home.isEmpty()) facts.add("you’re from " + home);
         if (!interests.isEmpty()) facts.add("you enjoy " + interests);
-        for (Map<String, String> memory : memories) {
-            String summary = memory.getOrDefault("summary", "").trim();
-            String lower = summary.toLowerCase(Locale.US);
-            if (summary.isEmpty() || lower.startsWith("name:") || lower.startsWith("age:")) continue;
-            if (!containsIgnoreCase(facts, summary)) facts.add(lowerFirst(summary));
-            if (facts.size() >= 5) break;
+        if (!speakerMemories.isEmpty()) {
+            for (String value : speakerMemories.split(";")) {
+                String clean = value.trim();
+                if (!clean.isEmpty() && !containsIgnoreCase(facts, clean)) facts.add(lowerFirst(clean));
+                if (facts.size() >= 5) break;
+            }
         }
-        if (facts.isEmpty()) return "I know your name, and I’m still learning the rest carefully.";
-        return "I remember that " + joinNaturally(facts) + ". You can review these in the Travel Notebook.";
+        if (owner) {
+            for (Map<String, String> memory : ownerMemories) {
+                String summary = memory.getOrDefault("summary", "").trim();
+                String lower = summary.toLowerCase(Locale.US);
+                if (summary.isEmpty() || lower.startsWith("name:") || lower.startsWith("age:")) continue;
+                if (!containsIgnoreCase(facts, summary)) facts.add(lowerFirst(summary));
+                if (facts.size() >= 5) break;
+            }
+        }
+        if (facts.isEmpty()) return "I know your name, and I’m still learning the rest carefully in your separate profile.";
+        return "I remember that " + joinNaturally(facts) + ". I’m using only "
+                + profile.getOrDefault("name", "this person") + "’s profile right now.";
     }
 
     private static String interestSubject(String text) {

@@ -17,8 +17,12 @@ public final class EventTripIntentParser {
             this.monitoringRequested = monitoringRequested;
         }
 
+        public boolean recognized() {
+            return !eventName.isEmpty();
+        }
+
         public boolean found() {
-            return !eventName.isEmpty() && !destination.isEmpty();
+            return recognized() && !destination.isEmpty();
         }
     }
 
@@ -76,6 +80,11 @@ public final class EventTripIntentParser {
                 return new EventIntent(event, city, monitor || looksLikeNamedEvent(event));
             }
         }
+
+        String unfamiliarEvent = GenericEventReference.extract(safe);
+        if (!unfamiliarEvent.isEmpty()) {
+            return new EventIntent(unfamiliarEvent, "", true);
+        }
         return new EventIntent("", "", false);
     }
 
@@ -106,7 +115,7 @@ public final class EventTripIntentParser {
 
     private static boolean looksLikeNamedEvent(String event) {
         String lower = event.toLowerCase(Locale.US);
-        return containsAny(lower,
+        return GenericEventReference.looksLikeEvent(event) || containsAny(lower,
                 "conference", "convention", "expo", "festival", "summit", "congress",
                 "comic", "show", "meetup", "hackathon", "concert", "championship");
     }

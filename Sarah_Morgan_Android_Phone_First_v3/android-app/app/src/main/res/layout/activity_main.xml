@@ -15,7 +15,7 @@
         android:orientation="horizontal"
         android:paddingLeft="18dp"
         android:paddingTop="14dp"
-        android:paddingRight="10dp"
+        android:paddingRight="8dp"
         android:paddingBottom="14dp">
 
         <LinearLayout
@@ -52,17 +52,26 @@
 
         <ImageButton
             android:id="@+id/calmButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Calm and trivia mode"
             android:src="@android:drawable/ic_menu_help"
             android:tint="@color/white" />
 
+        <com.kiraworld.sarahtravel.ProfileButton
+            android:id="@+id/profileButton"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Switch the person talking with Sarah"
+            android:padding="8dp"
+            android:tint="@color/white" />
+
         <ImageButton
             android:id="@+id/notebookButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Travel notebook"
             android:src="@android:drawable/ic_menu_agenda"
@@ -70,8 +79,8 @@
 
         <ImageButton
             android:id="@+id/settingsButton"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Settings"
             android:src="@android:drawable/ic_menu_preferences"
@@ -81,11 +90,12 @@
     <com.kiraworld.sarahtravel.ExploreButton
         android:id="@+id/exploreButton"
         android:layout_width="match_parent"
-        android:layout_height="44dp"
+        android:layout_height="wrap_content"
         android:layout_marginLeft="10dp"
         android:layout_marginTop="6dp"
         android:layout_marginRight="10dp"
         android:layout_marginBottom="2dp"
+        android:minHeight="76dp"
         android:contentDescription="Explore maps, public photos, videos, routes, and current travel sources"
         android:text="Explore maps • photos • videos • routes"
         android:textAllCaps="false"

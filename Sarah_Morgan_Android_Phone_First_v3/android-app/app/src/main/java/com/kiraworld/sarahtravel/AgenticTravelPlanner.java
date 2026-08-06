@@ -19,6 +19,7 @@ public final class AgenticTravelPlanner {
     public static final String SAVE_BOOKING_LINK = "save_booking_link";
     public static final String SAVE_JOURNEY_PLAN = "save_journey_plan";
     public static final String CREATE_MOBILITY_WATCH = "create_mobility_watch";
+    public static final String SAVE_PLANNED_TRIP = "save_planned_trip";
 
     public static final class Action {
         public final String type;
@@ -113,6 +114,26 @@ public final class AgenticTravelPlanner {
             }
             reply.append(" I won’t make you answer a long form first.");
             return new Plan(reply.toString(), actions);
+        }
+
+        if (eventIntent.recognized()) {
+            return new Plan(
+                    "I recognize “" + eventIntent.eventName
+                            + "” as an event, not a city. I’ll look for a likely official page, verify its location and dates when public lookup is available, and only then save the verified event trip. I won’t create a fake destination record while those details are unknown.",
+                    actions);
+        }
+
+        TripWindowParser.TripWindow timedTrip = TripWindowParser.parse(safe);
+        if (timedTrip.found()) {
+            actions.add(new Action(
+                    SAVE_PLANNED_TRIP,
+                    timedTrip.destination,
+                    timedTrip.encodedDates()));
+            actions.add(new Action(
+                    QUEUE_KNOWLEDGE_PACK,
+                    timedTrip.destination,
+                    "Timed trip research for " + timedTrip.startDate + " through " + timedTrip.endDate));
+            return new Plan(CityVisitPlanner.answer(timedTrip, profile, memories), actions);
         }
 
         if (journey.found()) {
