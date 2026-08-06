@@ -17,6 +17,7 @@ import javax.crypto.spec.GCMParameterSpec;
 public final class SecureStore {
     private static final String ALIAS = "SarahMorganEncryptedSecrets";
     private static final String PREF = "secure_preferences";
+    private static final String TEAM_BACKEND_SENTINEL = "__SARAH_TEAM_BACKEND__";
 
     private SecureStore() { }
 
@@ -33,7 +34,9 @@ public final class SecureStore {
      * installs the APK. Old user-entered keys are intentionally ignored.
      */
     public static String loadApiKey(Context context) {
-        return SarahModelConfig.apiKey();
+        String key = SarahModelConfig.apiKey();
+        if (!key.isEmpty()) return key;
+        return SarahModelConfig.backendUrl().isEmpty() ? "" : TEAM_BACKEND_SENTINEL;
     }
 
     public static void saveDealBackendToken(Context context, String value) throws Exception {
