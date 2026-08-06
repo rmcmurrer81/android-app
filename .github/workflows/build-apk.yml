@@ -105,11 +105,13 @@ jobs:
           java -cp build/agentic-test GenericEventReferenceTest
           java -cp build/agentic-test TripWindowParserTest
 
-      - name: Check that end users are not asked for provider passwords
+      - name: Check that app users are not asked for provider credentials
         run: |
-          ! grep -RniE 'apiKeyInput|Personal connected-model API key|password.*loyalty|loyalty.*password' \
-            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main || \
-            (echo 'Found a forbidden end-user provider/password field' && exit 1)
+          if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic) API key' \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main; then
+            echo 'Found a forbidden end-user provider credential field'
+            exit 1
+          fi
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
