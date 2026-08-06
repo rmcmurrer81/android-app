@@ -43,6 +43,11 @@ public final class PublicOnlineFallback {
         if (!GenericEventReference.recentEvent(history, message).isEmpty()) {
             String discovered = PublicEventDiscoveryGateway.answer(context, message, history);
             if (discovered != null && !discovered.trim().isEmpty()) return discovered.trim();
+            if (SarahModelConfig.fullConversationAvailable()) {
+                // Let the connected model use its current-source tools rather than
+                // replacing a potentially useful answer with a scripted failure.
+                return null;
+            }
             String eventName = GenericEventReference.recentEvent(history, message);
             return "I recognize “" + eventName
                     + "” as an event rather than a city, but " + UNVERIFIED_MARKER
