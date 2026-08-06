@@ -32,6 +32,11 @@ public final class SarahModelConfig {
         return clean(BuildConfig.SARAH_MODEL_BACKEND_URL);
     }
 
+    /** Optional build-owned bearer token used by SarahBackendClient. */
+    public static String backendToken() {
+        return clean(BuildConfig.SARAH_MODEL_BACKEND_TOKEN);
+    }
+
     public static boolean fullConversationAvailable() {
         return !backendUrl().isEmpty() || !apiKey().isEmpty();
     }
