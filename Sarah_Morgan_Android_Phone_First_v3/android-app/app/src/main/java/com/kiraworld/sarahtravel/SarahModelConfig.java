@@ -10,8 +10,8 @@ public final class SarahModelConfig {
     /** Included provider adapter. Change with the provider branch in ConnectedModelGateway. */
     public static final String PROVIDER_ID = "openai";
 
-    /** Default OpenAI model used by the hackathon build. */
-    public static final String MODEL_ID = "gpt-5-mini";
+    /** Higher-intelligence OpenAI model used by the hackathon build. */
+    public static final String MODEL_ID = "gpt-5.1";
 
     private SarahModelConfig() { }
 
