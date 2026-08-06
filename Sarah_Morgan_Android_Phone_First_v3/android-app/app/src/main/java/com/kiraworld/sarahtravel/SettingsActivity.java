@@ -80,6 +80,12 @@ public final class SettingsActivity extends Activity {
         mode.setSelection(getConversationMode(this));
         voice.setSelection(preferences.getInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0));
 
+        Button voiceProvisioning = findViewById(R.id.voiceProvisioningButton);
+        voiceProvisioning.setText(DeviceVoiceProvisioning.isActivated(this)
+                ? "ElevenLabs voice activated on this phone"
+                : "Activate Sarah Morgan voice on this phone");
+        voiceProvisioning.setOnClickListener(v -> TravelUi.start(this, VoiceProvisioningActivity.class));
+
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
         CheckBox mediaPreviews = findViewById(R.id.mediaPreviewCheck);
@@ -138,7 +144,7 @@ public final class SettingsActivity extends Activity {
                 : "Public lookup and Local conversation remain available; the team OpenAI connection is not included.";
         String voice = ElevenLabsVoiceConfig.isConfigured()
                 ? ElevenLabsVoiceConfig.statusLabel() + "."
-                : "ElevenLabs is not included yet, so Sarah uses Android voice.";
+                : DeviceVoiceProvisioning.status(this);
         Toast.makeText(this, "Sarah's settings were saved. " + conversation + " " + voice,
                 Toast.LENGTH_LONG).show();
         finish();
