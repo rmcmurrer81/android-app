@@ -306,7 +306,7 @@ public final class MainActivity extends Activity {
         List<Map<String, String>> dealWatches = db.listDealWatches(50);
         String prompt = SarahPromptBuilder.build(
                 profile, memories, trips, wishes, image != null, web);
-        final boolean offerLiveTravelSearch = !useSmart && TravelSearchHelper.shouldOffer(display);
+        final boolean offerLiveTravelSearch = TravelSearchHelper.shouldOffer(display);
         final String providerId = prefs.getString("connected_provider", "openai");
         final String model = prefs.getString("model", "gpt-5-mini");
 
