@@ -16,19 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch the Sarah 2.5 source materialization workflow
-        if: ${{ hashFiles('public-release/2.5/KICKOFF.json') != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh workflow run sarah-2.5-source-extract.yml \
-            --ref main \
-            --repo "$GITHUB_REPOSITORY"
-
-      - name: Keep the Sarah 2.4 public release workflow available
-        if: ${{ hashFiles('public-release/2.4/KICKOFF.json') != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run sarah-2.4-stay22-release.yml \
             --ref main \
             --repo "$GITHUB_REPOSITORY"
