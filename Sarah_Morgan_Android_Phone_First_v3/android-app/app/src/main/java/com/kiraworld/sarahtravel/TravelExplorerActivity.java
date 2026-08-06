@@ -13,9 +13,9 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 /** Displays maps, public photos, videos, and route searches inside Sarah. */
 public final class TravelExplorerActivity extends Activity {
@@ -49,11 +49,12 @@ public final class TravelExplorerActivity extends Activity {
         title.setText(title(kind, query));
         title.setTextSize(19f);
         title.setTextColor(Color.rgb(34, 57, 72));
-        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        title.setLayoutParams(new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         Button external = new Button(this);
         external.setText("Open outside Sarah");
         external.setAllCaps(false);
-        external.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl))));
+        external.setOnClickListener(v -> openExternal());
         top.addView(title);
         top.addView(external);
         root.addView(top);
@@ -80,6 +81,14 @@ public final class TravelExplorerActivity extends Activity {
         root.addView(webView);
         setContentView(root);
         webView.loadUrl(currentUrl);
+    }
+
+    private void openExternal() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl)));
+        } catch (Exception e) {
+            Toast.makeText(this, "No browser could open this source.", Toast.LENGTH_LONG).show();
+        }
     }
 
     @Override
@@ -130,11 +139,16 @@ public final class TravelExplorerActivity extends Activity {
         if ("photos".equals(kind)) label = "photos";
         else if ("videos".equals(kind)) label = "videos";
         else if ("route".equals(kind)) label = "route";
-        return "Sarah: " + label + " for " + (query == null || query.trim().isEmpty() ? "this trip" : query.trim());
+        return "Sarah: " + label + " for "
+                + (query == null || query.trim().isEmpty() ? "this trip" : query.trim());
     }
 
     private static String encode(String value) {
-        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
+        try {
+            return URLEncoder.encode(value == null ? "" : value, "UTF-8");
+        } catch (Exception ignored) {
+            return Uri.encode(value == null ? "" : value);
+        }
     }
 
     private int dp(int value) {
