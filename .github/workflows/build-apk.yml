@@ -19,6 +19,11 @@ jobs:
       SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
       SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
       SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
+      SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+      SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+      SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+      SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
+      SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
     steps:
       - name: Check out Sarah source
         uses: actions/checkout@v4
@@ -107,11 +112,18 @@ jobs:
 
       - name: Check that app users are not asked for provider credentials
         run: |
-          if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic) API key' \
+          if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic|ElevenLabs) API key' \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main; then
             echo 'Found a forbidden end-user provider credential field'
             exit 1
           fi
+
+      - name: Report optional team integrations without printing secrets
+        run: |
+          test -n "$SARAH_OPENAI_API_KEY$SARAH_MODEL_BACKEND_URL" && echo 'OpenAI conversation: configured' || echo 'OpenAI conversation: public/local fallback build'
+          test -n "$SARAH_ELEVENLABS_VOICE_ID" && echo 'ElevenLabs voice ID: configured' || echo 'ElevenLabs voice ID: not configured'
+          test -n "$SARAH_ELEVENLABS_API_KEY$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs service: configured' || echo 'ElevenLabs service: Android TTS fallback build'
+          test -n "$SARAH_TRAVEL_COMMERCE_URL" && echo 'Travel commerce: configured' || echo 'Travel commerce: external links only'
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
