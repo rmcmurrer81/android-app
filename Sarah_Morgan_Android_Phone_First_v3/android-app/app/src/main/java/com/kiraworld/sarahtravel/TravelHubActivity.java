@@ -37,12 +37,17 @@ public final class TravelHubActivity extends Activity {
         LinearLayout now = TravelUi.card(this, TravelUi.SKY);
         now.addView(TravelUi.cardTitle(this, "✨", "One trip, every part connected"));
         now.addView(TravelUi.body(this,
-                "Compare where to stay, how to get there, what to do, local rides, road-trip stops, loyalty value, accessibility needs, and hotel requests without losing the conversation."));
+                "Build an itinerary, compare where to stay and how to get there, discover food and events, open local rides, plan road-trip stops, use loyalty value, respect accessibility needs, and manage hotel requests without losing the conversation."));
         now.addView(TravelUi.primaryButton(this, "Open Sarah's travel notebook",
                 v -> TravelUi.start(this, TravelNotebookActivity.class)));
         root.addView(now);
 
         root.addView(TravelUi.section(this, "Plan and book"));
+        root.addView(feature(
+                "🗓️", "Itinerary, budget and packing",
+                "Turn ideas into an editable day-by-day plan, track planned and actual spending, and keep a preparation list separated by the active profile.",
+                TravelUi.MINT,
+                TripPlannerActivity.class));
         root.addView(feature(
                 "🏨", "Hotels and rooms",
                 "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and live team-backend results when configured.",
