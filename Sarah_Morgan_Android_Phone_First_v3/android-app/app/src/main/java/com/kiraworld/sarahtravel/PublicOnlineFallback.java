@@ -38,6 +38,14 @@ public final class PublicOnlineFallback {
                     + ", but I could not read its official page right now. I saved the official source and will retry. Use the media panel for its map, public photos, videos, official page, and route options.";
         }
 
+        if (!GenericEventReference.recentEvent(history, message).isEmpty()) {
+            String discovered = PublicEventDiscoveryGateway.answer(context, message, history);
+            if (discovered != null && !discovered.trim().isEmpty()) return discovered.trim();
+            String eventName = GenericEventReference.recentEvent(history, message);
+            return "I recognize “" + eventName
+                    + "” as an event rather than a city, but I could not verify a likely official page yet. I will not invent its location or dates. Use Explore to open a public event search, and I’ll retry when a better source is available.";
+        }
+
         String publicKnowledge = PublicKnowledgeGateway.answer(message);
         return publicKnowledge == null || publicKnowledge.trim().isEmpty() ? null : publicKnowledge.trim();
     }
@@ -64,7 +72,7 @@ public final class PublicOnlineFallback {
 
     private static boolean isEventFollowUp(String message) {
         String lower = message == null ? "" : message.toLowerCase(Locale.US).trim();
-        return lower.matches(".*\\b(when|what date|which date|dates|where|venue|address|hours|tickets|ticket price|how much|official site|official page|who is appearing|guests)\\b.*")
-                || lower.matches("^(when is it|where is it|what about tickets|what are the dates)[?.! ]*$");
+        return GenericEventReference.isFollowUp(message)
+                || lower.matches(".*\\b(official site|official page|who is appearing)\\b.*");
     }
 }
