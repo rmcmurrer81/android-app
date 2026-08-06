@@ -8,6 +8,8 @@ import java.util.Map;
 
 /** Uses narrow public sources when internet exists but a full connected model is unavailable. */
 public final class PublicOnlineFallback {
+    private static final String UNVERIFIED_MARKER = "I could not verify a likely official page yet";
+
     private PublicOnlineFallback() { }
 
     public static String answer(
@@ -43,11 +45,16 @@ public final class PublicOnlineFallback {
             if (discovered != null && !discovered.trim().isEmpty()) return discovered.trim();
             String eventName = GenericEventReference.recentEvent(history, message);
             return "I recognize “" + eventName
-                    + "” as an event rather than a city, but I could not verify a likely official page yet. I will not invent its location or dates. Use Explore to open a public event search, and I’ll retry when a better source is available.";
+                    + "” as an event rather than a city, but " + UNVERIFIED_MARKER
+                    + ". I will not invent its location or dates. Use Explore to open a public event search, and I’ll retry when a better source is available.";
         }
 
         String publicKnowledge = PublicKnowledgeGateway.answer(message);
         return publicKnowledge == null || publicKnowledge.trim().isEmpty() ? null : publicKnowledge.trim();
+    }
+
+    public static boolean isUnverifiedEventReply(String reply) {
+        return reply != null && reply.contains(UNVERIFIED_MARKER);
     }
 
     /** Compatibility overload for older callers. */
