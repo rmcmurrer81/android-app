@@ -49,6 +49,22 @@ public final class DemoSarah {
             return "I saved a privacy-cleaned copy of the photo. I need an image-capable connected model to inspect the picture itself, but I can still keep its caption with the trip while offline.";
         }
 
+        // Narrow public-source lookups work without a language-model key.
+        KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(safe);
+        if (knownEvent != null) {
+            try {
+                OfficialEventPageLookup.Result official = OfficialEventPageLookup.lookup(knownEvent);
+                String officialReply = OfficialEventPageLookup.conversationalReply(official);
+                if (officialReply != null && !officialReply.trim().isEmpty()) return officialReply;
+            } catch (Exception ignored) {
+                return "I recognized " + knownEvent.eventName + " in " + knownEvent.destination
+                        + ", but its official page did not answer right now. I saved the event and will retry instead of inventing dates. Use Explore for the map, public photos, videos, route, and official web search.";
+            }
+        }
+
+        String publicKnowledge = PublicKnowledgeGateway.answer(safe);
+        if (publicKnowledge != null && !publicKnowledge.trim().isEmpty()) return publicKnowledge;
+
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
         if (proactive.handled()) return proactive.reply;
 
@@ -59,7 +75,7 @@ public final class DemoSarah {
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
 
         if (asksAboutMode(lower)) {
-            return "Automatic mode uses the connected model when internet and a model key are available, then continues locally when either is missing. Tap the status line under my name to change that preference.";
+            return "Automatic mode uses the connected model when internet and a model key are available. With internet but no key, I can still read selected official event pages and public factual references. Without internet I continue with the local Travel Brain. Tap the status line under my name to change the preference.";
         }
 
         if (isGreeting(lower)) {
@@ -78,7 +94,7 @@ public final class DemoSarah {
         }
 
         if (lower.contains("tell me about yourself") || lower.contains("who are you")) {
-            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can remember approved details, help organize unfamiliar trips, support someone during travel anxiety, and stay useful locally when the connected model is unavailable.";
+            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can remember approved details, help organize unfamiliar trips, support someone during travel anxiety, use narrow public references without a model key, and stay useful locally when the connected model is unavailable.";
         }
 
         if (lower.contains("what do you know about me") || lower.contains("what do you remember") || lower.contains("remember about me")) {
@@ -102,7 +118,7 @@ public final class DemoSarah {
         }
 
         if (safe.endsWith("?")) {
-            return "I may not have enough offline knowledge to answer that accurately. Automatic mode can use the connected model once Smart setup is complete, and I won’t invent an answer in the meantime.";
+            return "I do not have enough reliable local knowledge to answer that accurately. With internet I can handle some official-event and public-reference questions; broader natural conversation and research still need Smart setup. I won’t invent an answer.";
         }
 
         if (isShortClosure(lower)) {

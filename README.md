@@ -1,26 +1,100 @@
 # Sarah Morgan Android Companion
 
-Sarah Morgan is a phone-first Android travel and conversational companion. She can talk about ordinary subjects, remember approved details, support first-time travelers, continue locally when internet disappears, research current trips when a connected model is available, monitor event-centered travel, import user-selected booking links or screenshots, and now plan journeys across more than air travel.
+Sarah Morgan is a phone-first Android travel and conversational companion. This repository is the authoritative hackathon source and contains the Android project, tests, GitHub Actions workflow, developer documentation, and APK artifacts.
 
-Current Android version: **1.3-multimodal-travel**  
+Current Android version: **1.4-public-web-fallback**  
 Private-test application ID: `com.kiraworld.sarahtravel.debug`
 
-This repository is the authoritative hackathon source. It contains the Android project, tests, GitHub Actions workflow, developer documentation, and generated APK artifacts. It is a development prototype, not a public app-store release.
+This is a development prototype, not a public app-store release.
 
-## What 1.3 fixes
+## What 1.4 changes
 
-Earlier local builds could combine old wish-list places, saved trips, and recent conversation into one unrelated response. That caused errors such as comparing Paris and New York when the traveler had asked about a train from New York to California.
+Earlier builds showed `Smart setup needed` and then behaved as though internet access was useless without a model key. Version 1.4 separates three capabilities:
 
-Version 1.3 changes the context rules:
+| State | Capability |
+|---|---|
+| Internet + model key/backend | Full Smart conversation and configured tools |
+| Internet, no model key | Narrow public event and factual lookup plus Explore tools |
+| No internet | Local Travel Brain, memory, saved trips, calm tools, and offline packs |
+
+When internet is available but no model key is configured, the header now says:
+
+```text
+Automatic • Public lookup online • Smart setup needed
+```
+
+That means Sarah can use selected public sources, but broad natural conversation and arbitrary research still require Smart setup.
+
+Detailed documentation:
+
+```text
+PUBLIC_WEB_FALLBACK.md
+```
+
+## Bell County Comic Con repair
+
+Sarah now recognizes:
+
+```text
+Bell County Comic Con
+Bell Country Comic Con
+Bell County Comicon
+BCCC
+```
+
+as the canonical event:
+
+```text
+Bell County Comic Con — Belton, Texas
+```
+
+The known-event catalog stores its official public website, venue/address defaults, and aliases. When internet is available, Sarah reads the official page directly before using model-backed enrichment.
+
+Older builds could save `Bell Country Comic Con` as if it were a city. `SarahApplication.java` performs a one-time repair that removes only those malformed ordinary-destination records and creates the correct monitored event.
+
+## Public factual lookup
+
+Without a model key, Sarah can answer a limited set of clearly defined public-reference questions. The first supported intent is filming locations:
+
+```text
+Where did they film Smallville and Corner Gas?
+```
+
+`PublicKnowledgeGateway.java` uses public reference pages and extracts filming-related sentences. It does not claim to be a full web-search language model.
+
+## Permanent Explore tools
+
+A permanent button now appears below Sarah's header:
+
+```text
+Explore maps • photos • videos • routes
+```
+
+It offers:
+
+- OpenStreetMap;
+- Wikimedia Commons public-photo search;
+- YouTube travel-video search;
+- Google Maps route and local-transit view;
+- official event page or public web search;
+- current Amtrak, flight, rail, bus, and route sources.
+
+External sources do not endorse Sarah. Verify schedules, prices, closures, accessibility, safety, and availability before relying on them.
+
+## Active travel context
+
+Sarah uses the current message rather than mixing every old wish-list place into a reply.
+
+Rules:
 
 1. the current message wins;
-2. a short direct follow-up may use only the most recent relevant user message;
-3. saved wishes and old trips are not inserted into ordinary replies automatically;
-4. `from A to B` is treated as one route with an origin and destination;
-5. `I don't know yet`, `not sure yet`, and `undecided` close the travel subject without another question;
-6. a new event or journey immediately replaces an older topic.
+2. a short follow-up may use only the most recent relevant user message;
+3. saved wishes and old trips are not automatically inserted;
+4. `from A to B` is one route, not two competing vacations;
+5. `I don't know yet` closes the subject without another question;
+6. a new event or journey replaces the previous topic.
 
-Important file:
+Core file:
 
 ```text
 TravelContextResolver.java
@@ -28,13 +102,11 @@ TravelContextResolver.java
 
 ## Multimodal journeys
 
-Sarah no longer assumes every trip is a flight.
-
 Recognized method families:
 
 - air;
 - Amtrak or other rail;
-- local metro, subway, light rail, or transit;
+- local metro, subway, light rail, and transit;
 - intercity bus;
 - driving;
 - ferry;
@@ -51,40 +123,7 @@ Monitor travel options to Paris.
 Drive from Austin to San Antonio.
 ```
 
-Sarah should compare the complete door-to-door trip: price, duration, transfers, baggage, station or airport access, accessibility, reliability, weather, parking, and the local connection at both ends.
-
-A broad watch without a named method defaults to air, rail, and intercity bus where those methods make sense. It must not be described as airfare monitoring only.
-
-Core files:
-
-- `JourneyIntentParser.java`
-- `JourneyPlannerCore.java`
-- `MobilityWatchStore.java`
-- `MobilityGateway.java`
-- `MobilityWatchCoordinator.java`
-- `MobilityNotificationManager.java`
-
-Multimodal state is stored separately in:
-
-```text
-sarah_mobility.db
-```
-
-The Travel Notebook shows saved journeys, multimodal watches, backend status, last check time, latest result, and source note.
-
-## Maps, photos, videos, and routes
-
-For relevant trip, route, or event messages, Sarah can open an **Explore this trip** panel with:
-
-- **Map** — OpenStreetMap search;
-- **Photos** — Wikimedia Commons MediaSearch;
-- **Videos** — YouTube travel-video search;
-- **Route and local transit** — Google Maps directions view;
-- **Live travel options** — current-source links such as Amtrak, Google Flights, or a route search.
-
-The visual pages open inside `TravelExplorerActivity.java`, with an option to open the source externally.
-
-These are public contextual sources. Their inclusion does not imply endorsement, and they do not prove current opening hours, accessibility, closures, service, construction, weather, or safety.
+Broad travel watches compare air, rail, and intercity bus where appropriate rather than assuming airfare only.
 
 Detailed architecture:
 
@@ -94,22 +133,22 @@ MULTIMODAL_TRAVEL_AND_VISUAL_EXPLORER.md
 
 ## Event-centered trips
 
-Natural statements can create durable event trips:
+Natural statements can create durable monitored events:
 
 ```text
 I am going to Vegas for CES.
 I am going to San Diego for Comic-Con.
 I was thinking about taking metro to New York Comic Con.
-I am traveling to Austin for the Future of Travel Conference.
+I am thinking about going to Bell Country Comic Con.
 ```
 
-Sarah can save the event and destination, monitor source-backed official details, research nearby food and places, preserve the requested transport method, and avoid a long questionnaire.
-
-Event and booking details are stored separately in:
+Event data is stored separately in:
 
 ```text
 sarah_event_trips.db
 ```
+
+Official dates, venue, registration, schedule, and policy changes should come from official event sources first. Nearby food and places require reputable current sources and must not imply endorsement.
 
 Detailed documentation:
 
@@ -119,35 +158,14 @@ EVENT_TRIPS_AND_BOOKING_IMPORTS.md
 
 ## Booking imports
 
-Sarah is an Android Share target for `text/plain` and `image/*`.
+Sarah is an Android Share target for text links and images. A traveler can share:
 
-A traveler may share:
+- Expedia, Booking.com, hotel, airline, rail, car, or event-booking links;
+- visible booking screenshots from the Gallery.
 
-- an Expedia, Booking.com, hotel, airline, rail, car, or event-booking link;
-- a visible booking screenshot from the Gallery.
+Imports remain pending review. Sarah does not sign into private accounts, reuse cookies, request passwords, or treat screenshot extraction as confirmed booking truth.
 
-Links and screenshots are stored as pending imports. Sarah does not sign in to private accounts, reuse cookies, request account credentials, or treat extracted screenshot text as confirmed facts.
-
-Selected screenshots are decoded and re-encoded by `ImageSanitizer`; ordinary EXIF and GPS metadata are not copied. Image-model extraction remains marked `needs_confirmation` until the traveler reviews it.
-
-## Automatic connected and local behavior
-
-Sarah uses Automatic mode by default.
-
-| State | Route |
-|---|---|
-| Validated internet and saved model key | Connected model |
-| No validated internet | Local Travel Brain |
-| Internet but no model key | Local Travel Brain |
-| Connected request fails | Local Travel Brain for that message |
-| Connection becomes usable again | Connected model on the next message |
-| Local only selected | Never send conversation to a connected model |
-
-`LiveTravelIntent.java` requests current-source research for route, rail, Amtrak, metro, subway, bus, ferry, driving, traffic, parking, delays, events, weather, maps, and fare questions.
-
-A connected model's training knowledge is not current transport data. Current schedules, prices, closures, delays, routes, events, and weather require real source tools or a protected backend.
-
-## Conversation and durable-action architecture
+## Automatic and local architecture
 
 ```text
 User message
@@ -159,88 +177,24 @@ AgenticTravelPlanner
     └── durable actions
             ↓
       AgenticActionExecutor
-            ├── save wish or focus
+            ├── save wish/focus
             ├── queue destination pack
             ├── save journey plan
             ├── create multimodal watch
             ├── create event trip
-            └── save booking link
+            └── save booking import
     ↓
-Connected or local reply
+Conversation route
+    ├── connected model
+    ├── public event/factual lookup
+    └── local Travel Brain
 ```
 
-The spoken reply and durable action are separate. Sarah must not claim that a journey, watch, event monitor, destination pack, or booking import exists unless the appropriate local store was actually updated.
+Spoken claims and durable actions are separate. Sarah must not claim that a watch, event, booking, or pack exists unless the corresponding store was actually updated.
 
-## Low-question policy
+## Model/provider changes
 
-Sarah asks only when a missing fact would materially change:
-
-- a booking;
-- a legal or entry requirement;
-- accessibility planning;
-- a safety decision;
-- the traveler's explicit goal.
-
-Otherwise Sarah should use reversible defaults, do useful work, explain what she did, and allow corrections later.
-
-She must not repeatedly answer with `tell me more`, `what matters most`, or another generic question when she already has enough to begin.
-
-## Destination knowledge packs
-
-Mentioning a destination can queue a reusable pack containing:
-
-- overview;
-- recommended starting points;
-- transportation;
-- accessibility and sensory notes;
-- seasonal context;
-- current events;
-- source and verification note.
-
-Connected research fills current information. The local pack must not invent prices, opening hours, closures, entry requirements, schedules, or forecasts.
-
-## Travel backend contract
-
-The same authenticated HTTPS backend may accept legacy airfare watches and new multimodal requests.
-
-A multimodal request includes:
-
-```json
-{
-  "watch_kind": "multimodal",
-  "watch_id": 4,
-  "origin": "Newark, New Jersey",
-  "destination": "California",
-  "event_name": "",
-  "modes": "rail",
-  "purpose": "options",
-  "include_price": true,
-  "include_schedule": true,
-  "include_service_alerts": true,
-  "include_station_airport_access": true,
-  "include_local_connection": true,
-  "include_weather_context": true
-}
-```
-
-A normalized response may include:
-
-```json
-{
-  "found": true,
-  "significant": true,
-  "recommended_mode": "rail",
-  "summary": "A current rail combination is available with one transfer. Verify the official timetable before booking.",
-  "source_note": "Based on current official carrier and station information.",
-  "action_url": "https://example.com/source-backed-result"
-}
-```
-
-The backend, not the language model, should normalize providers and decide what counts as a meaningful option or change.
-
-## Changing the connected model
-
-The extension point is:
+The connected-provider extension point is:
 
 ```text
 ConnectedModelGateway.java
@@ -248,17 +202,16 @@ ConnectedModelGateway.java
 
 To add Claude, Bedrock, Gemini, or another provider:
 
-1. create a provider adapter matching the gateway inputs;
-2. preserve Sarah's system prompt, message history, current message, and optional image;
+1. implement a provider client matching the gateway inputs;
+2. preserve Sarah's identity prompt, history, current message, and optional image;
 3. add a stable provider ID and Settings option;
-4. keep credentials encrypted or move them behind an authenticated backend;
-5. implement real current-source tools before advertising route or event monitoring;
-6. support image input before advertising photo or booking-screenshot understanding;
-7. test text, multiple turns, images, route research, event JSON, booking JSON, timeouts, fallback, and recovery.
+4. store separate encrypted credentials or use a protected backend;
+5. test multi-turn text, images, current research, event JSON, booking JSON, timeouts, fallback, and recovery;
+6. never claim current research unless a real source/tool supplies it.
 
 ## Renaming Sarah
 
-Search for all user-visible identity strings:
+Search all user-visible and persistent identity surfaces:
 
 ```text
 Sarah
@@ -267,11 +220,11 @@ sarahtravel
 SarahMorgan
 ```
 
-Review the Android label, icon, onboarding and chat titles, greetings, prompt identity, local identity, settings, voice instructions, notification channels, documentation, workflow artifact names, and backend identifiers.
+Review the Android label, launcher icon, onboarding/chat titles, prompt identity, local replies, voice instructions, notification channels, database names, preferences, Keystore aliases, workflow artifacts, documentation, and backend identifiers.
 
-Internal Java class names may remain for a cosmetic rename. Changing the application ID, database filenames, preferences, Keystore aliases, notification channel IDs, or backend identifiers requires a migration plan.
+A cosmetic rename can preserve internal Java class names. Changing the application ID or persistent identifiers requires a migration plan.
 
-## Build and tests
+## Building and testing
 
 Workflow:
 
@@ -279,44 +232,42 @@ Workflow:
 .github/workflows/build-apk.yml
 ```
 
-The pull-request build tests:
+The workflow tests:
 
-- automatic Smart/Local routing;
-- active-context resolution;
-- old Paris context not leaking into New York-to-California rail;
-- `I don't know yet` clearing travel context;
-- Paris/London direct comparison follow-ups;
-- cross-country Amtrak parsing and response;
-- metro to New York Comic Con;
-- broad watches including air, rail, and bus;
-- Orlando and Universal low-question behavior;
-- CES, Comic-Con, booking-link, and destination-pack behavior;
-- full Android compilation and APK creation.
+- Smart/Local/public-lookup routing and status labels;
+- active destination context;
+- multimodal rail/transit/event planning;
+- Bell Country typo correction;
+- Bell County official event identity and URL;
+- journey, booking, event, memory, and no-question regressions;
+- full Android compilation;
+- APK renaming and artifact upload.
 
 Expected artifact:
 
 ```text
-Sarah-Morgan-1.3-multimodal-travel
+Sarah-Morgan-1.4-public-web-fallback
 ```
 
 Expected APK:
 
 ```text
-Sarah-Morgan-1.3-multimodal-travel.apk
+Sarah-Morgan-1.4-public-web-fallback.apk
 ```
 
-Verify in Settings:
+Verify on the phone in Settings:
 
 ```text
-Build 1.3-multimodal-travel
+Build 1.4-public-web-fallback
 ```
 
 ## Known boundaries
 
-- Local Sarah is a structured fallback, not a complete language model.
-- Current route, schedule, fare, delay, service, event, and weather information requires source-backed connected services.
-- Android background jobs are not exact clock-time alarms.
-- Some public sites may work better in an external browser than an embedded WebView.
-- External maps, media, carriers, and travel sites do not endorse Sarah.
-- The debug APK is not production signed.
-- A public release needs authentication, deletion controls, privacy policy, source attribution, accessibility review, broader device testing, release signing, and store compliance.
+- Public lookup is not a complete language model.
+- Arbitrary general conversation remains limited without Smart setup.
+- Official-page parsers may fail when sites redesign their HTML.
+- Current schedules, fares, routes, delays, weather, and availability require live sources.
+- Android may defer background work.
+- Embedded web pages may work better in an external browser.
+- Debug APKs are not production signed.
+- A public release needs authentication, source/privacy disclosures, deletion controls, rate limits, billing controls, broader tests, and store compliance.

@@ -21,7 +21,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.3-multimodal-travel"
+            android:text="Build 1.4-public-web-fallback"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -30,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Automatic mode is the default. Sarah uses the connected model and live research when available, continues with the offline Travel Brain when service drops, and returns online automatically."
+            android:text="Automatic mode is the default. With internet and a configured model key, Sarah uses full Smart conversation. With internet but no key, she can still read selected official event pages and public factual references. Without internet she continues with the local Travel Brain."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -52,6 +52,12 @@
             android:layout_marginTop="18dp"
             android:text="Connected model and destination research"
             android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="A model key is still required for broad natural conversation, arbitrary current research, image understanding, and richer recommendations. Public lookup without a key is intentionally narrower and source-based."
+            android:textSize="13sp" />
 
         <EditText
             android:id="@+id/apiKeyInput"
@@ -85,20 +91,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Sarah now keeps the current route separate from old wish-list places. A message such as “New York to California by train” is treated as one journey, not a comparison with Paris or another saved trip."
+            android:text="Sarah keeps the current route separate from old wish-list places. A message such as “New York to California by train” is treated as one journey, not a comparison with Paris or another saved trip."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Maps, photos, videos, and routes"
+            android:text="Permanent Explore tools"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="For relevant trip messages, Sarah can open an in-app Explore panel with an OpenStreetMap view, Wikimedia Commons photo search, YouTube travel-video search, and a route view. These are public contextual sources; verify closures, service changes, and accessibility before relying on them."
+            android:text="The main chat now has a permanent Explore button for maps, Wikimedia Commons public photos, YouTube videos, routes, official event pages, public web searches, and current travel sources. These sources do not endorse Sarah; verify closures, schedules, access, and prices."
             android:textSize="13sp" />
 
         <TextView
@@ -111,7 +117,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Saying “Vegas for CES,” “San Diego for Comic-Con,” or “metro to New York Comic Con” creates an event-centered record that checks official event details, venue and schedule changes, transportation, nearby food, and nearby places. Android may defer background jobs to preserve battery."
+            android:text="Recognized events can use their official public page even without a model key. Bell County Comic Con—including the common “Bell Country” typo—resolves to Belton, Texas. CES, San Diego Comic-Con, and New York Comic Con also have official-source records. Unknown events still need Smart research or manual public search."
             android:textSize="13sp" />
 
         <TextView

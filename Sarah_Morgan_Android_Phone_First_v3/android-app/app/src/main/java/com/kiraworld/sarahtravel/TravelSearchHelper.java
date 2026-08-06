@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Opens Sarah's map, photo, video, route, and live-travel tools. */
+/** Opens Sarah's map, photo, video, route, official-source, and live-travel tools. */
 public final class TravelSearchHelper {
     private TravelSearchHelper() { }
 
@@ -23,13 +23,15 @@ public final class TravelSearchHelper {
                 "cross country", "cross-country", "amtrak", "train trip", "rail trip",
                 "metro to", "subway to", "transit to", "bus to", "drive to", "ferry to",
                 "going to", "planning to go", "thinking about going", "want to visit",
-                "always wanted to visit", "comic con", "comic-con", "ces", "nycc");
+                "always wanted to visit", "comic con", "comic-con", "ces", "nycc",
+                "where did they film", "where was it filmed", "filming location", "filming locations");
     }
 
     public static void show(Activity activity, String message, Map<String, String> profile) {
         EventTripIntentParser.EventIntent event = EventTripIntentParser.parse(message);
         JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(message, profile, List.of());
         List<String> places = DestinationParser.extractDestinations(message);
+        KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(message);
 
         String destination = event.found() ? event.destination
                 : journey.found() ? journey.destination
@@ -44,14 +46,22 @@ public final class TravelSearchHelper {
                 "Photos",
                 "Videos",
                 "Route and local transit",
+                knownEvent == null ? "Official or public web search" : "Official " + knownEvent.eventName + " page",
                 "Live travel options"
         };
 
         new AlertDialog.Builder(activity)
-                .setTitle("Explore this trip")
-                .setMessage("Sarah can show public maps, public photo searches, travel videos, and a route view. Current schedules, fares, closures, and service alerts still require live official sources.")
+                .setTitle("Explore")
+                .setMessage("Sarah can show public maps, photo searches, videos, routes, official event pages, and live travel sources. Verify current schedules, prices, closures, and access details before relying on them.")
                 .setItems(choices, (dialog, which) -> {
                     if (which == 4) {
+                        String url = knownEvent == null
+                                ? "https://www.google.com/search?q=" + Uri.encode(query)
+                                : knownEvent.officialUrl;
+                        open(activity, url);
+                        return;
+                    }
+                    if (which == 5) {
                         showLiveOptions(activity, origin, destination, mode);
                         return;
                     }
@@ -64,7 +74,7 @@ public final class TravelSearchHelper {
                     intent.putExtra(TravelExplorerActivity.EXTRA_MODE, mode);
                     activity.startActivity(intent);
                 })
-                .setNegativeButton("Not now", null)
+                .setNegativeButton("Close", null)
                 .show();
     }
 
@@ -103,7 +113,7 @@ public final class TravelSearchHelper {
         try {
             activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception e) {
-            Toast.makeText(activity, "No browser could open that travel source.", Toast.LENGTH_LONG).show();
+            Toast.makeText(activity, "No browser could open that source.", Toast.LENGTH_LONG).show();
         }
     }
 

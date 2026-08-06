@@ -39,7 +39,7 @@
                 android:layout_marginTop="5dp"
                 android:background="@drawable/mode_status_background"
                 android:clickable="true"
-                android:contentDescription="Conversation mode. Tap to switch between Local and Smart mode."
+                android:contentDescription="Conversation and public lookup status. Tap to change connection settings."
                 android:focusable="true"
                 android:paddingLeft="10dp"
                 android:paddingTop="5dp"
@@ -77,6 +77,20 @@
             android:src="@android:drawable/ic_menu_preferences"
             android:tint="@color/white" />
     </LinearLayout>
+
+    <com.kiraworld.sarahtravel.ExploreButton
+        android:id="@+id/exploreButton"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginBottom="2dp"
+        android:contentDescription="Explore maps, public photos, videos, routes, and current travel sources"
+        android:text="Explore maps • photos • videos • routes"
+        android:textAllCaps="false"
+        android:textColor="@color/sarah_navy"
+        android:textSize="14sp" />
 
     <ScrollView
         android:id="@+id/chatScroll"

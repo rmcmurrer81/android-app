@@ -25,12 +25,18 @@ public final class ConversationModePolicy {
             boolean validatedInternet,
             boolean connectedKeyAvailable,
             boolean lastConnectedCallFailed) {
-        if (mode == MODE_LOCAL_ONLY) return "Local only";
+        if (mode == MODE_LOCAL_ONLY) {
+            return validatedInternet ? "Local only • public lookup available" : "Local only • offline";
+        }
 
         String prefix = mode == MODE_AUTO ? "Automatic" : "Smart preferred";
-        if (!connectedKeyAvailable) return prefix + " • Local • Smart setup needed";
+        if (!connectedKeyAvailable) {
+            return validatedInternet
+                    ? prefix + " • Public lookup online • Smart setup needed"
+                    : prefix + " • Local • offline";
+        }
         if (!validatedInternet) return prefix + " • Local • offline";
-        if (lastConnectedCallFailed) return prefix + " • Local fallback";
+        if (lastConnectedCallFailed) return prefix + " • Public/local fallback";
         return prefix + " • Smart online";
     }
 }
