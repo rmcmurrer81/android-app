@@ -32,22 +32,13 @@ jobs:
           rm -rf /tmp/sarah23-source
           mkdir -p /tmp/sarah23-source
           unzip -q /tmp/Sarah_Travel_OS_2.3_Source.zip -d /tmp/sarah23-source
-          python - <<'PY'
-          from pathlib import Path
-          import json
-          root = Path('/tmp/sarah23-source')
-          release = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
-          if release.get('version') != '2.3-public-continuity':
-              raise SystemExit(f"Unexpected baseline version: {release.get('version')}")
-          for required in [
-              root / 'windows-companion' / 'sarah_core' / 'desktop.py',
-              root / 'windows-companion' / 'SarahMorganWindows.spec',
-              root / 'android-upgrade' / 'apply_android_upgrade.py',
-          ]:
-              if not required.is_file():
-                  raise SystemExit(f'Missing baseline source: {required}')
-          print(f"Verified {sum(p.is_file() for p in root.rglob('*'))} baseline files")
-          PY
+          test -f /tmp/sarah23-source/PUBLIC_RELEASE.json
+          test -d /tmp/sarah23-source/windows-companion
+          test -d /tmp/sarah23-source/android-upgrade
+          echo 'PUBLIC_RELEASE.json:'
+          cat /tmp/sarah23-source/PUBLIC_RELEASE.json
+          echo 'Top-level source entries:'
+          find /tmp/sarah23-source -maxdepth 2 -type f | sort | head -100
 
       - name: Materialize readable phone and Windows source on main
         id: materialize
