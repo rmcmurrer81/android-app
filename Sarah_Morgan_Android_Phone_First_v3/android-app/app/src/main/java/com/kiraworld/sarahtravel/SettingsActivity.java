@@ -20,6 +20,7 @@ public final class SettingsActivity extends Activity {
     private static final String KEY_MODE_MIGRATED = "automatic_mode_migrated_v1";
     private static final String KEY_TEAM_MODEL_MIGRATED = "team_model_config_migrated_v1";
     private static final String KEY_VOICE_MIGRATED = "elevenlabs_voice_migrated_v1";
+    private static final String KEY_ELEVENLABS_BECAME_AVAILABLE = "elevenlabs_became_available_v2";
     private static final int REQ_NOTIFICATIONS = 4401;
 
     public static void ensureAutomaticModeDefault(Context context) {
@@ -40,6 +41,12 @@ public final class SettingsActivity extends Activity {
         if (!preferences.getBoolean(KEY_VOICE_MIGRATED, false)) {
             editor.putInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0)
                     .putBoolean(KEY_VOICE_MIGRATED, true);
+            changed = true;
+        }
+        if (ElevenLabsVoiceConfig.isConfigured()
+                && !preferences.getBoolean(KEY_ELEVENLABS_BECAME_AVAILABLE, false)) {
+            editor.putInt("voice_mode", 1)
+                    .putBoolean(KEY_ELEVENLABS_BECAME_AVAILABLE, true);
             changed = true;
         }
         if (changed) editor.apply();
