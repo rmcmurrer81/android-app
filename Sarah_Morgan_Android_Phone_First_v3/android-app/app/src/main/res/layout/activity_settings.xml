@@ -22,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.6-profiles-events"
+            android:text="Build 2.0-travel-os-all-tracks"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -33,7 +33,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/mode_status_background"
             android:padding="12dp"
-            android:text="Conversation AI: OpenAI, selected by the app team. People who install Sarah are not asked for an API key or model name. If the team changes providers, it edits SarahModelConfig.java and ConnectedModelGateway.java, then builds a new APK."
+            android:text="Conversation AI: OpenAI, selected by the app team. Premium online voice: Sarah Morgan on ElevenLabs when the team includes her connection. People installing Sarah are not asked for provider keys or model names."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -54,7 +54,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Allow current public and connected research for events, maps, routes, schedules, weather, attractions, and travel information" />
+            android:text="Allow current public and connected research for events, maps, routes, schedules, weather, attractions, hotels, and travel information" />
 
         <CheckBox
             android:id="@+id/autoResearchCheck"
@@ -68,13 +68,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Show an inline public photo preview and Map, Photos, Videos, Route, and Official Source buttons for relevant places and events" />
+            android:text="Show an inline public photo preview and Map, Photos, Videos, Route, and Official Source tools for relevant places and events" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Online without the team OpenAI connection, Sarah still uses public-source tools for known events, best-effort discovery of unfamiliar events, maps, public photos, videos, routes, and selected factual questions. Public lookup is useful but is not a replacement for a full language model."
+            android:text="Without the team OpenAI connection, Sarah still uses public-source tools for recognized and unfamiliar events, maps, public media, routes, and selected factual questions. Without ElevenLabs or internet, she automatically speaks with Android's local voice."
             android:textSize="13sp" />
 
         <TextView
@@ -87,7 +87,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Use the person icon beside the question-mark button to switch saved profiles. A new person may say “My name is …” and Sarah will create a separate profile, ask their age, apply age-appropriate suggestions, ask memory permission for an adult, and ask once whether they are joining the current planned trip. Child preference memory stays off unless a responsible adult later enables it."
+            android:text="Use the person icon to switch saved profiles. A new person may say “My name is …” and Sarah creates a separate profile, asks their age, applies age-appropriate suggestions, and asks once whether they are joining the active trip."
             android:textSize="13sp" />
 
         <TextView
@@ -102,12 +102,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Schedule background event, air, rail, bus, transit, driving, ferry, and deal checks when the team services are available" />
+            android:text="Schedule background event, air, rail, bus, transit, driving, ferry, hotel, and deal checks when team services are available" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Current schedules, delays, prices, and automatic notifications require team-owned source services. The user does not enter those service credentials here."
+            android:text="Current prices, schedules, room inventory, delays, and automatic notifications require lawful team-owned sources. The person using Sarah does not enter those service credentials here."
             android:textSize="13sp" />
 
         <TextView
@@ -122,6 +122,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="The selected Sarah Morgan ElevenLabs voice uses Eleven Multilingual v2 with the voice-design settings used for the approved samples. If the service is missing, slow, out of credits, or offline, Sarah continues with Android speech instead of becoming silent."
+            android:textSize="13sp" />
+
         <CheckBox
             android:id="@+id/autoSpeakCheck"
             android:layout_width="match_parent"
@@ -132,7 +138,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Voice speed" />
+            android:text="Android fallback voice speed" />
 
         <SeekBar
             android:id="@+id/speedSeek"
@@ -153,7 +159,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn approved interests, travel preferences, past trips, routes, worries, wish-list places, event trips, and requested watches for the correct active profile" />
+            android:text="Let Sarah learn approved interests, preferences, past trips, routes, worries, event trips, loyalty context, and requested watches for the correct active profile" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -166,7 +172,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Hackathon prototype: a public release should keep shared provider credentials on a protected authenticated backend, not inside an APK. See README.md for the exact source files used to change OpenAI, the model ID, or the backend."
+            android:text="Hackathon prototype: public releases should keep shared OpenAI, ElevenLabs, hotel, travel-commerce, and voice-agent credentials on protected authenticated backends rather than inside an APK. See the repository setup documents for exact team configuration steps."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
