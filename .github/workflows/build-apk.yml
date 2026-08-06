@@ -11,10 +11,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Optional private hackathon secrets. End users never enter these in Sarah.
+      # Optional team-owned secrets. People installing Sarah never enter these.
       SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
       SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
       SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
+      SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
+      SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
+      SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
+      SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
+      SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+      SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+      SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+      SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
+      SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
     steps:
       - name: Check out Sarah source
         uses: actions/checkout@v4
@@ -32,6 +41,15 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java
           java -cp build/pure-java-test ConversationModePolicyTest
+
+      - name: Test all four hackathon track capabilities
+        run: |
+          rm -rf build/travel-os-feature-test
+          mkdir -p build/travel-os-feature-test
+          javac -encoding UTF-8 -d build/travel-os-feature-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelOsFeatureCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelOsFeatureCatalogTest.java
+          java -cp build/travel-os-feature-test TravelOsFeatureCatalogTest
 
       - name: Test Travel Brain active context and multimodal routes
         run: |
@@ -92,6 +110,21 @@ jobs:
           java -cp build/agentic-test GenericEventReferenceTest
           java -cp build/agentic-test TripWindowParserTest
 
+      - name: Check that app users are not asked for provider credentials
+        run: |
+          if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic|ElevenLabs) API key' \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main; then
+            echo 'Found a forbidden end-user provider credential field'
+            exit 1
+          fi
+
+      - name: Report optional team integrations without printing secrets
+        run: |
+          test -n "$SARAH_OPENAI_API_KEY$SARAH_MODEL_BACKEND_URL" && echo 'OpenAI conversation: configured' || echo 'OpenAI conversation: public/local fallback build'
+          test -n "$SARAH_ELEVENLABS_VOICE_ID" && echo 'ElevenLabs voice ID: configured' || echo 'ElevenLabs voice ID: not configured'
+          test -n "$SARAH_ELEVENLABS_API_KEY$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs service: configured' || echo 'ElevenLabs service: Android TTS fallback build'
+          test -n "$SARAH_TRAVEL_COMMERCE_URL" && echo 'Travel commerce: configured' || echo 'Travel commerce: external links only'
+
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
         with:
@@ -103,15 +136,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 1.6 profiles-events APK
+      - name: Build Sarah Travel OS 2.0 APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.6-profiles-events.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.0-travel-os-all-tracks.apk
 
-      - name: Upload Sarah 1.6 APK
+      - name: Upload Sarah Travel OS 2.0 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-1.6-profiles-events
-          path: Sarah-Morgan-1.6-profiles-events.apk
+          name: Sarah-Morgan-2.0-travel-os-all-tracks
+          path: Sarah-Morgan-2.0-travel-os-all-tracks.apk
           if-no-files-found: error

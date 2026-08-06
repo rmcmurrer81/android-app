@@ -19,6 +19,7 @@ public final class SettingsActivity extends Activity {
     private static final String KEY_MODE = "conversation_mode";
     private static final String KEY_MODE_MIGRATED = "automatic_mode_migrated_v1";
     private static final String KEY_TEAM_MODEL_MIGRATED = "team_model_config_migrated_v1";
+    private static final String KEY_VOICE_MIGRATED = "elevenlabs_voice_migrated_v1";
     private static final int REQ_NOTIFICATIONS = 4401;
 
     public static void ensureAutomaticModeDefault(Context context) {
@@ -34,6 +35,11 @@ public final class SettingsActivity extends Activity {
             editor.putString("connected_provider", SarahModelConfig.PROVIDER_ID)
                     .putString("model", SarahModelConfig.MODEL_ID)
                     .putBoolean(KEY_TEAM_MODEL_MIGRATED, true);
+            changed = true;
+        }
+        if (!preferences.getBoolean(KEY_VOICE_MIGRATED, false)) {
+            editor.putInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0)
+                    .putBoolean(KEY_VOICE_MIGRATED, true);
             changed = true;
         }
         if (changed) editor.apply();
@@ -68,11 +74,11 @@ public final class SettingsActivity extends Activity {
                 "Local only — never use the team model or public lookup"
         }));
         voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
-                "Android voice (works locally)",
-                "Team OpenAI voice when included in the build"
+                "Android voice only — works without internet",
+                "Sarah Morgan ElevenLabs voice — Android fallback if unavailable"
         }));
         mode.setSelection(getConversationMode(this));
-        voice.setSelection(preferences.getInt("voice_mode", 0));
+        voice.setSelection(preferences.getInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0));
 
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
@@ -127,10 +133,14 @@ public final class SettingsActivity extends Activity {
     }
 
     private void finishWithMessage() {
-        String connection = SarahModelConfig.fullConversationAvailable()
-                ? "OpenAI is included in this build."
-                : "This build has public lookup and Local fallback; the team OpenAI connection was not injected into the APK.";
-        Toast.makeText(this, "Sarah's settings were saved. " + connection, Toast.LENGTH_LONG).show();
+        String conversation = SarahModelConfig.fullConversationAvailable()
+                ? "OpenAI conversation is included."
+                : "Public lookup and Local conversation remain available; the team OpenAI connection is not included.";
+        String voice = ElevenLabsVoiceConfig.isConfigured()
+                ? ElevenLabsVoiceConfig.statusLabel() + "."
+                : "ElevenLabs is not included yet, so Sarah uses Android voice.";
+        Toast.makeText(this, "Sarah's settings were saved. " + conversation + " " + voice,
+                Toast.LENGTH_LONG).show();
         finish();
     }
 

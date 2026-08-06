@@ -12,6 +12,14 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="uber" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="lyft" />
+        </intent>
     </queries>
 
     <application
@@ -25,6 +33,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SarahMorgan"
         android:usesCleartextTraffic="false">
+
         <service
             android:name=".DealWatchWorker"
             android:exported="false"
@@ -34,6 +43,19 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <activity android:name=".TravelHubActivity" android:exported="false" />
+        <activity android:name=".TripPlannerActivity" android:exported="false" />
+        <activity android:name=".HotelSearchActivity" android:exported="false" />
+        <activity android:name=".TransportOptionsActivity" android:exported="false" />
+        <activity android:name=".RideLauncherActivity" android:exported="false" />
+        <activity android:name=".LocalExperienceActivity" android:exported="false" />
+        <activity android:name=".RoadTripActivity" android:exported="false" />
+        <activity android:name=".EventTripCenterActivity" android:exported="false" />
+        <activity android:name=".LoyaltyWalletActivity" android:exported="false" />
+        <activity android:name=".TravelerNeedsActivity" android:exported="false" />
+        <activity android:name=".StayAssistantActivity" android:exported="false" />
+        <activity android:name=".HospitalityOpsActivity" android:exported="false" />
+        <activity android:name=".VoiceConciergeActivity" android:exported="false" />
         <activity android:name=".TravelExplorerActivity" android:exported="false" />
 
         <activity

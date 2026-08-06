@@ -102,6 +102,17 @@
         android:textColor="@color/sarah_navy"
         android:textSize="14sp" />
 
+    <com.kiraworld.sarahtravel.TravelHubButton
+        android:id="@+id/travelHubButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginBottom="4dp"
+        android:minHeight="70dp"
+        android:contentDescription="Open Sarah Travel OS for hotels, transport, local experiences, road trips, loyalty, accessibility, and hotel stay tools" />
+
     <ScrollView
         android:id="@+id/chatScroll"
         android:layout_width="match_parent"
