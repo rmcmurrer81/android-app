@@ -59,6 +59,12 @@
             android:src="@android:drawable/ic_menu_help"
             android:tint="@color/white" />
 
+        <com.kiraworld.sarahtravel.FlightCalmButton
+            android:id="@+id/flightCalmButton"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless" />
+
         <com.kiraworld.sarahtravel.ProfileButton
             android:id="@+id/profileButton"
             android:layout_width="42dp"
