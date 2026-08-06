@@ -1,0 +1,4 @@
+outcome=failure
+run_id=31129449650
+main_sha=5f9f793106d6ac2d5a1e4670f9599910f20c7e12
+file_count=0
