@@ -97,6 +97,11 @@ public final class TravelHubActivity extends Activity {
                 "Prepare late-arrival, quiet-room, accessibility, allergy, housekeeping, maintenance, and checkout requests; contact the hotel without sharing account passwords.",
                 TravelUi.PEACH,
                 StayAssistantActivity.class));
+        root.addView(feature(
+                "📞", "Supervised voice concierge",
+                "Prepare a hotel call, review the script, dial manually, or use an optional team voice-agent backend that never purchases or changes a booking without confirmation.",
+                TravelUi.LAVENDER,
+                VoiceConciergeActivity.class));
 
         root.addView(TravelUi.section(this, "Hackathon hospitality track"));
         root.addView(feature(
