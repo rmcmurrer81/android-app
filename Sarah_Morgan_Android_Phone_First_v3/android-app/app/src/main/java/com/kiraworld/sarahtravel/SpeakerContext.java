@@ -4,6 +4,7 @@ import android.content.Context;
 
 import java.time.LocalDate;
 import java.time.Year;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -69,6 +70,7 @@ public final class SpeakerContext implements AutoCloseable {
     private Map<String, String> activeProfile;
     private Pending pending = Pending.NONE;
     private String pendingTripDestination = "";
+    private String pendingMemoryText = "";
 
     public SpeakerContext(Map<String, String> ownerProfile) {
         this.context = SarahApplication.appContext();
@@ -94,8 +96,7 @@ public final class SpeakerContext implements AutoCloseable {
         if (isReturnToOwner(lower)) {
             boolean changed = !isOwner();
             switchTo(ownerName);
-            pending = Pending.NONE;
-            pendingTripDestination = "";
+            clearPending();
             return new Result(
                     true,
                     "Welcome back, " + ownerName + ". I’m using your profile again.",
@@ -111,6 +112,9 @@ public final class SpeakerContext implements AutoCloseable {
 
         Result intro = detectSelfIntroduction(raw);
         if (intro.handled) return intro;
+
+        Result consent = maybeAskMemoryPermission(raw);
+        if (consent.handled) return consent;
 
         rememberApprovedDetails(raw);
         return new Result(false, "");
@@ -128,12 +132,6 @@ public final class SpeakerContext implements AutoCloseable {
                 people.setAge(activeName(), age);
                 activeProfile = people.findByName(activeName());
             }
-            if (age >= 18 && "unknown".equals(activeProfile.getOrDefault("memory_consent", "unknown"))) {
-                pending = Pending.MEMORY_CONSENT;
-                return new Result(true,
-                        "Thanks, " + activeName() + ". I’ll keep your profile separate from "
-                                + ownerName + "’s. Would you like me to remember interests and preferences you share? You can say yes or no.");
-            }
             pending = Pending.NONE;
             return continueAfterProfileSetup(
                     "Thanks, " + activeName() + ". I’ll keep suggestions right for your age");
@@ -143,17 +141,26 @@ public final class SpeakerContext implements AutoCloseable {
             Boolean answer = yesNo(lower);
             if (answer == null) {
                 pending = Pending.NONE;
+                pendingMemoryText = "";
                 return new Result(false, "");
             }
             if (people != null) {
                 people.setMemoryConsent(activeName(), answer);
                 activeProfile = people.findByName(activeName());
             }
+            String source = pendingMemoryText;
             pending = Pending.NONE;
-            String lead = answer
-                    ? "Okay. I can remember useful interests and preferences in your own profile"
-                    : "Okay. I’ll keep your conversation separate without saving personal preferences";
-            return continueAfterProfileSetup(lead);
+            pendingMemoryText = "";
+            if (!answer) {
+                return new Result(true,
+                        "Okay. I won’t save that as a personal memory. Your conversation still stays separate from "
+                                + ownerName + "’s.");
+            }
+            List<String> saved = rememberApprovedDetails(source);
+            return new Result(true,
+                    saved.isEmpty()
+                            ? "Okay. Memory is enabled for your separate profile."
+                            : "Okay. I saved in " + activeName() + "’s profile: " + String.join("; ", saved) + ".");
         }
 
         if (pending == Pending.TRIP_PARTICIPATION) {
@@ -177,6 +184,20 @@ public final class SpeakerContext implements AutoCloseable {
                             + " trip. We can talk about something completely different.");
         }
         return new Result(false, "");
+    }
+
+    private Result maybeAskMemoryPermission(String raw) {
+        if (people == null || !ageKnown() || !"adult".equals(ageGroup())) return new Result(false, "");
+        if (!"unknown".equals(activeProfile.getOrDefault("memory_consent", "unknown"))) {
+            return new Result(false, "");
+        }
+        List<MemoryExtractor.Candidate> candidates = memoryCandidates(raw);
+        if (candidates.isEmpty()) return new Result(false, "");
+        pending = Pending.MEMORY_CONSENT;
+        pendingMemoryText = raw;
+        return new Result(true,
+                "Would you like me to remember that in " + activeName()
+                        + "’s separate profile? You can say yes or no. I’m asking now because you just shared something personal enough to save—not as part of a long setup form.");
     }
 
     private Result detectHandoff(String raw, String lower) {
@@ -218,7 +239,7 @@ public final class SpeakerContext implements AutoCloseable {
         Matcher matcher = DIRECT_INTRO.matcher(raw);
         if (!matcher.matches()) return new Result(false, "");
         String originalName = matcher.group(1);
-        if (originalName == null || originalName.isEmpty() || !Character.isUpperCase(originalName.charAt(0))) {
+        if (originalName == null || originalName.isEmpty() || looksLikeNonName(originalName)) {
             return new Result(false, "");
         }
         String before = activeName();
@@ -287,8 +308,7 @@ public final class SpeakerContext implements AutoCloseable {
         if (found.isEmpty()) return;
         people.setActiveByName(found.get("name"));
         activeProfile = people.findByName(found.get("name"));
-        pending = Pending.NONE;
-        pendingTripDestination = "";
+        clearPending();
     }
 
     public List<Map<String, String>> savedProfiles() {
@@ -346,12 +366,24 @@ public final class SpeakerContext implements AutoCloseable {
         return "adult";
     }
 
-    private void rememberApprovedDetails(String raw) {
-        if (people == null || !"yes".equals(activeProfile.getOrDefault("memory_consent", "no"))) return;
+    private List<String> rememberApprovedDetails(String raw) {
+        List<String> saved = new ArrayList<>();
+        if (people == null || !"yes".equals(activeProfile.getOrDefault("memory_consent", "no"))) return saved;
+        for (MemoryExtractor.Candidate candidate : memoryCandidates(raw)) {
+            if (people.addMemory(activeName(), candidate.category, candidate.summary, raw)) {
+                saved.add(candidate.summary);
+            }
+        }
+        return saved;
+    }
+
+    private List<MemoryExtractor.Candidate> memoryCandidates(String raw) {
+        List<MemoryExtractor.Candidate> allowed = new ArrayList<>();
         for (MemoryExtractor.Candidate candidate : MemoryExtractor.extract(raw)) {
             if (candidate.category.equals("profile") && !isOwner()) continue;
-            people.addMemory(activeName(), candidate.category, candidate.summary, raw);
+            allowed.add(candidate);
         }
+        return allowed;
     }
 
     private String currentPlannedTrip() {
@@ -401,6 +433,11 @@ public final class SpeakerContext implements AutoCloseable {
                 || lower.contains("it is " + owner + " again");
     }
 
+    private static boolean looksLikeNonName(String value) {
+        String lower = value == null ? "" : value.toLowerCase(Locale.US).trim();
+        return lower.matches("^(tired|hungry|scared|worried|nervous|fine|good|great|okay|ok|sad|happy|sick|cold|hot|bored|lost|confused|ready|here|back|going|thinking|planning|trying|working|watching|looking|visiting|traveling|travelling)$");
+    }
+
     private static Boolean yesNo(String lower) {
         String clean = lower.trim().replaceAll("[.!?]+$", "");
         if (clean.matches("^(yes|yeah|yep|sure|okay|ok|please do|that is fine|that's fine|i am|i'm going|i will)$")) return true;
@@ -439,6 +476,12 @@ public final class SpeakerContext implements AutoCloseable {
         result.put("is_owner", "yes");
         result.put("age_known", "yes");
         return result;
+    }
+
+    private void clearPending() {
+        pending = Pending.NONE;
+        pendingTripDestination = "";
+        pendingMemoryText = "";
     }
 
     private static String cleanName(String value) {
