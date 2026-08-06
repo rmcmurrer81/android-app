@@ -24,6 +24,8 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -103,7 +105,7 @@ public final class MainActivity extends Activity {
         });
 
         loadHistory();
-        if (db.recentMessages(1).isEmpty()) greet();
+        if (currentHistory(1).isEmpty()) greet();
 
         ImageButton send = findViewById(R.id.sendButton);
         send.setOnClickListener(v -> sendCurrent());
@@ -197,14 +199,18 @@ public final class MainActivity extends Activity {
     }
 
     private void postLocalSarahReply(String reply, String mode) {
-        db.addMessage("assistant", reply);
+        db.addMessage("assistant", reply, speakerContext.activeName());
         addBubble("Sarah", reply, false);
         updateSpeakerStatus(mode);
         speak(reply);
     }
 
     private void startTriviaGame() {
-        List<CalmSupport.Question> questions = CalmSupport.questions(currentProfile(), db.listTrips(20), db.listWishes(20));
+        Map<String, String> profile = currentProfile();
+        List<CalmSupport.Question> questions = CalmSupport.questions(
+                profile,
+                currentTrips(profile),
+                currentWishes(profile));
         showTriviaQuestion(questions, 0, 0);
     }
 
@@ -236,19 +242,23 @@ public final class MainActivity extends Activity {
     }
 
     private void greet() {
-        Map<String, String> profile = db.getProfile();
-        String name = profile.getOrDefault("name", "there");
-        String greeting = "I’m glad we met, " + name
-                + ". I’m ready to talk about a trip, a place you dream about, or absolutely nothing travel-related.";
-        db.addMessage("assistant", greeting);
+        String name = speakerContext.activeName();
+        String greeting = speakerContext.isOwner()
+                ? "I’m glad we met, " + name
+                    + ". I’m ready to talk about a trip, a place you dream about, or absolutely nothing travel-related."
+                : "Hi, " + name
+                    + ". I’m using your separate profile. Travel is optional—we can talk about whatever interests you.";
+        db.addMessage("assistant", greeting, name);
         addBubble("Sarah", greeting, false);
         speak(greeting);
     }
 
     private void loadHistory() {
-        for (Map<String, String> row : db.recentMessages(30)) {
+        for (Map<String, String> row : currentHistory(30)) {
             boolean assistant = "assistant".equals(row.get("role"));
-            addBubble(assistant ? "Sarah" : "You", row.get("content"), !assistant);
+            String who = assistant ? "Sarah" : row.getOrDefault("speaker_name", speakerContext.activeName());
+            if (who == null || who.trim().isEmpty()) who = speakerContext.activeName();
+            addBubble(who, row.get("content"), !assistant);
         }
     }
 
@@ -259,22 +269,24 @@ public final class MainActivity extends Activity {
 
         String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
         String speakerBefore = speakerContext.activeName();
-        addBubble(speakerBefore, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
-        String storedUserText = speakerContext.isGuest() ? speakerBefore + ": " + display : display;
-        db.addMessage("user", storedUserText);
-
         SpeakerContext.Result speakerResult = speakerContext.handle(display);
+        String turnSpeaker = speakerResult.messageBelongsToActiveSpeaker
+                ? speakerContext.activeName() : speakerBefore;
+        addBubble(turnSpeaker, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
+        db.addMessage("user", display, turnSpeaker);
+
         if (speakerResult.handled) {
-            db.addMessage("assistant", speakerResult.reply);
+            String replySpeaker = speakerContext.activeName();
+            db.addMessage("assistant", speakerResult.reply, replySpeaker);
             addBubble("Sarah", speakerResult.reply, false);
-            updateSpeakerStatus(speakerContext.ageKnown() ? "Speaker changed" : "Family-friendly until age is known");
+            updateSpeakerStatus(speakerContext.ageKnown() ? "Profile: " + replySpeaker : "Family-friendly until age is known");
             speak(speakerResult.reply);
             return;
         }
 
         Map<String, String> profile = currentProfile();
-        List<Map<String, String>> historyForActions = db.recentMessages(12);
-        List<Map<String, String>> memoriesForActions = db.listMemories(40);
+        List<Map<String, String>> historyForActions = currentHistory(12);
+        List<Map<String, String>> memoriesForActions = currentMemories(profile);
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(
                 display, profile, historyForActions, memoriesForActions);
         AgenticActionExecutor.Result actionResult = AgenticActionExecutor.apply(
@@ -282,7 +294,7 @@ public final class MainActivity extends Activity {
         if (actionResult.createdDealWatch) {
             DealNotificationManager.requestPermissionIfNeeded(this, REQ_NOTIFICATIONS);
         }
-        if (!speakerContext.isGuest()) learnFrom(display);
+        learnFrom(display, profile);
 
         final byte[] image = pendingPhoto;
         final File imageFile = pendingPhotoFile;
@@ -299,24 +311,34 @@ public final class MainActivity extends Activity {
                 ConversationModePolicy.route(mode, internetAvailable, teamModelAvailable));
         boolean web = useSmart && prefs.getBoolean("web_search", true) && needsLiveSearch(display);
 
-        List<Map<String, String>> history = db.recentMessages(12);
-        List<Map<String, String>> memories = db.listMemories(40);
-        List<Map<String, String>> trips = db.listTrips(20);
-        List<Map<String, String>> wishes = db.listWishes(20);
-        List<Map<String, String>> knowledgePacks = db.listKnowledgePacks(40);
-        List<Map<String, String>> dealWatches = db.listDealWatches(50);
+        List<Map<String, String>> history = currentHistory(12);
+        List<Map<String, String>> memories = currentMemories(profile);
+        List<Map<String, String>> trips = currentTrips(profile);
+        List<Map<String, String>> wishes = currentWishes(profile);
+        List<Map<String, String>> knowledgePacks = currentKnowledgePacks(profile);
+        List<Map<String, String>> dealWatches = currentDealWatches(profile);
         String prompt = SarahPromptBuilder.build(
                 profile, memories, trips, wishes, image != null, web);
-        final boolean offerLiveTravelSearch = TravelSearchHelper.shouldOffer(display);
+        final boolean offerLiveTravelSearch = explicitExploreRequest(display);
+        final boolean sourceFirstEvent = internetAvailable
+                && mode != ConversationModePolicy.MODE_LOCAL_ONLY
+                && (KnownEventCatalog.find(display) != null
+                    || !GenericEventReference.recentEvent(history, display).isEmpty());
         final String providerId = SarahModelConfig.PROVIDER_ID;
         final String model = SarahModelConfig.MODEL_ID;
+        final String responseSpeaker = speakerContext.activeName();
 
         executor.submit(() -> {
             String reply;
             boolean smartFallback = false;
             boolean smartSucceeded = false;
             try {
-                if (useSmart) {
+                String sourceBackedEvent = sourceFirstEvent
+                        ? PublicOnlineFallback.answer(getApplicationContext(), display, history)
+                        : null;
+                if (sourceBackedEvent != null && !sourceBackedEvent.trim().isEmpty()) {
+                    reply = sourceBackedEvent.trim();
+                } else if (useSmart) {
                     reply = ConnectedModelGateway.respond(
                             providerId, key, model, prompt, history, display, web, image);
                     smartSucceeded = true;
@@ -338,11 +360,18 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (finalSmartSucceeded) lastSmartCallFailed = false;
                 if (finalSmartFallback) lastSmartCallFailed = true;
-                db.addMessage("assistant", finalReply);
+                db.addMessage("assistant", finalReply, responseSpeaker);
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
-                addBubble("Sarah", finalReply, false);
-                updateSpeakerStatus(null);
-                speak(finalReply);
+                if (speakerContext.activeName().equalsIgnoreCase(responseSpeaker)) {
+                    addBubble("Sarah", finalReply, false);
+                    updateSpeakerStatus(null);
+                    speak(finalReply);
+                } else {
+                    Toast.makeText(
+                            this,
+                            "Sarah saved a reply in " + responseSpeaker + "’s separate conversation.",
+                            Toast.LENGTH_SHORT).show();
+                }
                 if (finalSmartFallback) {
                     Toast.makeText(
                             this,
@@ -384,6 +413,61 @@ public final class MainActivity extends Activity {
         return speakerContext.profileFor(db.getProfile());
     }
 
+    private List<Map<String, String>> currentHistory(int limit) {
+        return db.recentMessagesForSpeaker(speakerContext.activeName(), limit);
+    }
+
+    private List<Map<String, String>> currentMemories(Map<String, String> profile) {
+        if (isOwner(profile)) return db.listMemories(40);
+        PersonProfileStore people = new PersonProfileStore(getApplicationContext());
+        try {
+            return people.listMemories(profile.getOrDefault("name", speakerContext.activeName()), 40);
+        } finally {
+            people.close();
+        }
+    }
+
+    private List<Map<String, String>> currentTrips(Map<String, String> profile) {
+        if (isOwner(profile)) return db.listTrips(20);
+        if (!"going".equals(profile.getOrDefault("current_shared_trip_participation", "unknown"))) {
+            return Collections.emptyList();
+        }
+        String destination = profile.getOrDefault("current_shared_trip", "").trim();
+        if (destination.isEmpty()) return Collections.emptyList();
+        Map<String, String> trip = new LinkedHashMap<>();
+        trip.put("title", "Shared trip");
+        trip.put("destination", destination);
+        trip.put("status", "shared");
+        trip.put("notes", "The active profile is recorded as joining this trip; owner-private details are omitted.");
+        return List.of(trip);
+    }
+
+    private List<Map<String, String>> currentWishes(Map<String, String> profile) {
+        return isOwner(profile) ? db.listWishes(20) : Collections.emptyList();
+    }
+
+    private List<Map<String, String>> currentKnowledgePacks(Map<String, String> profile) {
+        List<Map<String, String>> all = db.listKnowledgePacks(40);
+        if (isOwner(profile)) return all;
+        if (!"going".equals(profile.getOrDefault("current_shared_trip_participation", "unknown"))) {
+            return Collections.emptyList();
+        }
+        String destination = profile.getOrDefault("current_shared_trip", "");
+        List<Map<String, String>> filtered = new ArrayList<>();
+        for (Map<String, String> row : all) {
+            if (destination.equalsIgnoreCase(row.getOrDefault("destination", ""))) filtered.add(row);
+        }
+        return filtered;
+    }
+
+    private List<Map<String, String>> currentDealWatches(Map<String, String> profile) {
+        return isOwner(profile) ? db.listDealWatches(50) : Collections.emptyList();
+    }
+
+    private static boolean isOwner(Map<String, String> profile) {
+        return "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
+    }
+
     private void updateSpeakerStatus(String event) {
         if (status == null || speakerContext == null) return;
         String label;
@@ -403,16 +487,30 @@ public final class MainActivity extends Activity {
         status.setText(text.toString());
     }
 
-    private void learnFrom(String text) {
-        if (speakerContext.isGuest()) return;
+    private void learnFrom(String text, Map<String, String> profile) {
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
-        if (!prefs.getBoolean("learn", true) || !"yes".equals(db.getProfile().get("memory_consent"))) return;
+        if (!prefs.getBoolean("learn", true)
+                || !"yes".equals(profile.getOrDefault("memory_consent", "no"))) return;
         List<MemoryExtractor.Candidate> candidates = MemoryExtractor.extract(text);
         List<String> saved = new ArrayList<>();
-        for (MemoryExtractor.Candidate candidate : candidates) {
-            if (db.addMemory(candidate.category, candidate.summary, text)) saved.add(candidate.summary);
+        PersonProfileStore people = new PersonProfileStore(getApplicationContext());
+        try {
+            people.ensureOwner(db.getProfile());
+            String name = profile.getOrDefault("name", speakerContext.activeName());
+            for (MemoryExtractor.Candidate candidate : candidates) {
+                boolean added = people.addMemory(name, candidate.category, candidate.summary, text);
+                if (isOwner(profile)) {
+                    added |= db.addMemory(candidate.category, candidate.summary, text);
+                }
+                if (added) saved.add(candidate.summary);
+            }
+        } finally {
+            people.close();
         }
-        if (!saved.isEmpty()) addMemoryNote("Sarah remembered: " + String.join("; ", saved));
+        if (!saved.isEmpty()) {
+            addMemoryNote("Sarah saved in " + speakerContext.activeName() + "’s profile: "
+                    + String.join("; ", saved));
+        }
     }
 
     private void addBubble(String who, String text, boolean user) {
@@ -442,9 +540,15 @@ public final class MainActivity extends Activity {
 
     private boolean needsLiveSearch(String text) {
         String lower = text.toLowerCase(Locale.US);
-        return lower.contains("current")
+        return GenericEventReference.looksLikeEvent(text)
+                || TripWindowParser.parse(text).found()
+                || lower.contains("current")
                 || lower.contains("today")
                 || lower.contains("this week")
+                || lower.contains("next week")
+                || lower.contains("next month")
+                || lower.contains("tomorrow")
+                || lower.contains("weekend")
                 || lower.contains("deal")
                 || lower.contains("price")
                 || lower.contains("fare")
@@ -457,12 +561,23 @@ public final class MainActivity extends Activity {
                 || lower.contains("what date")
                 || lower.contains("ticket")
                 || lower.contains("schedule")
-                || lower.contains("popcon")
-                || lower.contains("comic con")
                 || lower.contains("things to do")
                 || lower.contains("places to visit")
                 || lower.contains("movie")
                 || lower.contains("book about");
+    }
+
+    private boolean explicitExploreRequest(String text) {
+        String lower = text == null ? "" : text.toLowerCase(Locale.US);
+        return lower.contains("show map")
+                || lower.contains("show me a map")
+                || lower.contains("show photos")
+                || lower.contains("show pictures")
+                || lower.contains("show videos")
+                || lower.contains("open live search")
+                || lower.contains("show fares")
+                || lower.contains("open the route")
+                || lower.contains("show the route");
     }
 
     private void speak(String text) {
@@ -561,6 +676,7 @@ public final class MainActivity extends Activity {
         if (connectivityMonitor != null) connectivityMonitor.stop();
         executor.shutdownNow();
         if (tts != null) tts.shutdown();
+        if (speakerContext != null) speakerContext.close();
         if (db != null) db.close();
         super.onDestroy();
     }
