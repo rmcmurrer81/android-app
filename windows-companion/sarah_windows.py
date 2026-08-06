@@ -31,6 +31,7 @@ except Exception:
     playsound = None
 
 
+# Windows notification area / hidden-icons support keeps Sarah active when her windows are hidden.
 class SarahApp:
     def __init__(self):
         self.root = tk.Tk()
