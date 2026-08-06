@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+def javaString = { String value ->
+    '"' + (value ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
+def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
+def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
+
 android {
     namespace 'com.kiraworld.sarahtravel'
     compileSdk 35
@@ -10,8 +17,17 @@ android {
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 14
-        versionName '1.4-public-web-fallback'
+        versionCode 15
+        versionName '1.5-builtin-openai-media'
+
+        // Private hackathon configuration. End users do not enter model keys.
+        buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
+        buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
+        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {

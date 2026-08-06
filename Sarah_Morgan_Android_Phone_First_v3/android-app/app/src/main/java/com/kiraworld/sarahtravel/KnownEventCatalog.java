@@ -53,6 +53,18 @@ public final class KnownEventCatalog {
                 "bell country comicon",
                 "bccc"));
         entries.add(new Entry(
+                "popcon_indy",
+                "PopCon Indy",
+                "Indianapolis, Indiana",
+                "https://popcon.us/popcon-indy/",
+                "Indiana Convention Center",
+                "100 S Capitol Ave, Indianapolis, IN 46225",
+                "popcon indy",
+                "indy popcon",
+                "indy pop con",
+                "indianapolis popcon",
+                "indianapolis pop con"));
+        entries.add(new Entry(
                 "ces",
                 "CES",
                 "Las Vegas, Nevada",

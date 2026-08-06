@@ -6,8 +6,10 @@ import java.util.Map;
 
 /**
  * Single routing point for connected conversation providers.
- * OpenAI Responses is the included adapter. Teams can add Claude, Gemini,
- * Bedrock, or another provider here without changing MainActivity.
+ *
+ * OpenAI is the included provider for the hackathon build. End users do not
+ * choose a provider or enter a model key in Settings. The team changes the
+ * provider in SarahModelConfig and this gateway.
  */
 public final class ConnectedModelGateway {
     private ConnectedModelGateway() { }
@@ -23,9 +25,12 @@ public final class ConnectedModelGateway {
             byte[] imageJpeg) throws Exception {
         String normalized = providerId == null ? "openai" : providerId.trim().toLowerCase(Locale.US);
         boolean effectiveWebSearch = webSearch || LiveTravelIntent.needsCurrentSources(message);
-        if (normalized.isEmpty() || "openai".equals(normalized)) {
-            return OpenAIClient.respond(
-                    apiKey,
+
+        String backend = SarahModelConfig.backendUrl();
+        if (!backend.isEmpty()) {
+            return SarahBackendClient.respond(
+                    backend,
+                    normalized,
                     model,
                     systemPrompt,
                     history,
@@ -33,7 +38,26 @@ public final class ConnectedModelGateway {
                     effectiveWebSearch,
                     imageJpeg);
         }
+
+        if (normalized.isEmpty() || "openai".equals(normalized)) {
+            String effectiveKey = apiKey == null || apiKey.trim().isEmpty()
+                    ? SarahModelConfig.apiKey()
+                    : apiKey.trim();
+            if (effectiveKey.isEmpty()) {
+                throw new IllegalStateException(
+                        "The team OpenAI connection is not present in this build. Public lookup and Local mode remain available.");
+            }
+            return OpenAIClient.respond(
+                    effectiveKey,
+                    model == null || model.trim().isEmpty() ? SarahModelConfig.MODEL_ID : model.trim(),
+                    systemPrompt,
+                    history,
+                    message,
+                    effectiveWebSearch,
+                    imageJpeg);
+        }
+
         throw new IllegalArgumentException(
-                "Connected provider '" + normalized + "' is not installed. See README.md for adding an adapter.");
+                "Connected provider '" + normalized + "' is not installed. See README.md for the exact adapter files to change.");
     }
 }

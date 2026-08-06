@@ -13,20 +13,41 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/** Limited no-key factual lookup for clear public questions while Smart mode is not configured. */
+/** Limited no-key factual lookup for clear public questions when full OpenAI is unavailable. */
 public final class PublicKnowledgeGateway {
+    private static final Pattern GENERAL_QUESTION = Pattern.compile(
+            "(?i)^\\s*(?:who is|who was|what is|what was|tell me about|explain|where is|where was)\\s+(.+?)[?.!]*\\s*$");
+
     private PublicKnowledgeGateway() { }
 
     public static boolean canHandle(String message) {
         String lower = normalize(message);
-        return containsAny(lower,
-                "where did they film", "where was it filmed", "where was filmed",
-                "filming location", "filming locations", "where is filmed", "where were they filmed");
+        return isFilmingQuestion(lower) || !generalSubject(message).isEmpty();
     }
 
     public static String answer(String message) {
-        if (!canHandle(message)) return null;
+        String lower = normalize(message);
+        if (isFilmingQuestion(lower)) return filmingAnswer(message);
+
+        String subject = generalSubject(message);
+        if (subject.isEmpty()) return null;
+        try {
+            String title = searchGeneralTitle(subject);
+            if (title.isEmpty()) return null;
+            String extract = pageExtract(title);
+            String summary = introductorySummary(extract);
+            if (summary.isEmpty()) return null;
+            return summary
+                    + "\n\nPublic reference: Wikipedia article “" + title + ".” This is background information, not a live source for rapidly changing facts.";
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String filmingAnswer(String message) {
         List<String> subjects = extractSubjects(message);
         if (subjects.isEmpty()) return null;
         List<String> answers = new ArrayList<>();
@@ -36,7 +57,7 @@ public final class PublicKnowledgeGateway {
         }
         if (answers.isEmpty()) return null;
         return String.join("\n\n", answers)
-                + "\n\nI used public reference pages because Smart conversation is not configured. Use Explore for maps, public photos, and videos, and verify access details before planning a visit.";
+                + "\n\nI used public reference pages. Use the media panel for maps, public photos, and videos, and verify access details before planning a visit.";
     }
 
     static List<String> extractSubjects(String message) {
@@ -55,9 +76,23 @@ public final class PublicKnowledgeGateway {
         return result;
     }
 
+    private static String generalSubject(String message) {
+        String safe = message == null ? "" : message.trim();
+        String lower = normalize(safe);
+        if (containsAny(lower, "today", "latest", "current price", "current schedule", "right now", "this week")) return "";
+        Matcher matcher = GENERAL_QUESTION.matcher(safe);
+        if (!matcher.find()) return "";
+        String subject = matcher.group(1).trim().replaceAll("[?.!]+$", "").trim();
+        String normalized = normalize(subject);
+        if (subject.length() < 2 || subject.length() > 100) return "";
+        if (normalized.matches("^(it|that|this|they|he|she|there)$")) return "";
+        if (!DestinationParser.extractDestinations(subject).isEmpty()) return "";
+        return subject;
+    }
+
     private static String lookupFilmingLocation(String subject) {
         try {
-            String title = searchTitle(subject);
+            String title = searchTitle(subject + " television series", subject);
             if (!title.isEmpty()) {
                 String extract = pageExtract(title);
                 String relevant = relevantFilmingSentences(extract);
@@ -67,24 +102,29 @@ public final class PublicKnowledgeGateway {
         return knownFallback(subject);
     }
 
-    private static String searchTitle(String subject) throws Exception {
-        String query = subject + " television series";
-        String url = "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=3&srsearch="
+    private static String searchGeneralTitle(String subject) throws Exception {
+        return searchTitle(subject, subject);
+    }
+
+    private static String searchTitle(String query, String preferredSubject) throws Exception {
+        String url = "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=5&srsearch="
                 + encode(query);
         JSONObject root = new JSONObject(get(url));
         JSONArray results = root.optJSONObject("query") == null
                 ? null : root.optJSONObject("query").optJSONArray("search");
         if (results == null || results.length() == 0) return "";
-        String normalizedSubject = normalize(subject);
+        String normalizedSubject = normalize(preferredSubject);
         for (int i = 0; i < results.length(); i++) {
-            String title = results.optJSONObject(i) == null ? "" : results.optJSONObject(i).optString("title", "");
-            if (normalize(title).contains(normalizedSubject)) return title;
+            JSONObject row = results.optJSONObject(i);
+            String title = row == null ? "" : row.optString("title", "");
+            if (normalize(title).equals(normalizedSubject)
+                    || normalize(title).startsWith(normalizedSubject + " ")) return title;
         }
         return results.optJSONObject(0) == null ? "" : results.optJSONObject(0).optString("title", "");
     }
 
     private static String pageExtract(String title) throws Exception {
-        String url = "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&utf8=1&titles="
+        String url = "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&format=json&utf8=1&titles="
                 + encode(title);
         JSONObject root = new JSONObject(get(url));
         JSONObject pages = root.optJSONObject("query") == null
@@ -94,6 +134,31 @@ public final class PublicKnowledgeGateway {
         if (names == null || names.length() == 0) return "";
         JSONObject page = pages.optJSONObject(names.optString(0));
         return page == null ? "" : page.optString("extract", "");
+    }
+
+    private static String introductorySummary(String extract) {
+        if (extract == null || extract.trim().isEmpty()) return "";
+        String[] sentences = extract.replace('\n', ' ').replaceAll("\\s+", " ").trim()
+                .split("(?<=[.!?])\\s+");
+        StringBuilder out = new StringBuilder();
+        for (String sentence : sentences) {
+            String clean = sentence.trim();
+            if (clean.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(clean);
+            if (out.length() >= 650 || countSentences(out.toString()) >= 3) break;
+        }
+        String value = out.toString().trim();
+        return value.length() > 900 ? value.substring(0, 897).trim() + "…" : value;
+    }
+
+    private static int countSentences(String value) {
+        int count = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '.' || c == '!' || c == '?') count++;
+        }
+        return count;
     }
 
     private static String relevantFilmingSentences(String extract) {
@@ -124,11 +189,17 @@ public final class PublicKnowledgeGateway {
         return null;
     }
 
+    private static boolean isFilmingQuestion(String lower) {
+        return containsAny(lower,
+                "where did they film", "where was it filmed", "where was filmed",
+                "filming location", "filming locations", "where is filmed", "where were they filmed");
+    }
+
     private static String get(String url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(12000);
         connection.setReadTimeout(16000);
-        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.4 (private prototype; public knowledge lookup)");
+        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.5 (public knowledge lookup)");
         connection.setRequestProperty("Accept", "application/json");
         int status = connection.getResponseCode();
         if (status < 200 || status >= 400) throw new IllegalStateException("Public reference returned " + status);

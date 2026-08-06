@@ -16,19 +16,27 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public final class SecureStore {
     private static final String ALIAS = "SarahMorganEncryptedSecrets";
-    private static final String LEGACY_ALIAS = "SarahMorganApiKey";
     private static final String PREF = "secure_preferences";
+    private static final String TEAM_BACKEND_SENTINEL = "__SARAH_TEAM_BACKEND__";
 
     private SecureStore() { }
 
+    /**
+     * Retained only so older source branches still compile. Sarah 1.5 does not
+     * ask an app user to save a provider key.
+     */
     public static void saveApiKey(Context context, String value) throws Exception {
-        saveSecret(context, "model", value);
+        saveSecret(context, "legacy_model_user_key", value);
     }
 
+    /**
+     * The conversation credential is owned by the build, not by the person who
+     * installs the APK. Old user-entered keys are intentionally ignored.
+     */
     public static String loadApiKey(Context context) {
-        String value = loadSecret(context, "model");
-        if (!value.isEmpty()) return value;
-        return loadLegacyApiKey(context);
+        String key = SarahModelConfig.apiKey();
+        if (!key.isEmpty()) return key;
+        return SarahModelConfig.backendUrl().isEmpty() ? "" : TEAM_BACKEND_SENTINEL;
     }
 
     public static void saveDealBackendToken(Context context, String value) throws Exception {
@@ -61,23 +69,6 @@ public final class SecureStore {
             cipher.init(
                     Cipher.DECRYPT_MODE,
                     getOrCreateKey(ALIAS),
-                    new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
-            return new String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), StandardCharsets.UTF_8);
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private static String loadLegacyApiKey(Context context) {
-        try {
-            SharedPreferences preferences = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-            String iv = preferences.getString("iv", "");
-            String data = preferences.getString("key", "");
-            if (iv.isEmpty() || data.isEmpty()) return "";
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(
-                    Cipher.DECRYPT_MODE,
-                    getOrCreateKey(LEGACY_ALIAS),
                     new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
             return new String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), StandardCharsets.UTF_8);
         } catch (Exception ignored) {

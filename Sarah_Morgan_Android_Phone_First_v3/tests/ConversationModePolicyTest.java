@@ -13,10 +13,15 @@ public final class ConversationModePolicyTest {
 
         String publicOnline = ConversationModePolicy.statusLabel(
                 ConversationModePolicy.MODE_AUTO, true, false, false);
-        require(publicOnline.contains("Public lookup online"),
-                "internet without a model key must advertise public lookup instead of implying total offline mode");
-        require(publicOnline.contains("Smart setup needed"),
-                "status must still explain why broad Smart conversation is unavailable");
+        require(publicOnline.contains("Public web online"),
+                "internet without the team model must advertise public web access instead of implying total offline mode");
+        require(publicOnline.contains("OpenAI not included in this build"),
+                "status must explain that the team build, not the app user, controls OpenAI availability");
+
+        String smartOnline = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, true, false);
+        require(smartOnline.contains("OpenAI online"),
+                "a team-connected build must identify OpenAI as active");
 
         String offline = ConversationModePolicy.statusLabel(
                 ConversationModePolicy.MODE_AUTO, false, false, false);

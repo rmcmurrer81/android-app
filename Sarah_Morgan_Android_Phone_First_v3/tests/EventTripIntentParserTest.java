@@ -29,6 +29,13 @@ public final class EventTripIntentParserTest {
         require("Belton, Texas".equals(bellTypo.destination),
                 "Bell County Comic Con must resolve to Belton, Texas");
 
+        EventTripIntentParser.EventIntent popCon = EventTripIntentParser.parse(
+                "I am thinking about going to indy pop con");
+        require(popCon.found(), "Indy Pop Con must resolve without a separate city question");
+        require("PopCon Indy".equals(popCon.eventName), "official PopCon name must be used");
+        require("Indianapolis, Indiana".equals(popCon.destination),
+                "PopCon must resolve to Indianapolis, Indiana");
+
         System.out.println("EventTripIntentParserTest passed");
     }
 

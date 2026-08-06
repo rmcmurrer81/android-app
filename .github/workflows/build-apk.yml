@@ -10,6 +10,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Optional private hackathon secrets. End users never enter these in Sarah.
+      SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
+      SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
+      SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
     steps:
       - name: Check out Sarah source
         uses: actions/checkout@v4
@@ -20,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Test automatic Smart Local and public lookup routing
+      - name: Test automatic OpenAI public and Local routing
         run: |
           mkdir -p build/pure-java-test
           javac -encoding UTF-8 -d build/pure-java-test \
@@ -90,15 +95,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 1.4 public-web-fallback APK
+      - name: Build Sarah 1.5 built-in-openai-media APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.4-public-web-fallback.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.5-builtin-openai-media.apk
 
-      - name: Upload Sarah 1.4 APK
+      - name: Upload Sarah 1.5 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-1.4-public-web-fallback
-          path: Sarah-Morgan-1.4-public-web-fallback.apk
+          name: Sarah-Morgan-1.5-builtin-openai-media
+          path: Sarah-Morgan-1.5-builtin-openai-media.apk
           if-no-files-found: error

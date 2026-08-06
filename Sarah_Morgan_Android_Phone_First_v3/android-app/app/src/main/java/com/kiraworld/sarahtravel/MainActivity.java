@@ -78,7 +78,9 @@ public final class MainActivity extends Activity {
                 updateSpeakerStatus(null);
                 if (changed) {
                     String message = connected
-                            ? "Internet is back. Sarah will use Smart mode automatically when it is configured."
+                            ? (SarahModelConfig.fullConversationAvailable()
+                                ? "Internet is back. Sarah will return to OpenAI automatically."
+                                : "Internet is back. Sarah can use public lookup, maps, and media; the team OpenAI connection is not included in this build.")
                             : "Connection lost. Sarah is continuing locally.";
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                 }
@@ -145,21 +147,21 @@ public final class MainActivity extends Activity {
     private void showConversationModeMenu() {
         int mode = SettingsActivity.getConversationMode(this);
         String[] choices = {
-                "Automatic — Smart online, Local when offline (recommended)",
-                "Smart preferred — use the connected model whenever possible",
-                "Local only — never call a connected model",
+                "Automatic — OpenAI when included, public/local fallback otherwise",
+                "OpenAI preferred — retry the team connection whenever possible",
+                "Local only — never use the team model or public lookup",
                 "Open detailed settings"
         };
         String current = ConversationModePolicy.statusLabel(
                 mode,
                 internetAvailable,
-                !SecureStore.loadApiKey(this).isEmpty(),
+                SarahModelConfig.fullConversationAvailable(),
                 lastSmartCallFailed);
 
         new AlertDialog.Builder(this)
                 .setTitle("Choose how Sarah connects")
                 .setMessage("Current: " + current
-                        + "\n\nAutomatic mode uses Smart when a validated connection and model key are available, falls back locally when they are not, and returns to Smart when service comes back.")
+                        + "\n\nOpenAI is selected by the app team in the source code. People who install Sarah are not asked to choose a provider, model, or API key. Automatic mode uses the team OpenAI connection when it is included in the APK, public lookup while online when it is not, and the Local Travel Brain without internet.")
                 .setItems(choices, (dialog, which) -> {
                     if (which == 3) {
                         startActivity(new Intent(this, SettingsActivity.class));
@@ -169,12 +171,11 @@ public final class MainActivity extends Activity {
                     lastSmartCallFailed = false;
                     updateSpeakerStatus(null);
                     if (which != ConversationModePolicy.MODE_LOCAL_ONLY
-                            && SecureStore.loadApiKey(this).isEmpty()) {
+                            && !SarahModelConfig.fullConversationAvailable()) {
                         new AlertDialog.Builder(this)
-                                .setTitle("Smart mode still needs a model key")
-                                .setMessage("Automatic mode is active, but Sarah will continue locally until a connected-model key is added in Settings.")
-                                .setPositiveButton("Open settings", (d, w) -> startActivity(new Intent(this, SettingsActivity.class)))
-                                .setNegativeButton("Later", null)
+                                .setTitle("OpenAI is controlled by the app build")
+                                .setMessage("This APK does not contain the team OpenAI connection. Public lookup, maps, media, and Local mode remain available. A team member must configure the GitHub build secret or protected backend and build a new APK; there is nothing for the person installing Sarah to enter.")
+                                .setPositiveButton("OK", null)
                                 .show();
                     }
                 })
@@ -293,9 +294,9 @@ public final class MainActivity extends Activity {
         int mode = SettingsActivity.getConversationMode(this);
         if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         String key = SecureStore.loadApiKey(this);
-        boolean keyAvailable = !key.isEmpty();
+        boolean teamModelAvailable = SarahModelConfig.fullConversationAvailable();
         boolean useSmart = ConversationModePolicy.ROUTE_SMART.equals(
-                ConversationModePolicy.route(mode, internetAvailable, keyAvailable));
+                ConversationModePolicy.route(mode, internetAvailable, teamModelAvailable));
         boolean web = useSmart && prefs.getBoolean("web_search", true) && needsLiveSearch(display);
 
         List<Map<String, String>> history = db.recentMessages(12);
@@ -307,8 +308,8 @@ public final class MainActivity extends Activity {
         String prompt = SarahPromptBuilder.build(
                 profile, memories, trips, wishes, image != null, web);
         final boolean offerLiveTravelSearch = TravelSearchHelper.shouldOffer(display);
-        final String providerId = prefs.getString("connected_provider", "openai");
-        final String model = prefs.getString("model", "gpt-5-mini");
+        final String providerId = SarahModelConfig.PROVIDER_ID;
+        final String model = SarahModelConfig.MODEL_ID;
 
         executor.submit(() -> {
             String reply;
@@ -345,7 +346,7 @@ public final class MainActivity extends Activity {
                 if (finalSmartFallback) {
                     Toast.makeText(
                             this,
-                            "The connected model did not answer, so Sarah continued locally. Automatic mode will try Smart again on the next message.",
+                            "The team OpenAI connection did not answer, so Sarah continued with public or Local tools. Automatic mode will try OpenAI again on the next message.",
                             Toast.LENGTH_LONG).show();
                 }
                 if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);
@@ -355,17 +356,17 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshKnowledgeAsync() {
-        if (!internetAvailable) return;
+        if (!internetAvailable || !SarahModelConfig.fullConversationAvailable()) return;
         String key = SecureStore.loadApiKey(this);
-        if (key.isEmpty()) return;
-        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
-        String providerId = prefs.getString("connected_provider", "openai");
-        String model = prefs.getString("model", "gpt-5-mini");
         executor.submit(() -> {
             SarahDatabase backgroundDb = new SarahDatabase(getApplicationContext());
             try {
                 int refreshed = DestinationKnowledgeCoordinator.refreshPending(
-                        backgroundDb, providerId, key, model, 2);
+                        backgroundDb,
+                        SarahModelConfig.PROVIDER_ID,
+                        key,
+                        SarahModelConfig.MODEL_ID,
+                        2);
                 if (refreshed > 0) {
                     runOnUiThread(() -> Toast.makeText(
                             this,
@@ -391,7 +392,7 @@ public final class MainActivity extends Activity {
             label = ConversationModePolicy.statusLabel(
                     mode,
                     internetAvailable,
-                    !SecureStore.loadApiKey(this).isEmpty(),
+                    SarahModelConfig.fullConversationAvailable(),
                     lastSmartCallFailed) + " • tap to switch";
         } else {
             label = event;
@@ -452,6 +453,12 @@ public final class MainActivity extends Activity {
                 || lower.contains("hours")
                 || lower.contains("weather")
                 || lower.contains("event")
+                || lower.contains("when is it")
+                || lower.contains("what date")
+                || lower.contains("ticket")
+                || lower.contains("schedule")
+                || lower.contains("popcon")
+                || lower.contains("comic con")
                 || lower.contains("things to do")
                 || lower.contains("places to visit")
                 || lower.contains("movie")
@@ -463,7 +470,7 @@ public final class MainActivity extends Activity {
         if (!prefs.getBoolean("auto_speak", true)) return;
         tts.setRate(currentSpeechRate());
         if (prefs.getInt("voice_mode", 0) == 1) {
-            String key = SecureStore.loadApiKey(this);
+            String key = SarahModelConfig.apiKey();
             if (!key.isEmpty() && internetAvailable) {
                 CloudVoiceClient.speak(this, key, text, () -> runOnUiThread(() -> tts.speak(text)));
                 return;
