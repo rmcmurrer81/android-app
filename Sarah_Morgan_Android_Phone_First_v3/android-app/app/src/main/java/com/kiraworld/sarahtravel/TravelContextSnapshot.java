@@ -100,11 +100,11 @@ public final class TravelContextSnapshot {
                             || status.contains("upcoming") || status.contains("confirmed")) {
                         destination = candidate;
                         source = "trip";
-                        TripWindowParser.Window window = TripWindowParser.parse(
+                        TripWindowParser.TripWindow window = TripWindowParser.parse(
                                 clean(trip.get("notes")), LocalDate.now());
-                        if (window.found) {
-                            start = window.start.toString();
-                            end = window.end.toString();
+                        if (window.found()) {
+                            start = window.startDate.toString();
+                            end = window.endDate.toString();
                         }
                         break;
                     }
