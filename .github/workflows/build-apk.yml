@@ -20,7 +20,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Test automatic Smart-to-Local routing
+      - name: Test automatic Smart Local and public lookup routing
         run: |
           mkdir -p build/pure-java-test
           javac -encoding UTF-8 -d build/pure-java-test \
@@ -33,6 +33,7 @@ jobs:
           rm -rf build/travel-brain-test
           mkdir -p build/travel-brain-test
           javac -encoding UTF-8 -d build/travel-brain-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
@@ -50,11 +51,12 @@ jobs:
           java -cp build/travel-brain-test JourneyIntentParserTest
           java -cp build/travel-brain-test MemoryExtractorTravelBrainTest
 
-      - name: Test agentic event booking and multimodal planning
+      - name: Test official event agentic booking and multimodal planning
         run: |
           rm -rf build/agentic-test
           mkdir -p build/agentic-test
           javac -encoding UTF-8 -d build/agentic-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
@@ -68,12 +70,14 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/BookingLinkParserTest.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPlannerTest.java
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPlannerTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/KnownEventCatalogTest.java
           java -cp build/agentic-test AgenticTravelPlannerTest
           java -cp build/agentic-test DestinationPackResponderTest
           java -cp build/agentic-test EventTripIntentParserTest
           java -cp build/agentic-test BookingLinkParserTest
           java -cp build/agentic-test EventTripPlannerTest
+          java -cp build/agentic-test KnownEventCatalogTest
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
@@ -86,15 +90,15 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build Sarah 1.3 multimodal-travel APK
+      - name: Build Sarah 1.4 public-web-fallback APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
       - name: Give APK a versioned filename
-        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.3-multimodal-travel.apk
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-1.4-public-web-fallback.apk
 
-      - name: Upload Sarah 1.3 APK
+      - name: Upload Sarah 1.4 APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-1.3-multimodal-travel
-          path: Sarah-Morgan-1.3-multimodal-travel.apk
+          name: Sarah-Morgan-1.4-public-web-fallback
+          path: Sarah-Morgan-1.4-public-web-fallback.apk
           if-no-files-found: error
