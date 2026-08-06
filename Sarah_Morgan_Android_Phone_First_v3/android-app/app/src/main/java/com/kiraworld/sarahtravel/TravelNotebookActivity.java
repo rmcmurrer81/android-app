@@ -18,6 +18,7 @@ import java.util.Map;
 public final class TravelNotebookActivity extends Activity {
     private SarahDatabase db;
     private EventTripStore eventStore;
+    private MobilityWatchStore mobilityStore;
     private LinearLayout container;
 
     @Override
@@ -26,6 +27,7 @@ public final class TravelNotebookActivity extends Activity {
         setContentView(R.layout.activity_notebook);
         db = new SarahDatabase(this);
         eventStore = new EventTripStore(this);
+        mobilityStore = new MobilityWatchStore(this);
         container = findViewById(R.id.notebookContainer);
         findViewById(R.id.addWishButton).setOnClickListener(v -> showWishDialog());
         findViewById(R.id.addTripButton).setOnClickListener(v -> showTripDialog());
@@ -36,10 +38,47 @@ public final class TravelNotebookActivity extends Activity {
         container.removeAllViews();
         List<Map<String, String>> memories = db.listMemories(150);
 
+        addHeader("Saved journeys");
+        List<Map<String, String>> journeys = mobilityStore.listJourneyPlans(100);
+        if (journeys.isEmpty()) {
+            addRow("No saved journey yet", "Say something like “cross-country train from New York to California” or “take the metro to New York Comic Con.”");
+        } else {
+            for (Map<String, String> journey : journeys) {
+                String title = journey.getOrDefault("origin", "Origin") + " → "
+                        + journey.getOrDefault("destination", "Destination");
+                String detail = joinSections(
+                        label("Methods", journey.getOrDefault("modes", "mixed").replace(',', '/')),
+                        label("Event", journey.getOrDefault("event_name", "")),
+                        label("Notes", journey.getOrDefault("notes", "")),
+                        label("Saved", date(journey.get("updated_at"))));
+                addRow(title, detail);
+            }
+        }
+
+        addHeader("Multimodal travel watches");
+        List<Map<String, String>> mobilityWatches = mobilityStore.listWatches(100);
+        if (mobilityWatches.isEmpty()) {
+            addRow("No multimodal watch", "Ask Sarah to monitor travel options. She can compare air, Amtrak or rail, intercity bus, local transit, driving, and ferry where appropriate.");
+        } else {
+            for (Map<String, String> watch : mobilityWatches) {
+                String title = watch.getOrDefault("origin", "Origin") + " → "
+                        + watch.getOrDefault("destination", "Destination");
+                String detail = joinSections(
+                        label("Methods", watch.getOrDefault("modes", "mixed").replace(',', '/')),
+                        label("Purpose", watch.getOrDefault("purpose", "options")),
+                        label("Event", watch.getOrDefault("event_name", "")),
+                        label("Status", watch.getOrDefault("backend_status", "queued")),
+                        label("Last checked", date(watch.get("last_checked_at"))),
+                        label("Latest result", watch.getOrDefault("last_summary", "")),
+                        label("Source note", watch.getOrDefault("last_source_note", "")));
+                addRow(title, detail);
+            }
+        }
+
         addHeader("Monitored event trips");
         List<Map<String, String>> events = eventStore.listActiveEventTrips(100);
         if (events.isEmpty()) {
-            addRow("No monitored events", "Say something like “I’m going to Vegas for CES” or “I’m going to San Diego for Comic-Con.”");
+            addRow("No monitored events", "Say something like “I’m going to Vegas for CES,” “San Diego for Comic-Con,” or “metro to New York Comic Con.”");
         } else {
             for (Map<String, String> event : events) {
                 String title = event.getOrDefault("event_name", "Event") + " — "
@@ -102,10 +141,10 @@ public final class TravelNotebookActivity extends Activity {
             }
         }
 
-        addHeader("Active travel-deal watches");
+        addHeader("Legacy airfare watches");
         List<Map<String, String>> watches = db.listDealWatches(100);
         if (watches.isEmpty()) {
-            addRow("No active watches", "Saying that a destination is a dream trip or asking Sarah to watch for deals creates a broad watch with sensible defaults.");
+            addRow("No flight-only watch", "New broad requests use the multimodal watch above instead of assuming air travel.");
         } else {
             for (Map<String, String> watch : watches) {
                 String title = watch.getOrDefault("origin", "Home area") + " → "
@@ -141,6 +180,7 @@ public final class TravelNotebookActivity extends Activity {
         hasTravelMemory |= addMemoryRows(memories, "travel_worry");
         hasTravelMemory |= addMemoryRows(memories, "travel_experience");
         hasTravelMemory |= addMemoryRows(memories, "event_trip");
+        hasTravelMemory |= addMemoryRows(memories, "journey_plan");
         if (!hasTravelMemory) addRow("Nothing saved yet", "Sarah only adds approved memories when memory is enabled.");
 
         addHeader("Other things Sarah remembers");
@@ -151,7 +191,8 @@ public final class TravelNotebookActivity extends Activity {
                     || category.equals("trip_focus")
                     || category.equals("travel_worry")
                     || category.equals("travel_experience")
-                    || category.equals("event_trip")) continue;
+                    || category.equals("event_trip")
+                    || category.equals("journey_plan")) continue;
             addRow(category, row.get("summary"));
         }
     }
@@ -172,6 +213,7 @@ public final class TravelNotebookActivity extends Activity {
         if (category.equals("travel_worry")) return "Travel worry";
         if (category.equals("travel_experience")) return "Travel experience";
         if (category.equals("event_trip")) return "Event trip";
+        if (category.equals("journey_plan")) return "Journey plan";
         return category;
     }
 
@@ -322,6 +364,7 @@ public final class TravelNotebookActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (mobilityStore != null) mobilityStore.close();
         if (eventStore != null) eventStore.close();
         if (db != null) db.close();
         super.onDestroy();

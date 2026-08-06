@@ -23,9 +23,9 @@ public final class EventTripIntentParser {
     }
 
     private static final Pattern CITY_FOR_EVENT = Pattern.compile(
-            "(?i)\\b(?:going|traveling|travelling|flying|heading|planning to go|planning on going)\\s+to\\s+([A-Za-z .'-]{2,50})\\s+for\\s+([^.!?]{2,90})");
+            "(?i)\\b(?:going|traveling|travelling|flying|heading|taking (?:the )?(?:train|metro|subway|bus)|planning to go|planning on going)\\s+to\\s+([A-Za-z .'-]{2,50})\\s+for\\s+([^.!?]{2,90})");
     private static final Pattern EVENT_IN_CITY = Pattern.compile(
-            "(?i)\\b(?:attending|going to|visiting)\\s+([^.!?]{2,80}?)\\s+(?:in|at)\\s+([A-Za-z .'-]{2,50})(?:[.!?]|$)");
+            "(?i)\\b(?:attending|going to|visiting|taking (?:the )?(?:train|metro|subway|bus) to)\\s+([^.!?]{2,80}?)\\s+(?:in|at)\\s+([A-Za-z .'-]{2,50})(?:[.!?]|$)");
 
     private EventTripIntentParser() { }
 
@@ -36,9 +36,11 @@ public final class EventTripIntentParser {
                 "monitor", "watch for updates", "keep me updated", "new details",
                 "notify me", "track the event", "follow the event");
 
+        if (containsAny(lower, "new york comic con", "nycc")) {
+            return new EventIntent("New York Comic Con", "New York City", true);
+        }
         if (containsAny(lower, "ces", "consumer electronics show")) {
-            String city = containsAny(lower, "las vegas", "vegas") ? "Las Vegas" : "Las Vegas";
-            return new EventIntent("CES", city, true);
+            return new EventIntent("CES", "Las Vegas", true);
         }
         if (containsAny(lower,
                 "san diego comic-con", "san diego comic con", "comic-con international",
@@ -46,7 +48,9 @@ public final class EventTripIntentParser {
             return new EventIntent("San Diego Comic-Con", "San Diego", true);
         }
         if (lower.contains("comic con") || lower.contains("comic-con")) {
-            String city = lower.contains("san diego") ? "San Diego" : cityBeforeFor(safe);
+            String city = lower.contains("san diego") ? "San Diego"
+                    : lower.contains("new york") ? "New York City"
+                    : cityBeforeFor(safe);
             if (!city.isEmpty()) return new EventIntent("Comic-Con", city, true);
         }
 
@@ -79,7 +83,7 @@ public final class EventTripIntentParser {
         if (value == null) return "";
         String cleaned = value.trim().replaceAll("(?i)\\b(?:the|a|an)\\b", "").trim();
         cleaned = cleaned.replaceAll("[,.!?]+$", "").trim();
-        return titleCase(cleaned);
+        return DestinationParser.canonicalizePlace(cleaned);
     }
 
     private static String cleanEvent(String value) {
@@ -90,6 +94,7 @@ public final class EventTripIntentParser {
                 "").trim();
         cleaned = cleaned.replaceAll("[,.!?]+$", "").trim();
         if (cleaned.equalsIgnoreCase("ces")) return "CES";
+        if (cleaned.equalsIgnoreCase("nycc")) return "New York Comic Con";
         if (cleaned.equalsIgnoreCase("comic con") || cleaned.equalsIgnoreCase("comic-con")) return "Comic-Con";
         return titleCase(cleaned);
     }

@@ -52,12 +52,41 @@ public final class AgenticTravelPlannerTest {
         say(chinaHistory, "user", "I always wanted to visit China");
         AgenticTravelPlanner.Plan china = AgenticTravelPlanner.plan(
                 "I always wanted to visit China", profile, chinaHistory, memories);
-        require(hasAction(china, AgenticTravelPlanner.CREATE_DEAL_WATCH, "China"),
-                "dream destination must create broad deal watch");
+        require(hasAction(china, AgenticTravelPlanner.CREATE_MOBILITY_WATCH, "China"),
+                "dream destination must create multimodal watch");
         require(hasAction(china, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "China"),
                 "China must queue a country-level pack");
-        require(china.reply.contains("nearby airports"), "watch must use broad airport defaults");
+        require(china.reply.toLowerCase().contains("air") && china.reply.toLowerCase().contains("rail"),
+                "dream watch must not assume airfare only");
         require(!china.reply.endsWith("?"), "dream destination must not start a questionnaire");
+
+        AgenticTravelPlanner.Plan train = AgenticTravelPlanner.plan(
+                "I would love to take a cross-country train trip from New York to California",
+                profile,
+                List.of(),
+                memories);
+        require(hasAction(train, AgenticTravelPlanner.SAVE_JOURNEY_PLAN, "California"),
+                "cross-country train must save a journey plan");
+        require(train.reply.toLowerCase().contains("amtrak"), "train reply must discuss Amtrak planning");
+        require(!train.reply.toLowerCase().contains("paris"), "train reply must not inject Paris");
+
+        AgenticTravelPlanner.Plan nycc = AgenticTravelPlanner.plan(
+                "I was thinking about taking metro to New York Comic Con",
+                profile,
+                List.of(),
+                memories);
+        require(hasAction(nycc, AgenticTravelPlanner.CREATE_EVENT_TRIP, "New York City"),
+                "NYCC must create an event trip");
+        require(hasAction(nycc, AgenticTravelPlanner.SAVE_JOURNEY_PLAN, "New York City"),
+                "NYCC metro request must save local-transit journey");
+        require(nycc.reply.toLowerCase().contains("metro") || nycc.reply.toLowerCase().contains("local transit"),
+                "NYCC reply must preserve requested travel method");
+
+        AgenticTravelPlanner.Plan unknown = AgenticTravelPlanner.plan(
+                "I don't know yet", profile, history, memories);
+        require(unknown.reply.toLowerCase().contains("undecided"),
+                "uncertain answer must be accepted without another question");
+        require(!unknown.reply.endsWith("?"), "uncertain answer must not ask again");
 
         List<Map<String, String>> dealHistory = new ArrayList<>();
         say(dealHistory, "user", "Just watch for deals to Austin");

@@ -6,7 +6,6 @@ import java.util.Map;
 
 /**
  * Single routing point for connected conversation providers.
- *
  * OpenAI Responses is the included adapter. Teams can add Claude, Gemini,
  * Bedrock, or another provider here without changing MainActivity.
  */
@@ -23,6 +22,7 @@ public final class ConnectedModelGateway {
             boolean webSearch,
             byte[] imageJpeg) throws Exception {
         String normalized = providerId == null ? "openai" : providerId.trim().toLowerCase(Locale.US);
+        boolean effectiveWebSearch = webSearch || LiveTravelIntent.needsCurrentSources(message);
         if (normalized.isEmpty() || "openai".equals(normalized)) {
             return OpenAIClient.respond(
                     apiKey,
@@ -30,7 +30,7 @@ public final class ConnectedModelGateway {
                     systemPrompt,
                     history,
                     message,
-                    webSearch,
+                    effectiveWebSearch,
                     imageJpeg);
         }
         throw new IllegalArgumentException(
