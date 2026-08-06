@@ -14,6 +14,7 @@ jobs:
       # Optional private hackathon secrets. End users never enter these in Sarah.
       SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
       SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
+      SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
     steps:
       - name: Check out Sarah source
         uses: actions/checkout@v4
