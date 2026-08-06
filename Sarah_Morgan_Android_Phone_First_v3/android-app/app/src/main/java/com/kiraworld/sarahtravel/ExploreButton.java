@@ -91,13 +91,16 @@ public final class ExploreButton extends Button {
         SarahDatabase db = new SarahDatabase(context.getApplicationContext());
         List<Map<String, String>> messages;
         Map<String, String> ownerProfile;
+        Map<String, String> profile;
         try {
-            messages = db.recentMessages(40);
             ownerProfile = db.getProfile();
+            profile = activeProfile(context, ownerProfile);
+            messages = db.recentMessagesForSpeaker(
+                    profile.getOrDefault("name", ownerProfile.getOrDefault("name", "")),
+                    40);
         } finally {
             db.close();
         }
-        Map<String, String> profile = activeProfile(context, ownerProfile);
 
         String latest = latestUserMessage(messages);
         KnownEventCatalog.Entry knownEvent = recentKnownEvent(messages, latest);
