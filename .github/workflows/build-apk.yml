@@ -14,10 +14,9 @@ jobs:
   materialize-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the Sarah 2.5 repair branch
+      - name: Check out the current Sarah source
         uses: actions/checkout@v4
         with:
-          ref: agent/sarah-2.5-futuristic-sync
           fetch-depth: 0
 
       - name: Reconstruct and validate the complete Sarah source
@@ -53,7 +52,7 @@ jobs:
           find materialized-sarah24 -type d -name __pycache__ -prune -exec rm -rf {} +
           find materialized-sarah24 -type f -name '*.pyc' -delete
 
-      - name: Commit readable source and extraction status to the repair branch
+      - name: Commit readable source and extraction status to main
         if: always() && github.event_name == 'push'
         shell: bash
         env:
@@ -77,7 +76,7 @@ jobs:
             echo 'No materialized-source changes were needed.'
           else
             git commit -m '[skip ci] Materialize Sarah source for the 2.5 coordinated repair'
-            git push origin HEAD:agent/sarah-2.5-futuristic-sync
+            git push origin HEAD:main
           fi
 
       - name: Upload complete readable source
