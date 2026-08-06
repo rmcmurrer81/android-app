@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import android.app.Application;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.database.sqlite.SQLiteDatabase;
 
@@ -8,23 +9,42 @@ import android.database.sqlite.SQLiteDatabase;
 public final class SarahApplication extends Application {
     private static final String REPAIR_PREFS = "sarah_repairs";
     private static final String BELL_EVENT_REPAIR = "bell_county_event_repair_v1";
+    private static final String INDY_POPCON_REPAIR = "indy_popcon_event_repair_v1";
+    private static SarahApplication instance;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        repairBellCountyComicConMisclassification();
+        instance = this;
+        repairEventMisclassification(
+                BELL_EVENT_REPAIR,
+                "Bell County Comic Con",
+                "Belton, Texas",
+                new String[]{"bell country comic con", "bell county comic con"});
+        repairEventMisclassification(
+                INDY_POPCON_REPAIR,
+                "PopCon Indy",
+                "Indianapolis, Indiana",
+                new String[]{"indy pop con", "indy popcon", "popcon indy", "indianapolis popcon"});
     }
 
-    private void repairBellCountyComicConMisclassification() {
+    public static Context appContext() {
+        return instance == null ? null : instance.getApplicationContext();
+    }
+
+    private void repairEventMisclassification(
+            String marker,
+            String eventName,
+            String destination,
+            String[] mistakenDestinations) {
         SharedPreferences repairs = getSharedPreferences(REPAIR_PREFS, MODE_PRIVATE);
-        if (repairs.getBoolean(BELL_EVENT_REPAIR, false)) return;
+        if (repairs.getBoolean(marker, false)) return;
 
         boolean foundBadRecord = false;
         SarahDatabase db = new SarahDatabase(this);
         try {
             SQLiteDatabase writable = db.getWritableDatabase();
-            String[] mistaken = {"bell country comic con", "bell county comic con"};
-            for (String value : mistaken) {
+            for (String value : mistakenDestinations) {
                 foundBadRecord |= writable.delete(
                         "wish_list", "lower(destination)=?", new String[]{value}) > 0;
                 foundBadRecord |= writable.delete(
@@ -37,8 +57,7 @@ public final class SarahApplication extends Application {
                         new String[]{"%" + value + "%", "%" + value + "%"});
             }
         } catch (Exception ignored) {
-            // A later launch may retry if the repair marker is not written.
-            db.close();
+            try { db.close(); } catch (Exception ignoredAgain) { }
             return;
         } finally {
             try { db.close(); } catch (Exception ignored) { }
@@ -47,13 +66,13 @@ public final class SarahApplication extends Application {
         if (foundBadRecord) {
             EventTripStore eventStore = new EventTripStore(this);
             try {
-                eventStore.upsertEventTrip("Bell County Comic Con", "Belton, Texas", true);
+                eventStore.upsertEventTrip(eventName, destination, true);
             } finally {
                 eventStore.close();
             }
             EventMonitorScheduler.ensureScheduled(this);
             EventMonitorScheduler.runSoon(this);
         }
-        repairs.edit().putBoolean(BELL_EVENT_REPAIR, true).apply();
+        repairs.edit().putBoolean(marker, true).apply();
     }
 }
