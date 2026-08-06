@@ -13,13 +13,13 @@ public final class JourneyPlannerCore {
 
         if (intent.modes.contains(JourneyIntentParser.TRANSIT) && !intent.eventName.isEmpty()) {
             return "I’ll treat this as a local-transit trip from " + intent.origin + " to "
-                    + intent.eventName + " in " + intent.destination + ", not as a comparison with an old vacation idea. "
+                    + intent.eventName + " in " + intent.destination + ". "
                     + "I’ll check the event venue, the realistic transit chain, walking distance, accessibility, service changes, and a backup route when current sources are connected. The Map and Route buttons can show the area now.";
         }
 
         if (intent.modes.contains(JourneyIntentParser.RAIL) && intent.crossCountry) {
             return "A cross-country train trip from " + intent.origin + " to " + intent.destination
-                    + " is a multi-day rail journey, not a city comparison. I’ll compare current Amtrak route combinations, coach versus sleeper choices, transfer points, total travel time, station access, scenery, meals, and possible overnight stops. Current timetables and prices need official live data, but I can save the rail plan now and show maps, photos, and videos of the route.";
+                    + " is a multi-day rail journey. I’ll compare current Amtrak route combinations, coach versus sleeper choices, transfer points, total travel time, station access, scenery, meals, and possible overnight stops. Current timetables and prices need official live data, but I can save the rail plan now and show maps, photos, and videos of the route.";
         }
 
         if (intent.modes.size() > 1) {
@@ -29,7 +29,7 @@ public final class JourneyPlannerCore {
 
         String mode = intent.modes.get(0);
         if (JourneyIntentParser.RAIL.equals(mode)) {
-            return "I’ll plan " + route + " by rail. I’ll check current Amtrak or regional-rail options, transfers, coach and sleeper choices where relevant, station access, total trip time, and the final local connection. I won’t substitute old Paris or New York suggestions for the route you actually named.";
+            return "I’ll plan " + route + " by rail. I’ll check current Amtrak or regional-rail options, transfers, coach and sleeper choices where relevant, station access, total trip time, and the final local connection.";
         }
         if (JourneyIntentParser.TRANSIT.equals(mode)) {
             return "I’ll plan " + route + " by local transit. I’ll compare the practical train, subway, light-rail, bus, and walking pieces, including service changes, elevators, transfer time, and a backup route when current information is available.";
@@ -42,7 +42,7 @@ public final class JourneyPlannerCore {
                     + " with route options, tolls, charging or fuel stops, weather, parking, rest stops, and an alternative if traffic or conditions change.";
         }
         if (JourneyIntentParser.FERRY.equals(mode)) {
-            return "I’ll treat the ferry as part of the real journey from " + intent.origin + " to " + intent.destination
+            return "I’ll treat the ferry as part of the journey from " + intent.origin + " to " + intent.destination
                     + " and check current terminals, schedules, boarding rules, weather sensitivity, and connections on both sides.";
         }
         if (JourneyIntentParser.AIR.equals(mode)) {
