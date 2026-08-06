@@ -194,20 +194,34 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
-      - name: Require an already-materialized PR head
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          if ! git diff --quiet || ! git diff --cached --quiet; then
-            echo 'The pull-request head does not yet contain the complete materialized Sarah 2.4 source.'
-            git status --short
-            exit 1
-          fi
-
-      - name: Resolve immutable source commit
+      - name: Resolve immutable source commit or PR source label
         id: resolve
         shell: bash
-        run: echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            echo "source_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package complete materialized source for Windows build and release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          zip -qr Sarah_Travel_OS_2.4_Stay22_Public_Source.zip . \
+            -x '.git/*' 'build/*' '**/__pycache__/*' '*.pyc' \
+               'public-release/2.4/delta-chunks/*' 'public-release/2.4/chunks/*' \
+               'public-release/2.4/parts/*'
+          test -s Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          sha256sum Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+
+      - name: Upload materialized source for the Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.4-Materialized-Source-For-Build
+          path: Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          if-no-files-found: error
 
       - name: Preserve Sarah private-test Android signing continuity
         uses: actions/cache@v4
@@ -223,18 +237,14 @@ jobs:
       - name: Build Sarah Android 2.4 APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
-      - name: Name and verify Android and source artifacts
+      - name: Name and verify Android artifact
         shell: bash
         run: |
           set -euo pipefail
           cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk \
             Sarah-Morgan-2.4-stay22-live-public.apk
           test -s Sarah-Morgan-2.4-stay22-live-public.apk
-          git archive --format=zip \
-            --output=Sarah_Travel_OS_2.4_Stay22_Public_Source.zip \
-            "${{ steps.resolve.outputs.source_sha }}"
-          test -s Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
-          sha256sum Sarah-Morgan-2.4-stay22-live-public.apk Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          sha256sum Sarah-Morgan-2.4-stay22-live-public.apk
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -254,10 +264,19 @@ jobs:
     needs: prepare-test-build-android
     runs-on: windows-latest
     steps:
-      - name: Check out immutable materialized Sarah 2.4 source
-        uses: actions/checkout@v4
+      - name: Download complete materialized source
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ needs.prepare-test-build-android.outputs.source_sha }}
+          name: Sarah-2.4-Materialized-Source-For-Build
+          path: source-archive
+
+      - name: Extract Sarah source
+        shell: pwsh
+        run: |
+          Expand-Archive -Path 'source-archive\Sarah_Travel_OS_2.4_Stay22_Public_Source.zip' -DestinationPath '.' -Force
+          if (!(Test-Path 'windows-companion\SarahMorganInstaller.spec')) {
+            throw 'The materialized Sarah Windows source was not extracted.'
+          }
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
