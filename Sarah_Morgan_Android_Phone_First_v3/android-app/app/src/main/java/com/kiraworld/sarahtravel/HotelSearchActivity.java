@@ -7,13 +7,20 @@ import android.text.InputType;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.Toast;
 
-/** Hotel discovery, comparison links, loyalty context, and stay-assistant entry. */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/** Hotel discovery, normalized live offers, loyalty context, and stay-assistant entry. */
 public final class HotelSearchActivity extends Activity {
     private TravelContextSnapshot baseTrip;
     private HotelSearchState state;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private List<TravelCommerceClient.Offer> liveOffers = new ArrayList<>();
+    private String liveStatus = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +55,18 @@ public final class HotelSearchActivity extends Activity {
                 "Sarah can carry the active trip into hotel searches. You can change dates, travelers, or rooms here without changing a confirmed booking."));
         criteria.addView(TravelUi.primaryButton(this, "Edit hotel search details", v -> editDetails()));
         root.addView(criteria);
+
+        if (TravelCommerceConfig.isConfigured()) {
+            LinearLayout live = TravelUi.card(this, TravelUi.MINT);
+            live.addView(TravelUi.cardTitle(this, "⚡", "Live in-app hotel comparison"));
+            live.addView(TravelUi.body(this,
+                    liveStatus.isEmpty()
+                            ? "Ask the team travel backend for normalized current offers using the active dates, rooms, loyalty programs and accessibility preferences."
+                            : liveStatus));
+            live.addView(TravelUi.primaryButton(this, "Find live hotel prices", v -> loadLiveOffers()));
+            root.addView(live);
+            for (TravelCommerceClient.Offer offer : liveOffers) root.addView(offerCard(offer));
+        }
 
         LinearLayout compare = TravelUi.card(this, TravelUi.PEACH);
         compare.addView(TravelUi.cardTitle(this, "💵", "Compare the complete price"));
@@ -97,13 +116,66 @@ public final class HotelSearchActivity extends Activity {
                 v -> TravelUi.start(this, StayAssistantActivity.class)));
         root.addView(stay);
 
-        LinearLayout live = TravelUi.card(this, TravelUi.CREAM);
-        live.addView(TravelUi.cardTitle(this, "🔌", "Live price integration status"));
-        live.addView(TravelUi.body(this,
+        LinearLayout integration = TravelUi.card(this, TravelUi.CREAM);
+        integration.addView(TravelUi.cardTitle(this, "🔌", "Live price integration status"));
+        integration.addView(TravelUi.body(this,
                 TravelCommerceConfig.isConfigured()
-                        ? "A team travel-commerce backend is configured. Sarah can request normalized hotel offers while keeping provider credentials off the phone."
+                        ? "A team travel-commerce backend is configured. Provider credentials stay off the phone, and results must include source time, total price and booking URL."
                         : "Provider links work now. In-app live hotel prices require a team backend connected to approved inventory such as Expedia Rapid, Booking.com Demand API, a sponsor tool, or another lawful provider. The installer does not enter those credentials."));
-        root.addView(live);
+        root.addView(integration);
+    }
+
+    private LinearLayout offerCard(TravelCommerceClient.Offer offer) {
+        LinearLayout card = TravelUi.card(this, TravelUi.SKY);
+        card.addView(TravelUi.cardTitle(this, "🏨", offer.title));
+        String price = offer.totalPrice > 0
+                ? offer.currency + " " + String.format("%.2f", offer.totalPrice) + " total"
+                : "Price requires confirmation";
+        String detail = "Provider: " + offer.provider
+                + "\n" + price
+                + (offer.cancellation.isEmpty() ? "" : "\nCancellation: " + offer.cancellation)
+                + (offer.details.isEmpty() ? "" : "\n" + offer.details)
+                + (offer.sourceTime.isEmpty() ? "" : "\nChecked: " + offer.sourceTime);
+        card.addView(TravelUi.body(this, detail));
+        if (!offer.bookingUrl.isEmpty()) {
+            card.addView(TravelUi.primaryButton(this, "Review this offer at the provider",
+                    v -> TravelUi.open(this, offer.bookingUrl)));
+        }
+        return card;
+    }
+
+    private void loadLiveOffers() {
+        if (state.destination.isEmpty() || state.checkIn.isEmpty() || state.checkOut.isEmpty()) {
+            Toast.makeText(this, "Set the destination, check-in and check-out dates first.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        liveStatus = "Searching approved hotel sources…";
+        liveOffers.clear();
+        render();
+        TravelContextSnapshot trip = state.applyTo(baseTrip);
+        String loyalty = LoyaltyVaultStore.summary(this, trip.personId);
+        String needs = TravelerNeedsStore.summary(this, trip.personId);
+        executor.submit(() -> {
+            try {
+                List<TravelCommerceClient.Offer> offers = TravelCommerceClient.searchHotels(
+                        trip, state, loyalty, needs);
+                runOnUiThread(() -> {
+                    liveOffers = offers;
+                    liveStatus = offers.isEmpty()
+                            ? "The backend returned no matching offers. Try different dates or use the provider links below."
+                            : "Found " + offers.size() + " current offer" + (offers.size() == 1 ? "" : "s")
+                                    + ". Verify the final provider checkout before paying.";
+                    render();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    liveOffers.clear();
+                    liveStatus = "The live comparison could not finish: " + safeMessage(error)
+                            + ". Provider links remain available below.";
+                    render();
+                });
+            }
+        });
     }
 
     private void editDetails() {
@@ -140,6 +212,8 @@ public final class HotelSearchActivity extends Activity {
                             number(adults.getText().toString(), 1),
                             number(rooms.getText().toString(), 1));
                     state.save(this, baseTrip.personId);
+                    liveOffers.clear();
+                    liveStatus = "";
                     render();
                 })
                 .setNegativeButton("Cancel", null)
@@ -168,5 +242,16 @@ public final class HotelSearchActivity extends Activity {
     private static int number(String value, int fallback) {
         try { return Math.max(1, Integer.parseInt(value.trim())); }
         catch (Exception ignored) { return fallback; }
+    }
+
+    private static String safeMessage(Exception error) {
+        String value = error == null ? "unknown error" : error.getMessage();
+        return value == null || value.trim().isEmpty() ? "unknown error" : value.trim();
+    }
+
+    @Override
+    protected void onDestroy() {
+        executor.shutdownNow();
+        super.onDestroy();
     }
 }
