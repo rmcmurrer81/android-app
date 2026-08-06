@@ -17,8 +17,8 @@ android {
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 15
-        versionName '1.5-builtin-openai-media'
+        versionCode 16
+        versionName '1.6-profiles-events'
 
         // Private hackathon configuration. End users do not enter model keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
