@@ -50,6 +50,7 @@ jobs:
           PY
 
       - name: Materialize readable phone and Windows source on main
+        id: materialize
         shell: bash
         run: |
           set -euo pipefail
@@ -61,6 +62,7 @@ jobs:
           find windows-companion development-tools/sarah-2.3-android-upgrade -type f -name '*.pyc' -delete
 
       - name: Verify baseline tests before committing
+        id: tests
         shell: bash
         run: |
           set -euo pipefail
@@ -69,16 +71,35 @@ jobs:
           python -m compileall -q windows-companion
           python development-tools/sarah-2.3-android-upgrade/run_android_upgrade_tests.py
 
-      - name: Commit readable baseline source
+      - name: Record result and commit readable baseline source
+        if: always()
         shell: bash
+        env:
+          SOURCE_RESULT: ${{ steps.source.outcome }}
+          MATERIALIZE_RESULT: ${{ steps.materialize.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          mkdir -p public-release/2.5
+          {
+            echo "run_id=$RUN_ID"
+            echo "event_sha=$EVENT_SHA"
+            echo "source=$SOURCE_RESULT"
+            echo "materialize=$MATERIALIZE_RESULT"
+            echo "tests=$TEST_RESULT"
+            echo "baseline_files=$(find windows-companion development-tools/sarah-2.3-android-upgrade -type f 2>/dev/null | wc -l)"
+          } > public-release/2.5/BASELINE_STATUS.txt
           git config user.name 'Sarah Source Materializer'
           git config user.email 'actions@users.noreply.github.com'
-          git add windows-companion development-tools/sarah-2.3-android-upgrade
+          git add public-release/2.5/BASELINE_STATUS.txt
+          if [ "$SOURCE_RESULT" = success ] && [ "$MATERIALIZE_RESULT" = success ] && [ "$TEST_RESULT" = success ]; then
+            git add windows-companion development-tools/sarah-2.3-android-upgrade
+          fi
           if git diff --cached --quiet; then
-            echo 'Sarah baseline source is already readable on main.'
+            echo 'No Sarah baseline changes were needed.'
           else
-            git commit -m '[skip ci] Materialize verified Sarah phone and Windows baseline source'
+            git commit -m '[skip ci] Record verified Sarah baseline materialization result'
             git push origin HEAD:main
           fi
