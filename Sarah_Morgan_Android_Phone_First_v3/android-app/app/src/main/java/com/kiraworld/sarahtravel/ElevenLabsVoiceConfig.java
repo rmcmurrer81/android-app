@@ -8,6 +8,8 @@ package com.kiraworld.sarahtravel;
  * public release should use the protected backend fields instead.
  */
 public final class ElevenLabsVoiceConfig {
+    /** Voice Design ID for the original Sarah Morgan voice. Voice IDs are not credentials. */
+    public static final String DEFAULT_VOICE_ID = "WcGvc9xxaOYbKswm3NBx";
     public static final String DEFAULT_MODEL_ID = "eleven_multilingual_v2";
     public static final String OUTPUT_FORMAT = "mp3_44100_128";
 
@@ -25,7 +27,8 @@ public final class ElevenLabsVoiceConfig {
     }
 
     public static String voiceId() {
-        return clean(BuildConfig.SARAH_ELEVENLABS_VOICE_ID);
+        String configured = clean(BuildConfig.SARAH_ELEVENLABS_VOICE_ID);
+        return configured.isEmpty() ? DEFAULT_VOICE_ID : configured;
     }
 
     public static String modelId() {
@@ -56,8 +59,7 @@ public final class ElevenLabsVoiceConfig {
     public static String statusLabel() {
         if (backendConfigured()) return "ElevenLabs voice through Sarah's protected backend";
         if (directConfigured()) return "ElevenLabs voice included in this private test build";
-        if (voiceId().isEmpty()) return "ElevenLabs voice ID not included";
-        return "ElevenLabs credentials not included";
+        return "Sarah Morgan voice selected • ElevenLabs service credential not included";
     }
 
     private static String clean(String value) {
