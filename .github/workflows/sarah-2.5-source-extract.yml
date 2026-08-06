@@ -23,6 +23,7 @@ jobs:
           fetch-depth: 0
 
       - name: Reconstruct and validate the complete Sarah 2.4 source archive
+        id: extract
         shell: bash
         run: |
           set -euo pipefail
@@ -54,22 +55,35 @@ jobs:
           find materialized-sarah24 -type d -name __pycache__ -prune -exec rm -rf {} +
           find materialized-sarah24 -type f -name '*.pyc' -delete
 
-      - name: Commit the complete readable source to the repair branch
-        if: github.event_name != 'pull_request'
+      - name: Record source extraction result on the repair branch
+        if: always() && github.event_name != 'pull_request'
         shell: bash
+        env:
+          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
+          SOURCE_EVENT_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
+          mkdir -p public-release/2.5
+          {
+            echo "outcome=$EXTRACT_OUTCOME"
+            echo "event_sha=$SOURCE_EVENT_SHA"
+            echo "run_id=$SOURCE_RUN_ID"
+            echo "file_count=$(find materialized-sarah24 -type f 2>/dev/null | wc -l)"
+          } > public-release/2.5/SOURCE_EXTRACT_STATUS.txt
           git config user.name 'Sarah Source Extractor'
           git config user.email 'actions@users.noreply.github.com'
-          git add materialized-sarah24
+          git add public-release/2.5/SOURCE_EXTRACT_STATUS.txt
+          if [ -d materialized-sarah24 ]; then git add materialized-sarah24; fi
           if git diff --cached --quiet; then
-            echo 'The readable Sarah 2.4 source is already materialized.'
+            echo 'No source extraction status changes were needed.'
           else
-            git commit -m '[skip ci] Materialize readable Sarah 2.4 source for 2.5 repair'
+            git commit -m '[skip ci] Record Sarah 2.5 source extraction result'
             git push origin HEAD:agent/sarah-2.5-futuristic-sync
           fi
 
       - name: Upload the complete readable source for repair work
+        if: steps.extract.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: Sarah-2.4-Complete-Readable-Source
