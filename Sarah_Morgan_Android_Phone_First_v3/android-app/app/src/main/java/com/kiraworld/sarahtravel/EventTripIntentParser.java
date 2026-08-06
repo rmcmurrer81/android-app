@@ -36,6 +36,11 @@ public final class EventTripIntentParser {
                 "monitor", "watch for updates", "keep me updated", "new details",
                 "notify me", "track the event", "follow the event");
 
+        KnownEventCatalog.Entry known = KnownEventCatalog.find(safe);
+        if (known != null) {
+            return new EventIntent(known.eventName, known.destination, true);
+        }
+
         if (containsAny(lower, "new york comic con", "nycc")) {
             return new EventIntent("New York Comic Con", "New York City", true);
         }
