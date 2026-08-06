@@ -18,14 +18,27 @@ import java.util.regex.Pattern;
  * PersonProfileStore so a parent, child, partner, or friend does not inherit
  * the phone owner's identity or memories.
  */
-public final class SpeakerContext {
+public final class SpeakerContext implements AutoCloseable {
     public static final class Result {
         public final boolean handled;
         public final String reply;
+        public final boolean speakerChanged;
+        /** True when the user's current message was spoken by the newly active person. */
+        public final boolean messageBelongsToActiveSpeaker;
 
         Result(boolean handled, String reply) {
+            this(handled, reply, false, false);
+        }
+
+        Result(
+                boolean handled,
+                String reply,
+                boolean speakerChanged,
+                boolean messageBelongsToActiveSpeaker) {
             this.handled = handled;
             this.reply = reply == null ? "" : reply;
+            this.speakerChanged = speakerChanged;
+            this.messageBelongsToActiveSpeaker = messageBelongsToActiveSpeaker;
         }
     }
 
@@ -79,10 +92,15 @@ public final class SpeakerContext {
         String lower = raw.toLowerCase(Locale.US);
 
         if (isReturnToOwner(lower)) {
+            boolean changed = !isOwner();
             switchTo(ownerName);
             pending = Pending.NONE;
             pendingTripDestination = "";
-            return new Result(true, "Welcome back, " + ownerName + ". I’m using your profile again.");
+            return new Result(
+                    true,
+                    "Welcome back, " + ownerName + ". I’m using your profile again.",
+                    changed,
+                    true);
         }
 
         Result pendingResult = handlePending(raw, lower);
@@ -175,6 +193,7 @@ public final class SpeakerContext {
 
         Matcher relation = CHILD_RELATION_NAME.matcher(raw);
         if (!relation.find()) return new Result(false, "");
+        String before = activeName();
         String name = cleanName(relation.group(1));
         int age = parseExplicitChildAge(raw);
         activatePerson(name, "family_child");
@@ -182,13 +201,16 @@ public final class SpeakerContext {
             people.setAge(name, age);
             activeProfile = people.findByName(name);
         }
+        Result result;
         if (!ageKnown()) {
             pending = Pending.AGE;
-            return new Result(true,
+            result = new Result(true,
                     "Hi, " + activeName() + ". Nice to meet you. How old are you? I ask so movies, games, books, events, and travel ideas are age-appropriate.");
+        } else {
+            result = continueAfterProfileSetup(
+                    "Hi, " + activeName() + ". Nice to see you again");
         }
-        return continueAfterProfileSetup(
-                "Hi, " + activeName() + ". Nice to see you again");
+        return new Result(result.handled, result.reply, !before.equalsIgnoreCase(activeName()), false);
     }
 
     private Result detectSelfIntroduction(String raw) {
@@ -199,27 +221,34 @@ public final class SpeakerContext {
         if (originalName == null || originalName.isEmpty() || !Character.isUpperCase(originalName.charAt(0))) {
             return new Result(false, "");
         }
+        String before = activeName();
         String name = cleanName(originalName);
         if (name.equalsIgnoreCase(ownerName)) {
             switchTo(ownerName);
             pending = Pending.NONE;
-            return new Result(true, "Hi, " + ownerName + ". I know it’s you again.");
+            return new Result(
+                    true,
+                    "Hi, " + ownerName + ". I know it’s you again.",
+                    !before.equalsIgnoreCase(ownerName),
+                    true);
         }
 
         boolean existed = people != null && !people.findByName(name).isEmpty();
         activatePerson(name, "phone_guest");
+        Result result;
         if (!ageKnown()) {
             pending = Pending.AGE;
-            return new Result(true,
+            result = new Result(true,
                     "Hi, " + activeName() + ". I don’t have a completed profile for you yet. How old are you? I’ll keep everything family-friendly until I know.");
+        } else {
+            String memory = people == null ? "" : people.memorySummary(activeName(), 3);
+            String lead = existed
+                    ? "Hi, " + activeName() + ". I found your separate profile"
+                    : "Hi, " + activeName() + ". I created a separate profile for you";
+            if (!memory.isEmpty()) lead += ". I remember: " + memory;
+            result = continueAfterProfileSetup(lead);
         }
-
-        String memory = people == null ? "" : people.memorySummary(activeName(), 3);
-        String lead = existed
-                ? "Hi, " + activeName() + ". I found your separate profile"
-                : "Hi, " + activeName() + ". I created a separate profile for you";
-        if (!memory.isEmpty()) lead += ". I remember: " + memory;
-        return continueAfterProfileSetup(lead);
+        return new Result(result.handled, result.reply, !before.equalsIgnoreCase(activeName()), true);
     }
 
     private Result continueAfterProfileSetup(String lead) {
@@ -421,5 +450,10 @@ public final class SpeakerContext {
     private static int parseInt(String value, int fallback) {
         try { return Integer.parseInt(value == null ? "" : value.trim()); }
         catch (Exception ignored) { return fallback; }
+    }
+
+    @Override
+    public void close() {
+        if (people != null) people.close();
     }
 }
