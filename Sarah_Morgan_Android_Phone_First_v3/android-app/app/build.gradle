@@ -7,6 +7,7 @@ def javaString = { String value ->
 }
 def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
+def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -22,6 +23,7 @@ android {
         // Private hackathon configuration. End users do not enter model keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
+        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
     }
 
     buildFeatures {
