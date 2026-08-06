@@ -1,0 +1,8 @@
+{
+  "version": "2.4-stay22-live-public",
+  "archive": "Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz",
+  "sha256": "4f0fc80df2d7fae644f114efd9f107b3c6566a66734f006f502d3f70d0a415a6",
+  "size_bytes": 73576,
+  "chunks": 7,
+  "base_branch": "agent/sarah-public-2.3-full"
+}
