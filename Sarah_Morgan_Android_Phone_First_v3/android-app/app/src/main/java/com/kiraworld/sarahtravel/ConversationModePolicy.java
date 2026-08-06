@@ -11,9 +11,9 @@ public final class ConversationModePolicy {
 
     private ConversationModePolicy() { }
 
-    public static String route(int mode, boolean validatedInternet, boolean connectedKeyAvailable) {
+    public static String route(int mode, boolean validatedInternet, boolean teamModelAvailable) {
         if (mode == MODE_LOCAL_ONLY) return ROUTE_LOCAL;
-        return validatedInternet && connectedKeyAvailable ? ROUTE_SMART : ROUTE_LOCAL;
+        return validatedInternet && teamModelAvailable ? ROUTE_SMART : ROUTE_LOCAL;
     }
 
     public static boolean prefersConnectedModel(int mode) {
@@ -23,20 +23,14 @@ public final class ConversationModePolicy {
     public static String statusLabel(
             int mode,
             boolean validatedInternet,
-            boolean connectedKeyAvailable,
+            boolean teamModelAvailable,
             boolean lastConnectedCallFailed) {
-        if (mode == MODE_LOCAL_ONLY) {
-            return validatedInternet ? "Local only • public lookup available" : "Local only • offline";
-        }
+        if (mode == MODE_LOCAL_ONLY) return validatedInternet ? "Local only" : "Local only • offline";
 
-        String prefix = mode == MODE_AUTO ? "Automatic" : "Smart preferred";
-        if (!connectedKeyAvailable) {
-            return validatedInternet
-                    ? prefix + " • Public lookup online • Smart setup needed"
-                    : prefix + " • Local • offline";
-        }
+        String prefix = mode == MODE_AUTO ? "Automatic" : "OpenAI preferred";
         if (!validatedInternet) return prefix + " • Local • offline";
+        if (!teamModelAvailable) return prefix + " • Public web online • OpenAI not included in this build";
         if (lastConnectedCallFailed) return prefix + " • Public/local fallback";
-        return prefix + " • Smart online";
+        return prefix + " • OpenAI online";
     }
 }
