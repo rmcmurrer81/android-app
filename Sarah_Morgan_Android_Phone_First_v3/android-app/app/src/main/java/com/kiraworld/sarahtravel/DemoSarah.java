@@ -7,8 +7,8 @@ import java.util.Map;
 
 /**
  * Local fallback conversation. The planner handles proactive travel actions,
- * generated packs and TravelBrainCore handle travel knowledge, and this class
- * handles lightweight ordinary conversation last.
+ * generated packs and TravelBrainCore handle travel knowledge, public lookup
+ * handles narrow online facts, and this class handles ordinary conversation.
  */
 public final class DemoSarah {
     private DemoSarah() { }
@@ -46,24 +46,14 @@ public final class DemoSarah {
         String name = firstName(profile.getOrDefault("name", profile.getOrDefault("active_speaker", "there")));
 
         if (photoIncluded) {
-            return "I saved a privacy-cleaned copy of the photo. I need an image-capable connected model to inspect the picture itself, but I can still keep its caption with the trip while offline.";
+            return "I saved a privacy-cleaned copy of the photo. If the team OpenAI connection is included, I can inspect the image itself. Otherwise I can still keep its caption with the trip and show public media for the place.";
         }
 
-        // Narrow public-source lookups work without a language-model key.
-        KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(safe);
-        if (knownEvent != null) {
-            try {
-                OfficialEventPageLookup.Result official = OfficialEventPageLookup.lookup(knownEvent);
-                String officialReply = OfficialEventPageLookup.conversationalReply(official);
-                if (officialReply != null && !officialReply.trim().isEmpty()) return officialReply;
-            } catch (Exception ignored) {
-                return "I recognized " + knownEvent.eventName + " in " + knownEvent.destination
-                        + ", but its official page did not answer right now. I saved the event and will retry instead of inventing dates. Use Explore for the map, public photos, videos, route, and official web search.";
-            }
-        }
-
-        String publicKnowledge = PublicKnowledgeGateway.answer(safe);
-        if (publicKnowledge != null && !publicKnowledge.trim().isEmpty()) return publicKnowledge;
+        String publicAnswer = PublicOnlineFallback.answer(
+                SarahApplication.appContext(),
+                safe,
+                history);
+        if (publicAnswer != null && !publicAnswer.trim().isEmpty()) return publicAnswer.trim();
 
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(safe, profile, history, memories);
         if (proactive.handled()) return proactive.reply;
@@ -75,13 +65,13 @@ public final class DemoSarah {
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
 
         if (asksAboutMode(lower)) {
-            return "Automatic mode uses the connected model when internet and a model key are available. With internet but no key, I can still read selected official event pages and public factual references. Without internet I continue with the local Travel Brain. Tap the status line under my name to change the preference.";
+            return "Automatic mode uses the team-selected OpenAI connection when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key.";
         }
 
         if (isGreeting(lower)) {
             return pick(safe,
-                    "Hey, " + name + ". I’m here.",
-                    "Hi, " + name + ".",
+                    "Hey, " + name + ". I’m here. What are you in the mood to talk about?",
+                    "Hi, " + name + ". Travel is optional—we can talk about anything.",
                     "Hey. Good to see you.");
         }
 
@@ -94,7 +84,7 @@ public final class DemoSarah {
         }
 
         if (lower.contains("tell me about yourself") || lower.contains("who are you")) {
-            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can remember approved details, help organize unfamiliar trips, support someone during travel anxiety, use narrow public references without a model key, and stay useful locally when the connected model is unavailable.";
+            return "I’m Sarah Morgan, a travel companion and general conversational companion. I can remember approved details, help organize unfamiliar trips, use official and public sources while online, show maps and media, support someone during travel anxiety, and keep talking when the connection disappears.";
         }
 
         if (lower.contains("what do you know about me") || lower.contains("what do you remember") || lower.contains("remember about me")) {
@@ -102,35 +92,43 @@ public final class DemoSarah {
         }
 
         if (containsAny(lower, "sad", "lonely", "upset", "worried", "nervous", "overwhelmed")) {
-            return "I’m listening. We can slow this down and take it one piece at a time.";
+            return "I’m listening. We can slow this down, talk normally, or use a distraction without turning everything into a travel plan.";
         }
 
         if (containsAny(lower, "trivia", "distract me", "play a game", "grounding")) {
-            return "Use the question-mark button for personalized trivia, turbulence support, or the grounding game. Those tools are available locally even without internet.";
+            return "Use the question-mark button for personalized trivia, turbulence support, or the grounding game. Those tools work locally even without internet.";
+        }
+
+        if (containsAny(lower, "movie", "movies", "show", "shows", "book", "books", "comic", "comics", "game", "games")) {
+            return "I can talk about that as its own subject. Tell me the title or the part you are interested in, and I will not force it back into trip planning.";
+        }
+
+        if (containsAny(lower, "computer", "technology", "ai", "robot", "coding", "programming")) {
+            return "We can stay with technology instead of travel. I can help organize an idea, compare approaches, explain a concept, or think through what you want to build.";
         }
 
         if (lower.startsWith("i like ") || lower.startsWith("i love ") || lower.startsWith("i enjoy ")
                 || lower.contains("i'm a fan of") || lower.contains("i am a fan of")) {
             String subject = interestSubject(safe);
             if (!subject.isEmpty()) {
-                return "I’ll keep " + subject + " in mind when it is useful. I won’t force it into every reply.";
+                return "I’ll keep " + subject + " in mind when it is useful. I won’t turn it into a trip or force it into every reply.";
             }
-        }
-
-        if (safe.endsWith("?")) {
-            return "I do not have enough reliable local knowledge to answer that accurately. With internet I can handle some official-event and public-reference questions; broader natural conversation and research still need Smart setup. I won’t invent an answer.";
         }
 
         if (isShortClosure(lower)) {
             return "Understood. I won’t keep asking questions.";
         }
 
+        if (safe.endsWith("?")) {
+            return "I do not have enough reliable local knowledge to answer that accurately. I can use selected public sources while online, and the team OpenAI build can handle broader questions when its connection is present. I won’t invent an answer.";
+        }
+
         String idea = keyIdea(safe);
         if (!idea.isEmpty()) {
             return pick(safe,
-                    "I understand the main point about " + idea + ".",
+                    "I understand the main point about " + idea + ". We can stay with that subject.",
                     "That gives me a clearer picture of " + idea + ".",
-                    "I hear you about " + idea + ".");
+                    "I hear you about " + idea + ". I won’t redirect it to travel unless you do.");
         }
         return "I’m here, " + name + ".";
     }
@@ -174,7 +172,7 @@ public final class DemoSarah {
     }
 
     private static boolean asksAboutMode(String lower) {
-        return containsAny(lower, "offline mode", "online mode", "smart mode", "local mode", "automatic mode", "switch mode", "change mode");
+        return containsAny(lower, "offline mode", "online mode", "smart mode", "local mode", "automatic mode", "switch mode", "change mode", "openai");
     }
 
     private static boolean isGreeting(String lower) {
