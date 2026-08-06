@@ -8,7 +8,7 @@ public final class TravelOsFeatureCatalogTest {
                 "hotel and hospitality operations track needs guest and back-of-house coverage");
         require(TravelOsFeatureCatalog.countTrack(TravelOsFeatureCatalog.LOCAL_EXPERIENCES) >= 5,
                 "local experiences track needs discovery, media and ground transport coverage");
-        require(TravelOsFeatureCatalog.countTrack(TravelOsFeatureCatalog.SUSTAINABILITY_ACCESSIBILITY) >= 5,
+        require(TravelOsFeatureCatalog.countTrack(TravelOsFeatureCatalog.SUSTAINABILITY_ACCESSIBILITY) >= 6,
                 "sustainability and accessibility track needs meaningful coverage");
 
         require(TravelOsFeatureCatalog.has(
@@ -23,6 +23,9 @@ public final class TravelOsFeatureCatalogTest {
         require(TravelOsFeatureCatalog.has(
                         TravelOsFeatureCatalog.SUSTAINABILITY_ACCESSIBILITY, "active_profile_needs"),
                 "per-profile accessibility must be represented");
+        require(TravelOsFeatureCatalog.has(
+                        TravelOsFeatureCatalog.SUSTAINABILITY_ACCESSIBILITY, "offline_flight_companion"),
+                "takeoff, turbulence, landing and offline calming support must be represented");
 
         System.out.println("TravelOsFeatureCatalogTest passed");
     }

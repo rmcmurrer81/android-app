@@ -30,14 +30,14 @@ public final class TravelHubActivity extends Activity {
                 : "Talk with Sarah about a place or event and it will appear here.";
         root.addView(TravelUi.hero(
                 this,
-                "Sarah Travel OS",
+                "Sarah Travel OS 2.1",
                 trip.title(),
                 subtitle));
 
         LinearLayout now = TravelUi.card(this, TravelUi.SKY);
         now.addView(TravelUi.cardTitle(this, "✨", "One trip, every part connected"));
         now.addView(TravelUi.body(this,
-                "Build an itinerary, compare where to stay and how to get there, discover food and events, open local rides, plan road-trip stops, use loyalty value, respect accessibility needs, and manage hotel requests without losing the conversation."));
+                "Build an itinerary, compare where to stay and how to get there, discover food and events, open local rides, plan road-trip stops, use loyalty value, respect accessibility needs, manage hotel requests, and keep offline support available during the flight."));
         now.addView(TravelUi.primaryButton(this, "Open Sarah's travel notebook",
                 v -> TravelUi.start(this, TravelNotebookActivity.class)));
         root.addView(now);
@@ -82,6 +82,11 @@ public final class TravelHubActivity extends Activity {
                 EventTripCenterActivity.class));
 
         root.addView(TravelUi.section(this, "Personalization and care"));
+        root.addView(feature(
+                "✈", "Offline flight companion",
+                "Use takeoff, turbulence and landing support, gentle breathing, conversation, profile-aware trivia, noticing games, and child-friendly public-domain sing-alongs without internet.",
+                TravelUi.PEACH,
+                FlightCalmActivity.class));
         root.addView(feature(
                 "🎁", "Loyalty wallet",
                 "Keep airline, hotel, rail, car-rental, and rewards program identifiers together without storing passwords. Sarah can consider them when comparing value.",

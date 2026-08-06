@@ -68,8 +68,38 @@ public final class DemoSarah {
         String travelAnswer = TravelBrainCore.answer(safe, profile, history, memories, trips, wishes);
         if (travelAnswer != null && !travelAnswer.trim().isEmpty()) return travelAnswer;
 
+        if (containsAny(lower,
+                "plane is taking off", "airplane is taking off", "we are taking off", "we're taking off",
+                "during takeoff", "takeoff scares", "take off scares")) {
+            return CalmSupport.takeoffSupport(profile)
+                    + " Tap the airplane icon for the full offline breathing, game and sing-along screen.";
+        }
+        if (containsAny(lower,
+                "turbulence", "plane is bumpy", "airplane is bumpy", "the bumps are scary",
+                "we are shaking", "we're shaking")) {
+            return CalmSupport.turbulenceSupport(profile)
+                    + " Tap the airplane icon if you want paced breathing, trivia or a noticing game without internet.";
+        }
+        if (containsAny(lower,
+                "plane is landing", "airplane is landing", "we are landing", "we're landing",
+                "during landing", "landing scares")) {
+            return CalmSupport.landingSupport(profile)
+                    + " Tap the airplane icon for the full offline landing companion.";
+        }
+        if (containsAny(lower,
+                "scared to fly", "afraid to fly", "nervous about flying", "flight anxiety",
+                "scared on the plane", "afraid on the plane")) {
+            return CalmSupport.quietCompany(profile)
+                    + " The airplane icon opens a completely offline flight companion, so it still works after signal disappears.";
+        }
+        if (containsAny(lower,
+                "sing a kids song", "sing a children's song", "sing a child song", "sing twinkle",
+                "sing row row", "sing mary had", "sing baa baa")) {
+            return "The airplane icon has four short public-domain children's sing-alongs that use the phone's local voice, so they work without internet.";
+        }
+
         if (asksAboutMode(lower)) {
-            return "Automatic mode uses the team-selected OpenAI connection when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key.";
+            return "Automatic mode uses the team-selected OpenAI connection when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key. The airplane icon opens a separate flight companion that is fully local.";
         }
 
         if (isGreeting(lower)) {
@@ -100,7 +130,7 @@ public final class DemoSarah {
         }
 
         if (containsAny(lower, "trivia", "distract me", "play a game", "grounding")) {
-            return "Use the question-mark button for personalized trivia, turbulence support, or the grounding game. Those tools work locally even without internet.";
+            return "Use the question-mark button for quick trivia and grounding, or the airplane icon for the larger offline breathing and game screen. Both can work without internet.";
         }
 
         if (lower.startsWith("i like ") || lower.startsWith("i love ") || lower.startsWith("i enjoy ")

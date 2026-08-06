@@ -42,6 +42,7 @@ public final class TravelOsFeatureCatalog {
             new Feature(LOCAL_EXPERIENCES, "rides", "Uber Lyft taxi and transit handoff"),
             new Feature(LOCAL_EXPERIENCES, "roadside", "Roadside and scenic discovery"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "active_profile_needs", "Per-person accessibility and pace"),
+            new Feature(SUSTAINABILITY_ACCESSIBILITY, "offline_flight_companion", "Offline takeoff turbulence landing and child calming support"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "rail_first", "Rail and transit comparison"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "ev", "EV charging support"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "walking_biking", "Walking and biking options"),

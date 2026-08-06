@@ -1,25 +1,25 @@
 # Sarah Morgan Travel OS
 
-Sarah Morgan is a phone-first Android travel companion and general conversational companion. She combines continuing personal memory, shared-phone profiles, trip planning, hotels, transportation, local experiences, accessibility, hotel guest support, public travel research, voice, and offline fallback.
+Sarah Morgan is a phone-first Android travel companion and general conversational companion. She combines continuing personal memory, shared-phone profiles, trip planning, hotels, transportation, local experiences, accessibility, hotel guest support, public travel research, premium online voice, and reliable offline fallback.
 
 This repository is the authoritative hackathon source.
 
 Current development version:
 
 ```text
-Sarah Morgan Android 2.0-travel-os-all-tracks
+Sarah Morgan Android 2.1-offline-flight-companion
 ```
 
 Expected GitHub Actions artifact:
 
 ```text
-Sarah-Morgan-2.0-travel-os-all-tracks
+Sarah-Morgan-2.1-offline-flight-companion
 ```
 
 Expected APK inside the artifact:
 
 ```text
-Sarah-Morgan-2.0-travel-os-all-tracks.apk
+Sarah-Morgan-2.1-offline-flight-companion.apk
 ```
 
 Private-test application ID:
@@ -49,10 +49,49 @@ Hotel requests, road-trip assistance and accessibility support
         ↓
 Memories and preferences preserved for the correct person
         ↓
-Offline Local fallback when internet disappears
+Offline Local fallback and Flight Companion when internet disappears
 ```
 
-Sarah separates suggestions from confirmed facts. Opening a website is not a booking. Saving a draft is not proof that a hotel received it. Model output is not proof that a price, event, reservation, notification, or completed task exists.
+Sarah separates suggestions from confirmed facts. Opening a website is not a booking. Saving a draft is not proof that a hotel received it. Model output is not proof that a price, event, reservation, notification, call, or completed task exists.
+
+## What Sarah 2.1 adds
+
+Version 2.1 adds a fully local **Offline Flight Companion** for takeoff, turbulence, landing, and ordinary flight anxiety.
+
+The airplane icon in Sarah's header opens a screen that works without cellular service, Wi-Fi, OpenAI, ElevenLabs, maps, location, or any travel backend.
+
+It includes:
+
+- takeoff support;
+- turbulence support;
+- landing support;
+- quiet company without forcing questions;
+- concern-specific conversation prompts;
+- six-cycle gentle breathing;
+- child-friendly flower-and-candle breathing;
+- profile-aware offline trivia;
+- color and noticing games;
+- an alphabet travel game;
+- short public-domain children's sing-alongs;
+- Android text-to-speech so the feature remains available in airplane mode.
+
+Sarah still tells the traveler to keep the seat belt fastened when required, follow the flight crew, and use the phone only as the airline permits. She never claims that the phone can assess the aircraft, interpret a sound, or decide whether a movement is safe.
+
+Detailed design, safety boundaries, rights notes, and test instructions:
+
+```text
+OFFLINE_FLIGHT_COMPANION.md
+```
+
+Main source files:
+
+```text
+FlightCalmActivity.java
+FlightCalmButton.java
+CalmSupport.java
+OfflineSongCatalog.java
+SarahTts.java
+```
 
 ## Hackathon tracks
 
@@ -68,7 +107,7 @@ Sarah Travel OS covers all four Travel Hack NYC tracks.
 - current-source and model-provider gateways;
 - automatic online/public/offline routing;
 - maps, public photos, videos and routes;
-- calm support and personalized offline trivia.
+- calm support, offline flight support and personalized trivia.
 
 ### 2. Hotel and hospitality operations
 
@@ -104,6 +143,7 @@ Sarah Travel OS covers all four Travel Hack NYC tracks.
 - walking limits, step-free needs and rest breaks;
 - sensory, hearing, vision and dietary needs;
 - pace and sustainability preferences;
+- offline anxiety and child-support tools that do not depend on a network connection;
 - greener alternatives presented without ignoring time, safety or accessibility.
 
 The complete feature list is represented in:
@@ -119,8 +159,9 @@ The chat remains Sarah's relationship and conversation surface.
 
 The main screen also includes:
 
+- calm and quick trivia;
+- a dedicated airplane button for the offline flight companion;
 - profile switch;
-- calm and trivia;
 - travel notebook;
 - Settings;
 - visible media and route panel;
@@ -144,6 +185,56 @@ Hospitality operations demo
 ```
 
 The design intentionally keeps important tasks visible instead of requiring a user to remember hidden commands.
+
+## Offline flight companion
+
+The flight companion is intentionally independent from Sarah's online voice and model.
+
+```text
+Normal online conversation
+    → OpenAI when configured
+    → ElevenLabs Sarah Morgan voice when configured
+
+Offline Flight Companion
+    → bundled local guidance and games
+    → active local profile
+    → Android offline text-to-speech
+```
+
+This separation means the traveler can still use breathing, grounding, trivia, noticing games, phase-specific support, and children's sing-alongs after losing signal or enabling airplane mode.
+
+### Breathing defaults
+
+Adult:
+
+```text
+inhale comfortably for 4 counts
+exhale gently for 6 counts
+6 cycles
+no required breath hold
+```
+
+Young child:
+
+```text
+smell the pretend flower for 3 counts
+blow out the pretend candle for 4 counts
+6 cycles
+no required breath hold
+```
+
+The screen tells the traveler not to force the breath and to return to ordinary breathing if the count feels uncomfortable or causes lightheadedness.
+
+### Public-domain children's sing-alongs
+
+Bundled songs:
+
+- `Twinkle, Twinkle, Little Star`;
+- `Row, Row, Row Your Boat`;
+- `Mary Had a Little Lamb`;
+- `Baa, Baa, Black Sheep`.
+
+Sarah does not copy a commercial recording or a modern arrangement. `OfflineSongCatalog` stores an old first verse and an original pitch-and-rate sequence. `SarahTts` performs it with the installed Android voice. Depending on the phone, it may sound like gentle singing or rhythmic spoken lyrics.
 
 ## Hotel search and room comparison
 
@@ -325,6 +416,8 @@ Separate profiles have separate:
 
 Owner-private memories, wishes, deal watches and unrelated trip information are not inserted into another person's prompt.
 
+The flight companion also reads the active profile. A child receives simpler breathing language, easier trivia, and age-appropriate games without seeing the owner's private records.
+
 Detailed architecture:
 
 ```text
@@ -452,7 +545,7 @@ Offline/error fallback: Android text-to-speech
 Conversation brain: OpenAI when the team connection is present
 ```
 
-The supplied Sarah Morgan Voice Design samples use Eleven Multilingual v2 and are represented by the source defaults in:
+The supplied Sarah Morgan Voice Design uses Eleven Multilingual v2 and is represented by the source defaults in:
 
 ```text
 ElevenLabsVoiceConfig.java
@@ -475,9 +568,11 @@ Complete setup guide:
 ELEVENLABS_VOICE_SETUP.md
 ```
 
-A build with no ElevenLabs secrets still compiles and uses Android voice.
+The workflow performs a small live TTS validation before creating an ElevenLabs-enabled APK. A build with no ElevenLabs secret still compiles and uses Android voice.
 
 A direct ElevenLabs key inside a private hackathon APK is only a shortcut. Public releases should route speech through a protected backend.
+
+The Offline Flight Companion always uses Android speech so calm support and songs remain available without signal.
 
 ## Supervised voice concierge
 
@@ -547,6 +642,7 @@ Sarah uses Automatic mode by default.
 | Internet + ElevenLabs | Sarah Morgan premium voice |
 | ElevenLabs unavailable or offline | Android speech fallback |
 | No internet | Local Travel Brain, profiles, saved state, calm tools and offline games |
+| Airplane mode | dedicated Flight Companion remains available through Android speech |
 | Local only selected | no model or public lookup calls |
 
 ## Source structure
@@ -555,6 +651,7 @@ Sarah uses Automatic mode by default.
 .github/workflows/build-apk.yml
 BUILD_VERSION.txt
 README.md
+OFFLINE_FLIGHT_COMPANION.md
 ELEVENLABS_VOICE_SETUP.md
 MODEL_PROVIDER_CONFIGURATION.md
 SHARED_PHONE_PROFILES_AND_EVENT_DISCOVERY.md
@@ -577,10 +674,12 @@ The workflow must pass:
 
 - OpenAI/public/Local routing tests;
 - all four hackathon track capability tests;
+- Offline Flight Companion, trivia, safety-language and public-domain-song tests;
 - Travel Brain context and multimodal route tests;
 - event-discovery and timed-trip tests;
 - booking and agentic action tests;
 - forbidden end-user credential-field scan;
+- live ElevenLabs TTS validation when the secret is present;
 - full Android compilation;
 - APK artifact upload.
 
@@ -596,7 +695,7 @@ The final artifact is valid only after a green GitHub Actions run.
 
 Before a hackathon demonstration, test:
 
-1. install over 1.6 without losing data;
+1. install over 2.0 without losing data;
 2. profile switching and separate chat history;
 3. a new adult and a new child profile;
 4. a random real event and the follow-up `When is it?`;
@@ -610,10 +709,14 @@ Before a hackathon demonstration, test:
 12. accessibility and pace preferences;
 13. a hotel request draft and status change;
 14. Sarah's ElevenLabs voice with dates, prices and place names;
-15. Android voice after airplane mode is enabled;
-16. a long reply interrupted by a newer reply;
-17. screen rotation and large text;
-18. no provider secrets visible in the app or logs.
+15. open the airplane icon and test takeoff, turbulence and landing support;
+16. enable airplane mode and complete all six breathing cycles;
+17. test adult and child trivia, noticing and alphabet games offline;
+18. test every public-domain sing-along and the stop button;
+19. confirm Android voice is used offline even when ElevenLabs is selected;
+20. interrupt a long online reply with a newer reply;
+21. test screen rotation and large text;
+22. confirm no provider secrets are visible in the app or logs.
 
 ## Known boundaries
 
@@ -623,5 +726,7 @@ Before a hackathon demonstration, test:
 - Public event discovery may find a likely official page but cannot prove ownership from search alone.
 - Public media may be a destination fallback rather than an event-specific image.
 - Android background jobs are not exact alarms.
+- The Offline Flight Companion cannot assess the aircraft, replace the crew, or provide medical diagnosis.
+- Android TTS sing-along quality varies by device.
 - A debug APK is not production-signed.
 - A public release requires protected backends, authentication, privacy and deletion controls, child/guardian review, rate and spending limits, security review, accessibility testing, broader device testing and store compliance.
