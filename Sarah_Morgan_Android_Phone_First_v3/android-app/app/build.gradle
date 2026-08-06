@@ -12,6 +12,11 @@ def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
 def sarahTravelCommerceToken = System.getenv('SARAH_TRAVEL_COMMERCE_TOKEN') ?: ''
 def sarahVoiceConciergeUrl = System.getenv('SARAH_VOICE_CONCIERGE_URL') ?: ''
 def sarahVoiceConciergeToken = System.getenv('SARAH_VOICE_CONCIERGE_TOKEN') ?: ''
+def sarahElevenLabsApiKey = System.getenv('SARAH_ELEVENLABS_API_KEY') ?: ''
+def sarahElevenLabsVoiceId = System.getenv('SARAH_ELEVENLABS_VOICE_ID') ?: ''
+def sarahElevenLabsModelId = System.getenv('SARAH_ELEVENLABS_MODEL_ID') ?: 'eleven_multilingual_v2'
+def sarahElevenLabsBackendUrl = System.getenv('SARAH_ELEVENLABS_BACKEND_URL') ?: ''
+def sarahElevenLabsBackendToken = System.getenv('SARAH_ELEVENLABS_BACKEND_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -32,6 +37,11 @@ android {
         buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', javaString(sarahTravelCommerceToken)
         buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_URL', javaString(sarahVoiceConciergeUrl)
         buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', javaString(sarahVoiceConciergeToken)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_API_KEY', javaString(sarahElevenLabsApiKey)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_VOICE_ID', javaString(sarahElevenLabsVoiceId)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_MODEL_ID', javaString(sarahElevenLabsModelId)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_URL', javaString(sarahElevenLabsBackendUrl)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', javaString(sarahElevenLabsBackendToken)
     }
 
     buildFeatures {
