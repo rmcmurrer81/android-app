@@ -6,6 +6,8 @@ on:
       - 'agent/sarah-2.4-stay22-live'
     paths:
       - 'public-release/2.4/READY.json'
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -34,14 +36,15 @@ env:
   SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
 
 jobs:
-  materialize-test-build-android:
+  prepare-test-build-android:
     runs-on: ubuntu-latest
     outputs:
-      source_sha: ${{ steps.publish.outputs.source_sha }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
     steps:
-      - name: Check out Sarah source branch
+      - name: Check out requested Sarah branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python 3.12
@@ -55,29 +58,32 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Assemble and verify complete Sarah 2.4 source
+      - name: Assemble and SHA-verify the Sarah 2.4 delta
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t parts < <(find public-release/2.4/parts -maxdepth 1 -type f -name 'part-*.txt' | sort)
-          if [ "${#parts[@]}" -lt 2 ]; then
-            echo 'The complete Sarah 2.4 source parts are not present.'
+          mapfile -t parts < <(find public-release/2.4/delta-chunks -maxdepth 1 -type f -name 'chunk-*.txt' | sort)
+          if [ "${#parts[@]}" -ne 7 ]; then
+            echo "Expected exactly 7 Sarah 2.4 delta chunks; found ${#parts[@]}."
             exit 1
           fi
-          cat "${parts[@]}" > /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip.b64
-          base64 --decode /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip.b64 > /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
-          EXPECTED=$(cut -d' ' -f1 public-release/2.4/SOURCE_SHA256.txt)
-          ACTUAL=$(sha256sum /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip | cut -d' ' -f1)
-          test "$EXPECTED" = "$ACTUAL"
-          rm -rf /tmp/sarah24_source
-          unzip -q /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip -d /tmp
+          cat "${parts[@]}" > /tmp/Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz.b64
+          base64 --decode /tmp/Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz.b64 > /tmp/Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz
+          EXPECTED=$(cut -d' ' -f1 public-release/2.4/DELTA_SHA256.txt)
+          ACTUAL=$(sha256sum /tmp/Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz | cut -d' ' -f1)
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "Sarah 2.4 delta checksum mismatch: expected $EXPECTED, received $ACTUAL."
+            exit 1
+          fi
+          rm -rf /tmp/sarah24_delta
+          tar -xJf /tmp/Sarah_Travel_OS_2.4_Stay22_Delta.tar.xz -C /tmp
           python - <<'PY'
           from pathlib import Path
           import json
-          root = Path('/tmp/sarah24_source')
+          root = Path('/tmp/sarah24_delta')
           status = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
           if status.get('version') != '2.4-stay22-live-public':
-              raise SystemExit('Unexpected Sarah source version')
+              raise SystemExit('The verified delta is not Sarah 2.4 Stay22 public source.')
           required = [
               root / 'windows-companion' / 'SarahMorganInstaller.spec',
               root / 'android-upgrade' / 'apply_android_upgrade.py',
@@ -86,43 +92,63 @@ jobs:
           ]
           missing = [str(path) for path in required if not path.is_file()]
           if missing:
-              raise SystemExit('Missing required Sarah source: ' + ', '.join(missing))
-          print('Sarah source verified:', len([p for p in root.rglob('*') if p.is_file()]), 'files')
+              raise SystemExit('Required Sarah 2.4 source is missing: ' + ', '.join(missing))
+          print('Verified Sarah 2.4 delta with', len([p for p in root.rglob('*') if p.is_file()]), 'files.')
           PY
 
-      - name: Materialize readable phone, Windows, documentation, and proxy source
+      - name: Reconstruct Sarah 2.4 from the verified Sarah 2.3 public source
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE=/tmp/sarah24_source
-          rm -rf windows-companion development-tools/sarah-2.4-android-upgrade docs/sarah-2.4 services/stay22-proxy
-          cp -a "$SOURCE/windows-companion" ./windows-companion
-          mkdir -p development-tools docs/sarah-2.4 services
-          cp -a "$SOURCE/android-upgrade" development-tools/sarah-2.4-android-upgrade
-          cp -a "$SOURCE/docs/." docs/sarah-2.4/
-          cp -a "$SOURCE/stay22-proxy" services/stay22-proxy
-          cp "$SOURCE/README_FIRST.md" README_SARAH_2_4_PUBLIC.md
-          cp "$SOURCE/PACKAGE_STATUS.json" SARAH_2_4_PACKAGE_STATUS.json
-          cp "$SOURCE/PUBLIC_RELEASE.json" SARAH_PUBLIC_RELEASE.json
-          cp "$SOURCE/SOURCE_MANIFEST_SHA256.txt" docs/sarah-2.4/SOURCE_MANIFEST_SHA256.txt
-          cp "$SOURCE/windows-companion/github-workflows/build-windows-companion.yml" .github/workflows/build-windows-companion.yml
-          python development-tools/sarah-2.4-android-upgrade/apply_android_upgrade.py "$GITHUB_WORKSPACE"
-          rm -rf .sarah-upgrade-backup
+          git fetch origin 'agent/sarah-public-2.3-full:refs/remotes/origin/sarah23'
+          rm -rf /tmp/sarah24_base
+          mkdir -p /tmp/sarah24_base
+          git archive --format=tar refs/remotes/origin/sarah23 | tar -x -C /tmp/sarah24_base
+          test -d /tmp/sarah24_base/windows-companion
+          test -d /tmp/sarah24_base/Sarah_Morgan_Android_Phone_First_v3
+          cp -a /tmp/sarah24_delta/. /tmp/sarah24_base/
+          python /tmp/sarah24_base/android-upgrade/apply_android_upgrade.py /tmp/sarah24_base
+          rm -rf /tmp/sarah24_base/.sarah-upgrade-backup
+
+      - name: Materialize complete readable phone, Windows, documentation, and proxy source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=/tmp/sarah24_base
+          DELTA=/tmp/sarah24_delta
+          rm -rf windows-companion Sarah_Morgan_Android_Phone_First_v3 \
+            development-tools/sarah-2.4-android-upgrade docs/sarah-2.4 services/stay22-proxy
+          cp -a "$BASE/windows-companion" ./windows-companion
+          cp -a "$BASE/Sarah_Morgan_Android_Phone_First_v3" ./Sarah_Morgan_Android_Phone_First_v3
+          mkdir -p development-tools docs/sarah-2.4 services .github/workflows
+          cp -a "$DELTA/android-upgrade" development-tools/sarah-2.4-android-upgrade
+          cp -a "$DELTA/docs/." docs/sarah-2.4/
+          cp -a "$DELTA/stay22-proxy" services/stay22-proxy
+          cp "$DELTA/README_FIRST.md" README_SARAH_2_4_PUBLIC.md
+          cp "$DELTA/PACKAGE_STATUS.json" SARAH_2_4_PACKAGE_STATUS.json
+          cp "$DELTA/PUBLIC_RELEASE.json" SARAH_PUBLIC_RELEASE.json
+          cp "$BASE/.github/workflows/build-apk.yml" .github/workflows/build-apk.yml
+          cp "$DELTA/windows-companion/github-workflows/build-windows-companion.yml" .github/workflows/build-windows-companion.yml
+          cp "$BASE/README.md" README.md
+          cp "$BASE/BUILD_VERSION.txt" BUILD_VERSION.txt
+          rm -rf public-release/2.4/chunks public-release/2.4/parts
           find . -type d -name __pycache__ -prune -exec rm -rf {} +
           find . -type f -name '*.pyc' -delete
 
-      - name: Run Windows public-source tests on Ubuntu
+      - name: Install public Windows runtime dependencies
+        working-directory: windows-companion
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run Windows source tests and compile checks
         working-directory: windows-companion
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
           python -m unittest discover -s tests -v
           python -m compileall -q .
 
-      - name: Run Android 2.4 pure-Java tests
+      - name: Run Android 2.4 pure-Java regression tests
         run: python development-tools/sarah-2.4-android-upgrade/run_android_upgrade_tests.py
 
-      - name: Verify public identity, privacy, and Stay22 source boundaries
+      - name: Verify public identity, privacy, credentials, and Stay22 truth boundaries
         shell: bash
         run: |
           set -euo pipefail
@@ -146,14 +172,15 @@ jobs:
             echo 'The public product asks users for a provider credential.'
             exit 1
           fi
-          grep -q 'MAX_CACHE_MILLIS = 60L \* 60L \* 1000L' \
+          grep -Fq 'MAX_CACHE_MILLIS = 60L * 60L * 1000L' \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22AccommodationCore.java
-          grep -q 'min(3600' windows-companion/sarah_core/research.py
-          grep -q 'supplier-unreachable' windows-companion/sarah_core/research.py
-          grep -q 'supplier-unreachable' Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22AccommodationCore.java
+          grep -Fq 'min(3600' windows-companion/sarah_core/research.py
+          grep -Fq 'supplier-unreachable' windows-companion/sarah_core/research.py
+          grep -Fq 'supplier-unreachable' \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22AccommodationCore.java
 
-      - name: Commit complete readable Sarah 2.4 source to the branch
-        id: publish
+      - name: Publish complete readable Sarah 2.4 source to the branch
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -166,7 +193,27 @@ jobs:
             git commit -m '[skip ci] Materialize Sarah 2.4 public phone and Windows source'
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
-          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Require an already-materialized PR head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo 'The pull-request head does not yet contain the complete materialized Sarah 2.4 source.'
+            git status --short
+            exit 1
+          fi
+
+      - name: Resolve immutable source commit
+        id: resolve
+        shell: bash
+        run: echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve Sarah private-test Android signing continuity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-debug-signing-v1
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -176,12 +223,18 @@ jobs:
       - name: Build Sarah Android 2.4 APK
         run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
 
-      - name: Name and verify Android artifact
+      - name: Name and verify Android and source artifacts
         shell: bash
         run: |
-          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.4-stay22-live-public.apk
+          set -euo pipefail
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk \
+            Sarah-Morgan-2.4-stay22-live-public.apk
           test -s Sarah-Morgan-2.4-stay22-live-public.apk
-          sha256sum Sarah-Morgan-2.4-stay22-live-public.apk
+          git archive --format=zip \
+            --output=Sarah_Travel_OS_2.4_Stay22_Public_Source.zip \
+            "${{ steps.resolve.outputs.source_sha }}"
+          test -s Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          sha256sum Sarah-Morgan-2.4-stay22-live-public.apk Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -190,21 +243,21 @@ jobs:
           path: Sarah-Morgan-2.4-stay22-live-public.apk
           if-no-files-found: error
 
-      - name: Upload verified public source archive
+      - name: Upload complete readable public source
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Travel-OS-2.4-Public-Source
-          path: /tmp/Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
+          name: Sarah-Travel-OS-2.4-Stay22-Public-Source
+          path: Sarah_Travel_OS_2.4_Stay22_Public_Source.zip
           if-no-files-found: error
 
   build-windows-installer:
-    needs: materialize-test-build-android
+    needs: prepare-test-build-android
     runs-on: windows-latest
     steps:
-      - name: Check out materialized Sarah 2.4 source
+      - name: Check out immutable materialized Sarah 2.4 source
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.materialize-test-build-android.outputs.source_sha }}
+          ref: ${{ needs.prepare-test-build-android.outputs.source_sha }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -219,7 +272,7 @@ jobs:
         working-directory: windows-companion
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-build.txt
 
-      - name: Run Windows tests and compile source
+      - name: Run Windows public-release tests
         working-directory: windows-companion
         run: |
           python -m unittest discover -s tests -v
@@ -250,7 +303,8 @@ jobs:
           if-no-files-found: error
 
   publish-prerelease:
-    needs: [materialize-test-build-android, build-windows-installer]
+    if: github.event_name != 'pull_request'
+    needs: [prepare-test-build-android, build-windows-installer]
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -268,10 +322,10 @@ jobs:
           name: Sarah-Morgan-Windows-2.4-Stay22-Public-Installer
           path: release
 
-      - name: Download source archive
+      - name: Download complete public source
         uses: actions/download-artifact@v4
         with:
-          name: Sarah-Travel-OS-2.4-Public-Source
+          name: Sarah-Travel-OS-2.4-Stay22-Public-Source
           path: release
 
       - name: Verify exactly one APK, one EXE, and one source archive
@@ -280,7 +334,7 @@ jobs:
           set -euo pipefail
           test "$(find release -type f -name '*.apk' | wc -l)" -eq 1
           test "$(find release -type f -name '*.exe' | wc -l)" -eq 1
-          test "$(find release -type f -name '*Source.zip' | wc -l)" -eq 1
+          test "$(find release -type f -name '*Public_Source.zip' | wc -l)" -eq 1
           find release -maxdepth 2 -type f -print0 | sort -z | xargs -0 sha256sum > release/SHA256SUMS.txt
           cat release/SHA256SUMS.txt
 
@@ -288,17 +342,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FILES=(release/*.apk release/*.exe release/*Source.zip release/SHA256SUMS.txt)
+          FILES=(release/*.apk release/*.exe release/*Public_Source.zip release/SHA256SUMS.txt)
+          NOTES='Full public phone and Windows preview. Includes live Stay22 accommodation-search support, rate-limit and cache handling, quote-matched booking links, the Android APK, one self-installing Windows EXE, complete readable source, and checksums. The product remains useful without a Stay22 account through honest fallback paths. Physical-device and live-account acceptance testing are still required.'
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${FILES[@]}" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$RELEASE_TAG" \
               --title 'Sarah Travel OS 2.4 — Stay22 live public preview' \
-              --notes 'Full public phone and Windows preview. Includes live Stay22 accommodation search, public one-EXE Windows installation, Android APK, complete source, and checksums. Physical device and live-account acceptance testing are still required.' \
-              --prerelease --repo "$GITHUB_REPOSITORY"
+              --notes "$NOTES" --prerelease --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$RELEASE_TAG" "${FILES[@]}" \
-              --target '${{ needs.materialize-test-build-android.outputs.source_sha }}' \
+              --target '${{ needs.prepare-test-build-android.outputs.source_sha }}' \
               --title 'Sarah Travel OS 2.4 — Stay22 live public preview' \
-              --notes 'Full public phone and Windows preview. Includes live Stay22 accommodation search, public one-EXE Windows installation, Android APK, complete source, and checksums. Physical device and live-account acceptance testing are still required.' \
-              --prerelease --repo "$GITHUB_REPOSITORY"
+              --notes "$NOTES" --prerelease --repo "$GITHUB_REPOSITORY"
           fi
