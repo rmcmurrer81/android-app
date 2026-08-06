@@ -1,11 +1,13 @@
 package com.kiraworld.sarahtravel;
 
+import android.content.Context;
+
 /**
  * Team-owned ElevenLabs configuration for Sarah's premium online voice.
  *
- * The person installing Sarah is never asked for an ElevenLabs key. For a
- * private hackathon APK the build may inject a tightly restricted key. A
- * public release should use the protected backend fields instead.
+ * The person installing Sarah is never asked to type a provider key. A private
+ * hackathon build may use a GitHub secret, a protected backend, or a device-
+ * bound encrypted activation tied to one Android Keystore private key.
  */
 public final class ElevenLabsVoiceConfig {
     /** Voice Design ID for the original Sarah Morgan voice. Voice IDs are not credentials. */
@@ -23,7 +25,10 @@ public final class ElevenLabsVoiceConfig {
     private ElevenLabsVoiceConfig() { }
 
     public static String apiKey() {
-        return clean(BuildConfig.SARAH_ELEVENLABS_API_KEY);
+        String buildKey = clean(BuildConfig.SARAH_ELEVENLABS_API_KEY);
+        if (!buildKey.isEmpty()) return buildKey;
+        Context context = SarahApplication.appContext();
+        return context == null ? "" : DeviceVoiceProvisioning.apiKey(context);
     }
 
     public static String voiceId() {
@@ -44,6 +49,15 @@ public final class ElevenLabsVoiceConfig {
         return clean(BuildConfig.SARAH_ELEVENLABS_BACKEND_TOKEN);
     }
 
+    public static boolean buildSecretConfigured() {
+        return !clean(BuildConfig.SARAH_ELEVENLABS_API_KEY).isEmpty();
+    }
+
+    public static boolean deviceProvisioned() {
+        Context context = SarahApplication.appContext();
+        return context != null && DeviceVoiceProvisioning.isActivated(context);
+    }
+
     public static boolean directConfigured() {
         return !apiKey().isEmpty() && !voiceId().isEmpty();
     }
@@ -58,8 +72,9 @@ public final class ElevenLabsVoiceConfig {
 
     public static String statusLabel() {
         if (backendConfigured()) return "ElevenLabs voice through Sarah's protected backend";
-        if (directConfigured()) return "ElevenLabs voice included in this private test build";
-        return "Sarah Morgan voice selected • ElevenLabs service credential not included";
+        if (buildSecretConfigured()) return "ElevenLabs voice included in this private test build";
+        if (deviceProvisioned()) return "Sarah Morgan ElevenLabs voice activated for this phone";
+        return "Sarah Morgan voice selected • secure phone activation not complete";
     }
 
     private static String clean(String value) {
