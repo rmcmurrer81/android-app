@@ -3,7 +3,7 @@ package com.kiraworld.sarahtravel;
 import java.util.List;
 import java.util.Map;
 
-/** Resolves the place or route used by Sarah's in-app visual travel tools. */
+/** Resolves the place, event, or route used by Sarah's in-app visual tools. */
 public final class TravelMediaHelper {
     public static final class Tools {
         public final String query;
@@ -42,6 +42,14 @@ public final class TravelMediaHelper {
                     origin,
                     event.destination,
                     mode,
+                    true);
+        }
+        if (event.recognized()) {
+            return new Tools(
+                    event.eventName,
+                    profile.getOrDefault("hometown", ""),
+                    "",
+                    "",
                     true);
         }
         if (journey.found()) {
