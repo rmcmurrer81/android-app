@@ -10,7 +10,6 @@ import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.Toast;
@@ -52,35 +51,31 @@ public final class SettingsActivity extends Activity {
         ensureAutomaticModeDefault(this);
 
         SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
-        Spinner provider = findViewById(R.id.providerSpinner);
+        Spinner mode = findViewById(R.id.providerSpinner);
         Spinner voice = findViewById(R.id.voiceModeSpinner);
-        provider.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
-                "Automatic — Smart online, Local when offline (recommended)",
-                "Smart preferred — use connected model whenever possible",
-                "Local only — never call a connected model"
+        mode.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
+                "Automatic — OpenAI when included, public lookup or Local fallback otherwise",
+                "OpenAI preferred — retry the team connection on each message",
+                "Local only — never use the team model or public lookup"
         }));
         voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
-                "Android voice (free)",
-                "Sarah cloud voice (uses API)"
+                "Android voice (works locally)",
+                "Team OpenAI voice when included in the build"
         }));
-        provider.setSelection(getConversationMode(this));
+        mode.setSelection(getConversationMode(this));
         voice.setSelection(preferences.getInt("voice_mode", 0));
-
-        EditText api = findViewById(R.id.apiKeyInput);
-        EditText model = findViewById(R.id.modelInput);
-        EditText backendUrl = findViewById(R.id.dealBackendUrlInput);
-        EditText backendToken = findViewById(R.id.dealBackendTokenInput);
-        model.setText(preferences.getString("model", "gpt-5-mini"));
-        backendUrl.setText(preferences.getString("deal_backend_url", ""));
 
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
+        CheckBox mediaPreviews = findViewById(R.id.mediaPreviewCheck);
         CheckBox dealAlerts = findViewById(R.id.dealAlertsCheck);
         CheckBox autoSpeak = findViewById(R.id.autoSpeakCheck);
         CheckBox learn = findViewById(R.id.learnCheck);
         SeekBar speed = findViewById(R.id.speedSeek);
+
         web.setChecked(preferences.getBoolean("web_search", true));
         autoResearch.setChecked(preferences.getBoolean("auto_destination_research", true));
+        mediaPreviews.setChecked(preferences.getBoolean("inline_media_previews", true));
         dealAlerts.setChecked(preferences.getBoolean("deal_alerts_enabled", true));
         autoSpeak.setChecked(preferences.getBoolean("auto_speak", true));
         learn.setChecked(preferences.getBoolean("learn", true));
@@ -88,48 +83,24 @@ public final class SettingsActivity extends Activity {
 
         Button save = findViewById(R.id.saveSettingsButton);
         save.setOnClickListener(v -> {
-            int selectedMode = provider.getSelectedItemPosition();
-            String enteredModelKey = api.getText().toString().trim();
-            String enteredBackendToken = backendToken.getText().toString().trim();
-            String savedKey = SecureStore.loadApiKey(this);
-
+            int selectedMode = mode.getSelectedItemPosition();
             setConversationMode(this, selectedMode);
             preferences.edit()
                     .putInt("voice_mode", voice.getSelectedItemPosition())
-                    .putString("connected_provider", preferences.getString("connected_provider", "openai"))
-                    .putString("model", model.getText().toString().trim().isEmpty()
-                            ? "gpt-5-mini"
-                            : model.getText().toString().trim())
-                    .putString("deal_backend_url", backendUrl.getText().toString().trim())
                     .putBoolean("web_search", web.isChecked())
                     .putBoolean("auto_destination_research", autoResearch.isChecked())
+                    .putBoolean("inline_media_previews", mediaPreviews.isChecked())
                     .putBoolean("deal_alerts_enabled", dealAlerts.isChecked())
                     .putBoolean("auto_speak", autoSpeak.isChecked())
                     .putBoolean("learn", learn.isChecked())
                     .putInt("speed", speed.getProgress())
                     .apply();
 
-            if (!enteredModelKey.isEmpty()) {
-                try {
-                    SecureStore.saveApiKey(this, enteredModelKey);
-                    savedKey = enteredModelKey;
-                } catch (Exception e) {
-                    Toast.makeText(this, "The model key could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-            if (!enteredBackendToken.isEmpty()) {
-                try {
-                    SecureStore.saveDealBackendToken(this, enteredBackendToken);
-                } catch (Exception e) {
-                    Toast.makeText(this, "The travel-backend token could not be encrypted: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-
             if (dealAlerts.isChecked() || autoResearch.isChecked()) {
                 DealWatchScheduler.ensureScheduled(this);
                 DealWatchScheduler.runSoon(this);
+                EventMonitorScheduler.ensureScheduled(this);
+                EventMonitorScheduler.runSoon(this);
             } else {
                 DealWatchScheduler.cancel(this);
             }
@@ -140,27 +111,21 @@ public final class SettingsActivity extends Activity {
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIFICATIONS);
                 return;
             }
-            finishWithMessage(selectedMode, savedKey);
+            finishWithMessage();
         });
     }
 
-    private void finishWithMessage(int selectedMode, String savedKey) {
-        if (selectedMode != ConversationModePolicy.MODE_LOCAL_ONLY && savedKey.isEmpty()) {
-            Toast.makeText(
-                    this,
-                    "Automatic mode is saved. Sarah will stay Local until a connected-model key is added.",
-                    Toast.LENGTH_LONG).show();
-        } else {
-            Toast.makeText(this, "Sarah's settings were saved.", Toast.LENGTH_SHORT).show();
-        }
+    private void finishWithMessage() {
+        String connection = SarahModelConfig.fullConversationAvailable()
+                ? "OpenAI is included in this build."
+                : "This build has public lookup and Local fallback; the team OpenAI connection was not injected into the APK.";
+        Toast.makeText(this, "Sarah's settings were saved. " + connection, Toast.LENGTH_LONG).show();
         finish();
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_NOTIFICATIONS) {
-            finishWithMessage(getConversationMode(this), SecureStore.loadApiKey(this));
-        }
+        if (requestCode == REQ_NOTIFICATIONS) finishWithMessage();
     }
 }
