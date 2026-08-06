@@ -115,6 +115,13 @@ public final class AgenticTravelPlanner {
             return new Plan(reply.toString(), actions);
         }
 
+        if (eventIntent.recognized()) {
+            return new Plan(
+                    "I recognize “" + eventIntent.eventName
+                            + "” as an event, not a city. I’ll look for a likely official page, verify its location and dates when public lookup is available, and only then save the verified event trip. I won’t create a fake destination record while those details are unknown.",
+                    actions);
+        }
+
         if (journey.found()) {
             actions.add(new Action(
                     SAVE_JOURNEY_PLAN,
