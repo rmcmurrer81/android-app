@@ -13,15 +13,27 @@ public final class SarahModelConfig {
     /** Higher-intelligence OpenAI model used by the hackathon build. */
     public static final String MODEL_ID = "gpt-5.1";
 
+    private static final String VOICE_READY_MARKER = "__SARAH_ELEVENLABS_VOICE_READY__";
+
     private SarahModelConfig() { }
 
+    /** Actual direct OpenAI credential, if a private test build injects one. */
+    public static String openAiApiKey() {
+        return clean(BuildConfig.SARAH_OPENAI_API_KEY);
+    }
+
     /**
-     * Private hackathon builds may inject an OpenAI key through the
-     * SARAH_OPENAI_API_KEY GitHub Actions secret. A public release should use
-     * a protected backend instead of embedding a shared provider key in an APK.
+     * Compatibility accessor retained for existing activity code.
+     *
+     * It returns the real OpenAI key when present. If only Sarah's ElevenLabs
+     * voice is configured, it returns a harmless non-secret marker so the
+     * legacy voice branch runs. SecureStore deliberately uses openAiApiKey()
+     * instead, so this marker is never sent to the conversation model.
      */
     public static String apiKey() {
-        return clean(BuildConfig.SARAH_OPENAI_API_KEY);
+        String modelKey = openAiApiKey();
+        if (!modelKey.isEmpty()) return modelKey;
+        return ElevenLabsVoiceConfig.isConfigured() ? VOICE_READY_MARKER : "";
     }
 
     /**
@@ -38,7 +50,7 @@ public final class SarahModelConfig {
     }
 
     public static boolean fullConversationAvailable() {
-        return !backendUrl().isEmpty() || !apiKey().isEmpty();
+        return !backendUrl().isEmpty() || !openAiApiKey().isEmpty();
     }
 
     public static String providerLabel() {
