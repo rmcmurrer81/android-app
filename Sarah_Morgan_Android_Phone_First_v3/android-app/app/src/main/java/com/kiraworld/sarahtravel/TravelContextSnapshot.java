@@ -45,7 +45,8 @@ public final class TravelContextSnapshot {
     }
 
     public static TravelContextSnapshot load(Context context) {
-        PersonProfileStore people = new PersonProfileStore(context.getApplicationContext());
+        Context app = context.getApplicationContext();
+        PersonProfileStore people = new PersonProfileStore(app);
         Map<String, String> person;
         try {
             person = people.getActiveProfile();
@@ -55,6 +56,10 @@ public final class TravelContextSnapshot {
         String personId = person.getOrDefault("person_id", "1");
         String personName = person.getOrDefault("name", "Traveler");
         String origin = person.getOrDefault("hometown", "");
+        boolean owner = "yes".equals(person.getOrDefault("is_owner", "no"));
+
+        SarahDatabase db = new SarahDatabase(app);
+        if (origin.isEmpty() && owner) origin = db.getProfile().getOrDefault("hometown", "");
 
         String destination = "";
         String eventName = "";
@@ -62,11 +67,14 @@ public final class TravelContextSnapshot {
         String end = "";
         String source = "";
 
-        EventTripStore events = new EventTripStore(context.getApplicationContext());
+        EventTripStore events = new EventTripStore(app);
+        PersonProfileStore participation = new PersonProfileStore(app);
         try {
             for (Map<String, String> event : events.listActiveEventTrips(50)) {
                 String candidate = clean(event.get("destination"));
                 if (candidate.isEmpty()) continue;
+                if (!owner && !"going".equals(
+                        participation.getTripParticipation(personName, candidate))) continue;
                 String candidateStart = clean(event.get("start_date"));
                 if (dateHasPassed(candidateStart, clean(event.get("end_date")))) continue;
                 destination = candidate;
@@ -80,13 +88,14 @@ public final class TravelContextSnapshot {
             events.close();
         }
 
-        SarahDatabase db = new SarahDatabase(context.getApplicationContext());
         try {
             if (destination.isEmpty()) {
                 for (Map<String, String> trip : db.listTrips(50)) {
                     String status = clean(trip.get("status")).toLowerCase(Locale.US);
                     String candidate = clean(trip.get("destination"));
                     if (candidate.isEmpty()) continue;
+                    if (!owner && !"going".equals(
+                            participation.getTripParticipation(personName, candidate))) continue;
                     if (status.contains("planned") || status.contains("current")
                             || status.contains("upcoming") || status.contains("confirmed")) {
                         destination = candidate;
@@ -101,7 +110,7 @@ public final class TravelContextSnapshot {
                     }
                 }
             }
-            if (destination.isEmpty()) {
+            if (destination.isEmpty() && owner) {
                 List<Map<String, String>> wishes = db.listWishes(20);
                 if (!wishes.isEmpty()) {
                     destination = clean(wishes.get(0).get("destination"));
@@ -109,7 +118,7 @@ public final class TravelContextSnapshot {
                 }
             }
             if (destination.isEmpty()) {
-                List<Map<String, String>> history = db.recentMessages(30);
+                List<Map<String, String>> history = db.recentMessagesForSpeaker(personName, 30);
                 List<String> places = DestinationParser.extractFromHistory(history, 8);
                 if (!places.isEmpty()) {
                     destination = places.get(places.size() - 1);
@@ -118,6 +127,7 @@ public final class TravelContextSnapshot {
             }
         } finally {
             db.close();
+            participation.close();
         }
 
         return new TravelContextSnapshot(
