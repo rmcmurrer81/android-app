@@ -78,7 +78,7 @@
             android:tint="@color/white" />
     </LinearLayout>
 
-    <Button
+    <com.kiraworld.sarahtravel.ExploreButton
         android:id="@+id/exploreButton"
         android:layout_width="match_parent"
         android:layout_height="44dp"
