@@ -10,6 +10,18 @@ public final class ConversationModePolicyTest {
                 ConversationModePolicy.route(ConversationModePolicy.MODE_AUTO, true, false));
         expect(ConversationModePolicy.ROUTE_LOCAL,
                 ConversationModePolicy.route(ConversationModePolicy.MODE_LOCAL_ONLY, true, true));
+
+        String publicOnline = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, false, false);
+        require(publicOnline.contains("Public lookup online"),
+                "internet without a model key must advertise public lookup instead of implying total offline mode");
+        require(publicOnline.contains("Smart setup needed"),
+                "status must still explain why broad Smart conversation is unavailable");
+
+        String offline = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, false, false, false);
+        require(offline.contains("offline"), "no internet must remain clearly offline");
+
         System.out.println("ConversationModePolicyTest passed");
     }
 
@@ -17,5 +29,9 @@ public final class ConversationModePolicyTest {
         if (!expected.equals(actual)) {
             throw new AssertionError("Expected " + expected + " but got " + actual);
         }
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) throw new AssertionError(message);
     }
 }
