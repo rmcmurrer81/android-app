@@ -22,8 +22,8 @@ public final class SecureStore {
     private SecureStore() { }
 
     /**
-     * Retained only so older source branches still compile. Sarah 1.5 does not
-     * ask an app user to save a provider key.
+     * Retained only so older source branches still compile. Sarah does not ask
+     * an app user to save a provider key.
      */
     public static void saveApiKey(Context context, String value) throws Exception {
         saveSecret(context, "legacy_model_user_key", value);
@@ -31,10 +31,10 @@ public final class SecureStore {
 
     /**
      * The conversation credential is owned by the build, not by the person who
-     * installs the APK. Old user-entered keys are intentionally ignored.
+     * installs the APK. ElevenLabs voice readiness is intentionally excluded.
      */
     public static String loadApiKey(Context context) {
-        String key = SarahModelConfig.apiKey();
+        String key = SarahModelConfig.openAiApiKey();
         if (!key.isEmpty()) return key;
         return SarahModelConfig.backendUrl().isEmpty() ? "" : TEAM_BACKEND_SENTINEL;
     }
