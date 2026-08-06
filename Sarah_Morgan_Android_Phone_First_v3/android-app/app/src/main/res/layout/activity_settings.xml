@@ -3,6 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/sarah_warm">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -21,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 1.4-public-web-fallback"
+            android:text="Build 1.5-builtin-openai-media"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -29,8 +30,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Automatic mode is the default. With internet and a configured model key, Sarah uses full Smart conversation. With internet but no key, she can still read selected official event pages and public factual references. Without internet she continues with the local Travel Brain."
+            android:layout_marginTop="12dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Conversation AI: OpenAI, selected by the app team. People who install Sarah are not asked for an API key or model name. If the team changes providers, it edits SarahModelConfig.java and ConnectedModelGateway.java, then builds a new APK."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -38,7 +41,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Conversation connection"
+            android:text="Connection behavior"
             android:textStyle="bold" />
 
         <Spinner
@@ -46,132 +49,58 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Connected model and destination research"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="A model key is still required for broad natural conversation, arbitrary current research, image understanding, and richer recommendations. Public lookup without a key is intentionally narrower and source-based."
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/apiKeyInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="Personal connected-model API key"
-            android:inputType="textPassword" />
-
-        <EditText
-            android:id="@+id/modelInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="Model name, for example gpt-5-mini" />
-
         <CheckBox
             android:id="@+id/webSearchCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Allow connected web research for current attractions, events, maps, routes, schedules, weather, and travel information" />
+            android:checked="true"
+            android:text="Allow current public and connected research for events, maps, routes, schedules, weather, attractions, and travel information" />
 
         <CheckBox
             android:id="@+id/autoResearchCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Automatically build and refresh destination knowledge packs from places mentioned in conversation" />
+            android:text="Automatically refresh destination and event knowledge when internet is available" />
+
+        <CheckBox
+            android:id="@+id/mediaPreviewCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Show an inline public photo preview and Map, Photos, Videos, Route, and Official Source buttons for relevant places and events" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Sarah keeps the current route separate from old wish-list places. A message such as “New York to California by train” is treated as one journey, not a comparison with Paris or another saved trip."
+            android:layout_marginTop="12dp"
+            android:text="Online without the team OpenAI connection, Sarah still uses narrow public-source tools for recognized official events, maps, public photos, videos, routes, and selected factual questions. That public lookup is useful but is not a replacement for a full language model."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Permanent Explore tools"
+            android:layout_marginTop="20dp"
+            android:text="Travel and event monitoring"
             android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="The main chat now has a permanent Explore button for maps, Wikimedia Commons public photos, YouTube videos, routes, official event pages, public web searches, and current travel sources. These sources do not endorse Sarah; verify closures, schedules, access, and prices."
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Event trips"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Recognized events can use their official public page even without a model key. Bell County Comic Con—including the common “Bell Country” typo—resolves to Belton, Texas. CES, San Diego Comic-Con, and New York Comic Con also have official-source records. Unknown events still need Smart research or manual public search."
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Booking imports"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Use Android Share from Expedia, Booking.com, a browser, or the Gallery to send Sarah a booking link or screenshot. Links and extracted screenshot details remain pending review; Sarah does not sign in to private booking accounts or treat extracted text as confirmed until the traveler reviews it."
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Multimodal travel service"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Sarah can store journey plans and watches for air, Amtrak or rail, intercity bus, local metro or transit, driving, ferry, biking, walking, and mixed routes. Actual prices, schedules, delays, and service alerts require a team backend that returns normalized, source-backed results."
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/dealBackendUrlInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="Travel backend HTTPS endpoint" />
-
-        <EditText
-            android:id="@+id/dealBackendTokenInput"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="Travel backend token (leave blank to keep saved token)"
-            android:inputType="textPassword" />
 
         <CheckBox
             android:id="@+id/dealAlertsCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Schedule background air, rail, bus, transit, driving, ferry, and deal checks and notify me when the configured backend reports a meaningful change" />
+            android:text="Schedule background event, air, rail, bus, transit, driving, ferry, and deal checks when the team services are available" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:text="Current schedules, delays, prices, and automatic notifications require team-owned source services. The user does not enter those service credentials here."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
             android:text="Sarah's voice"
             android:textStyle="bold" />
 
@@ -202,7 +131,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="20dp"
             android:text="Memory"
             android:textStyle="bold" />
 
@@ -211,7 +140,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:checked="true"
-            android:text="Let Sarah learn useful travel preferences, past trips, journey methods, interests, worries, wish-list places, event trips, and requested watches" />
+            android:text="Let Sarah learn approved interests, travel preferences, past trips, routes, worries, wish-list places, event trips, and requested watches" />
 
         <Button
             android:id="@+id/saveSettingsButton"
@@ -224,7 +153,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Private prototype: model and backend secrets are encrypted with Android Keystore. A public release should use a protected authenticated backend, documented transport and event sources, rate limits, privacy controls, and release signing."
+            android:text="Hackathon prototype: a public release should keep shared provider credentials on a protected authenticated backend, not inside an APK. See README.md for the exact source files used to change OpenAI, the model ID, or the backend."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>
