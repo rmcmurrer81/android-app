@@ -121,9 +121,50 @@ jobs:
       - name: Report optional team integrations without printing secrets
         run: |
           test -n "$SARAH_OPENAI_API_KEY$SARAH_MODEL_BACKEND_URL" && echo 'OpenAI conversation: configured' || echo 'OpenAI conversation: public/local fallback build'
-          test -n "$SARAH_ELEVENLABS_VOICE_ID" && echo 'ElevenLabs voice ID: configured' || echo 'ElevenLabs voice ID: not configured'
+          echo 'ElevenLabs voice ID: Sarah Morgan source default selected'
           test -n "$SARAH_ELEVENLABS_API_KEY$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs service: configured' || echo 'ElevenLabs service: Android TTS fallback build'
           test -n "$SARAH_TRAVEL_COMMERCE_URL" && echo 'Travel commerce: configured' || echo 'Travel commerce: external links only'
+
+      - name: Validate Sarah Morgan ElevenLabs voice
+        run: |
+          if [ -z "$SARAH_ELEVENLABS_API_KEY" ]; then
+            echo 'Direct ElevenLabs validation skipped because this build uses no direct service key.'
+            exit 0
+          fi
+          VOICE_ID="${SARAH_ELEVENLABS_VOICE_ID:-WcGvc9xxaOYbKswm3NBx}"
+          MODEL_ID="${SARAH_ELEVENLABS_MODEL_ID:-eleven_multilingual_v2}"
+          printf '{"text":"Sarah voice connection test.","model_id":"%s","voice_settings":{"stability":0.5,"similarity_boost":0.75,"style":0.0,"use_speaker_boost":true,"speed":1.0}}' "$MODEL_ID" > /tmp/sarah-elevenlabs-request.json
+          HTTP_CODE=$(curl -sS -o /tmp/sarah-elevenlabs-response.bin -w '%{http_code}' \
+            -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream?output_format=mp3_44100_128" \
+            -H "xi-api-key: ${SARAH_ELEVENLABS_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/sarah-elevenlabs-request.json)
+          if [ "$HTTP_CODE" != '200' ]; then
+            echo "ElevenLabs Sarah Morgan voice validation failed with HTTP ${HTTP_CODE}."
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('/tmp/sarah-elevenlabs-response.bin')
+          raw = path.read_bytes()[:8192]
+          try:
+              data = json.loads(raw.decode('utf-8', errors='replace'))
+              detail = data.get('detail', data) if isinstance(data, dict) else data
+              if isinstance(detail, dict):
+                  print('ElevenLabs error status:', detail.get('status', 'unknown'))
+                  print('ElevenLabs error message:', detail.get('message', 'No message supplied'))
+              else:
+                  print('ElevenLabs error response:', str(detail)[:500])
+          except Exception:
+              print('ElevenLabs returned a non-JSON error response of', len(raw), 'bytes.')
+          PY
+            exit 1
+          fi
+          AUDIO_BYTES=$(wc -c < /tmp/sarah-elevenlabs-response.bin)
+          if [ "$AUDIO_BYTES" -lt 1000 ]; then
+            echo "ElevenLabs returned too little audio (${AUDIO_BYTES} bytes)."
+            exit 1
+          fi
+          echo "ElevenLabs Sarah Morgan voice: live TTS validated (${AUDIO_BYTES} bytes)."
 
       - name: Preserve Sarah's private-test debug signing key
         uses: actions/cache@v4
