@@ -64,6 +64,20 @@
             android:text="Automatically refresh destination and event knowledge when internet is available" />
 
         <CheckBox
+            android:id="@+id/nearbyDiscoveryCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:text="With my permission, let Sarah use my saved home/current area for nearby source-backed events and places that match my interests" />
+
+        <EditText
+            android:id="@+id/nearbyAreaInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Approved approximate area, such as Newark, NJ"
+            android:inputType="textCapWords" />
+
+        <CheckBox
             android:id="@+id/mediaPreviewCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -159,6 +173,13 @@
             android:layout_height="wrap_content"
             android:max="100"
             android:progress="45" />
+
+        <CheckBox
+            android:id="@+id/autoDeviceSyncCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="After Sarah replies, quietly synchronize with every explicitly paired desktop or laptop that is available on this trusted Wi-Fi network" />
 
         <TextView
             android:layout_width="match_parent"

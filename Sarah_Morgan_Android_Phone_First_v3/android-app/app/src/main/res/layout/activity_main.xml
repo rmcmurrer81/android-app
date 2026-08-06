@@ -101,7 +101,7 @@
         android:layout_marginTop="6dp"
         android:layout_marginRight="10dp"
         android:layout_marginBottom="2dp"
-        android:minHeight="76dp"
+        android:minHeight="52dp"
         android:contentDescription="Explore maps, public photos, videos, routes, and current travel sources"
         android:text="Explore maps • photos • videos • routes"
         android:textAllCaps="false"
@@ -118,6 +118,30 @@
         android:layout_marginBottom="4dp"
         android:minHeight="70dp"
         android:contentDescription="Open Sarah Travel OS for hotels, transport, local experiences, road trips, loyalty, accessibility, and hotel stay tools" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:paddingBottom="4dp">
+
+        <com.kiraworld.sarahtravel.ProactiveDiscoveryButton
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <com.kiraworld.sarahtravel.TrustedSyncButton
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <com.kiraworld.sarahtravel.DemoModeButton
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/chatScroll"
