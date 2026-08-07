@@ -1,0 +1,228 @@
+name: Sarah 2.6 observable repair validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
+  SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
+  SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
+  SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+  SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+  SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+  SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
+  SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+  SARAH_TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
+  SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
+  SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
+  SARAH_STAY22_BACKEND_TOKEN: ${{ secrets.SARAH_STAY22_BACKEND_TOKEN }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Compile and self-test repaired Windows source
+        working-directory: windows-companion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+      - name: Verify repaired source contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('windows-companion/sarah_event_ready.py').read_text(encoding='utf-8')
+          required = [
+              'self.root.minsize(720, 500)', 'composer.grid(row=1',
+              'SAPI.SpVoice', 'class ResilientModelClient',
+              'Mexico sounds worth exploring', 'class SarahRepairApp',
+              'Approve a new Sarah device?', 'def start_listening',
+          ]
+          missing = [item for item in required if item not in source]
+          if missing: raise SystemExit(f'Missing repair contracts: {missing}')
+          if 'My stronger connected or local model is not configured' in source:
+              raise SystemExit('The old unusable reply remains.')
+          PY
+      - name: Test Android identity, calm, channels, and sync
+        run: |
+          rm -rf build/sarah26-core && mkdir -p build/sarah26-core
+          javac -encoding UTF-8 -d build/sarah26-core \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/IdentityIntent.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java
+          java -cp build/sarah26-core Sarah22CoreTest
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build and verify Android 2.6
+        run: |
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.6-windows-repair.apk
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          row=json.loads(Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json').read_text())['elements'][0]
+          assert row['versionCode']==26, row
+          assert str(row['versionName']).startswith('2.6-windows-repair'), row
+          PY
+          unzip -t Sarah-Morgan-2.6-windows-repair.apk >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.6-validated-APK
+          path: Sarah-Morgan-2.6-windows-repair.apk
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows-companion/requirements.txt
+      - name: Install dependencies and test source
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah source self-test failed.' }
+      - name: Verify an offline Windows voice exists
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer
+          if ($speaker.GetInstalledVoices().Count -lt 1) { throw 'No Windows voice is installed.' }
+          $speaker.Dispose()
+      - name: Write non-secret build hints
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          @'
+          import os
+          from pathlib import Path
+          allowed=('SARAH_MODEL_BACKEND_URL','SARAH_ELEVENLABS_BACKEND_URL','SARAH_ELEVENLABS_VOICE_ID','SARAH_ELEVENLABS_MODEL_ID','SARAH_STAY22_AID','SARAH_STAY22_BACKEND_URL')
+          values={name:os.environ.get(name,'') for name in allowed if os.environ.get(name,'')}
+          Path('sarah_build_config.py').write_text(
+              'from __future__ import annotations\nimport os\nCONFIG = '+repr(values)+'\n'
+              'def get(name: str, default: str = "") -> str:\n'
+              '    value=os.environ.get(name)\n'
+              '    if value is not None and str(value).strip(): return str(value).strip()\n'
+              '    return str(CONFIG.get(name, default) or "").strip()\n'
+              'def configured(name: str) -> bool: return bool(get(name))\n', encoding='utf-8')
+          '@ | python -
+      - name: Build Sarah and one-file installer
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahTravelOS `
+            --collect-all pystray --collect-all PIL --collect-all playsound3 `
+            --hidden-import win32com.client --hidden-import pythoncom --hidden-import pywintypes `
+            --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow `
+            sarah_event_ready.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahMorganTravelOS-Setup `
+            --add-binary 'dist\SarahTravelOS.exe;payload' `
+            sarah_installer.py
+          if (!(Test-Path 'dist\SarahMorganTravelOS-Setup.exe')) { throw 'Installer was not built.' }
+      - name: Self-test exact public installer
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          & '.\dist\SarahMorganTravelOS-Setup.exe' --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Installer self-test returned $LASTEXITCODE." }
+          $file=Get-Item '.\dist\SarahMorganTravelOS-Setup.exe'
+          if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
+          $bytes=[IO.File]::ReadAllBytes($file.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'Not a Windows PE executable.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.6-validated-Windows-EXE
+          path: windows-companion/dist/SarahMorganTravelOS-Setup.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [android, windows]
+    if: always() && needs.android.result == 'success' && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Sarah-2.6-validated-APK
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: Sarah-2.6-validated-Windows-EXE
+          path: release
+      - name: Publish repaired prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum release/Sarah-Morgan-2.6-windows-repair.apk release/SarahMorganTravelOS-Setup.exe > release/SHA256SUMS.txt
+          TAG='sarah-travel-os-v2.6-windows-repair'
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          cat > /tmp/notes.md <<'EOF'
+          ## Sarah Travel OS 2.6 — Windows Repair
+
+          - Windows: `SarahMorganTravelOS-Setup.exe`
+          - Android: `Sarah-Morgan-2.6-windows-repair.apk`
+
+          This prerelease repairs Robert's physical-test findings: the composer remains visible in a normal window, the female humanoid is more detailed and animated, ordinary offline conversation is useful, Windows SAPI supplies an audible fallback, a deliberate microphone button is present, and the Windows removal path does not depend on rerunning the unsigned installer.
+
+          Pairing still requires the existing trusted device to show the same six-digit code and explicitly approve the named new device before encrypted synchronization begins.
+          EOF
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "${{ github.event.pull_request.head.sha }}" --title 'Sarah Travel OS 2.6 — Windows Repair' --notes-file /tmp/notes.md --prerelease release/*
+
+  report:
+    needs: [android, windows, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.6-windows-repair
+          fetch-depth: 0
+      - name: Record validation result
+        env:
+          ANDROID: ${{ needs.android.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          PUBLISH: ${{ needs.publish.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          mkdir -p public-release/2.6
+          cat > public-release/2.6/REPAIR_STATUS.json <<EOF
+          {
+            "run_id": "$RUN_ID",
+            "android": "$ANDROID",
+            "windows": "$WINDOWS",
+            "publish": "$PUBLISH",
+            "release_tag": "sarah-travel-os-v2.6-windows-repair"
+          }
+          EOF
+          git config user.name 'Sarah Repair Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.6/REPAIR_STATUS.json
+          git commit -m '[skip ci] Record Sarah 2.6 repair validation' || exit 0
+          git push origin HEAD:agent/sarah-2.6-windows-repair
