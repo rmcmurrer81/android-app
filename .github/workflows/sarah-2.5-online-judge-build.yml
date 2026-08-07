@@ -53,8 +53,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: services/sarah-model-proxy/package.json
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -169,7 +167,8 @@ jobs:
           SARAH_OPENAI_MODEL: ${{ steps.config.outputs.model }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error "$BACKEND_URL/health" > /tmp/sarah-health.json
+          curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 2 \
+            "$BACKEND_URL/health" > /tmp/sarah-health.json
           python - <<'PY'
           import json
           health = json.load(open('/tmp/sarah-health.json', encoding='utf-8'))
@@ -190,7 +189,7 @@ jobs:
           }
           json.dump(request, open('/tmp/sarah-smoke-request.json', 'w', encoding='utf-8'))
           PY
-          curl --fail --silent --show-error \
+          curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 2 \
             -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/sarah-smoke-request.json \
