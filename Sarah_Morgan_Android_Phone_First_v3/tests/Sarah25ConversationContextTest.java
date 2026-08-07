@@ -26,6 +26,8 @@ public final class Sarah25ConversationContextTest {
                 "a ticket request with a new destination must not inherit an old event");
         require(!GenericEventReference.isFollowUp("Can you help me find a hotel?"),
                 "a general hotel request must not silently inherit an old event");
+        require(!GenericEventReference.isFollowUp("I need help with travel"),
+                "general travel help must not silently inherit an old event");
         require(GenericEventReference.isFollowUp("Where is it?"),
                 "a genuinely elliptical event question should keep recent event context");
 
