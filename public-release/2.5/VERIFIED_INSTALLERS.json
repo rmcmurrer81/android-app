@@ -1,0 +1,29 @@
+{
+  "release_tag": "sarah-travel-os-v2.5-event-ready",
+  "publication_result": "success",
+  "validated_workflow_run_id": 31138711432,
+  "publication_workflow_run_id": 31138964065,
+  "android": {
+    "filename": "Sarah-Morgan-2.5-event-ready.apk",
+    "size_bytes": 349463,
+    "sha256": "b4ffcca5645e4417376e38f6683ce04fa48b7086018a4b33b5438db8e60577be",
+    "format_verified": "Android APK with signing block",
+    "version_code": 25,
+    "version_name_prefix": "2.5-event-ready"
+  },
+  "windows": {
+    "filename": "SarahMorganTravelOS-Setup.exe",
+    "size_bytes": 58701977,
+    "sha256": "a7fef025c18e49aea16b0806b7e7a38b65524e91ef4ee2651d536567fc763b08",
+    "format_verified": "PE32+ x86-64 Windows GUI executable",
+    "installer_self_test": "passed"
+  },
+  "physical_acceptance_remaining": [
+    "Samsung installation and launch",
+    "Windows installation and launch on Robert's computer",
+    "Windows Private-network firewall permission",
+    "same-private-WiFi discovery and matching-code approval",
+    "first encrypted bidirectional synchronization",
+    "microphone, speaker, ElevenLabs, and offline behavior"
+  ]
+}
