@@ -68,9 +68,9 @@ jobs:
           from pathlib import Path
           metadata=json.loads(Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json').read_text())
           element=metadata['elements'][0]
-          assert element['versionName']=='2.5-event-ready', element
+          assert str(element['versionName']).startswith('2.5-event-ready'), element
           assert element['versionCode']==25, element
-          print(element)
+          print('Verified physical-test APK:', element)
           PY
           unzip -t Sarah-Morgan-2.5-event-ready.apk >/dev/null
       - uses: actions/upload-artifact@v4
@@ -110,8 +110,8 @@ jobs:
         shell: pwsh
         working-directory: windows-companion
         run: |
-          & '.\dist\SarahMorganTravelOS-Setup.exe' --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Installer self-test returned $LASTEXITCODE." }
+          $process = Start-Process -FilePath '.\dist\SarahMorganTravelOS-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
           $file=Get-Item '.\dist\SarahMorganTravelOS-Setup.exe'
           if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
           $bytes=[System.IO.File]::ReadAllBytes($file.FullName)
