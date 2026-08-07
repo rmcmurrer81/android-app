@@ -4,14 +4,18 @@ package com.kiraworld.sarahtravel;
  * Build-owned conversation model configuration.
  *
  * End users do not choose a provider, model, or API key in Sarah's Settings.
- * The hackathon team controls those choices here and in ConnectedModelGateway.
+ * The hackathon team controls those choices here, through build variables,
+ * and in ConnectedModelGateway.
  */
 public final class SarahModelConfig {
     /** Included provider adapter. Change with the provider branch in ConnectedModelGateway. */
     public static final String PROVIDER_ID = "openai";
 
-    /** Higher-intelligence OpenAI model used by the hackathon build. */
-    public static final String MODEL_ID = "gpt-5.1";
+    /** Safe repository default; the online-judge workflow can override this without editing Java. */
+    public static final String DEFAULT_MODEL_ID = "gpt-5.1";
+
+    /** Model selected by SARAH_OPENAI_MODEL for this build. */
+    public static final String MODEL_ID = configuredModelId();
 
     private static final String VOICE_READY_MARKER = "__SARAH_ELEVENLABS_VOICE_READY__";
 
@@ -55,6 +59,15 @@ public final class SarahModelConfig {
 
     public static String providerLabel() {
         return "OpenAI";
+    }
+
+    public static String modelLabel() {
+        return MODEL_ID;
+    }
+
+    private static String configuredModelId() {
+        String configured = clean(BuildConfig.SARAH_OPENAI_MODEL);
+        return configured.isEmpty() ? DEFAULT_MODEL_ID : configured;
     }
 
     private static String clean(String value) {
