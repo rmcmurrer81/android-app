@@ -48,7 +48,7 @@ public final class ProfileButton extends ImageButton {
         List<Map<String, String>> profiles;
         try {
             people.ensureOwner(owner);
-            profiles = people.listProfiles();
+            profiles = ProfileCorrectionStore.visible(context, people.listProfiles());
         } finally {
             people.close();
         }

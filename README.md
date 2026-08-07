@@ -7,19 +7,19 @@ This repository is the authoritative hackathon source.
 Current development version:
 
 ```text
-Sarah Morgan Android 2.1-offline-flight-companion
+Sarah Morgan Android 2.2-phone-windows-continuity
 ```
 
 Expected GitHub Actions artifact:
 
 ```text
-Sarah-Morgan-2.1-offline-flight-companion
+Sarah-Morgan-2.2-phone-windows-continuity
 ```
 
 Expected APK inside the artifact:
 
 ```text
-Sarah-Morgan-2.1-offline-flight-companion.apk
+Sarah-Morgan-2.2-phone-windows-continuity.apk
 ```
 
 Private-test application ID:
@@ -53,6 +53,17 @@ Offline Local fallback and Flight Companion when internet disappears
 ```
 
 Sarah separates suggestions from confirmed facts. Opening a website is not a booking. Saving a draft is not proof that a hotel received it. Model output is not proof that a price, event, reservation, notification, call, or completed task exists.
+
+
+## Sarah 2.2 phone and Windows continuity
+
+Version 2.2 fixes emotional-state words being mistaken for names, adds universal transport-aware calm support, routes onboarding through Sarah Morgan's ElevenLabs voice when connected, records separate SPOKEN / PRIVATE MIND / FACTUAL TRUTH channels, adds Tavily-backed proactive discoveries, hides the empty visual panel, and introduces explicitly verified same-Wi-Fi synchronization with the Windows companion.
+
+The Windows companion lives in `windows-companion/`. It provides a movable animated Sarah, a larger trip and photo workspace, ElevenLabs plus offline Windows speech, optional local or connected conversation, proactive research, encrypted backup, Google Drive app-data backup when the owner supplies OAuth client credentials, tray operation, and a paired local sync server.
+
+No search result is treated as a booking or confirmed event. Nearby discoveries require the owner's setting, and private mind records are not displayed or sent to speech.
+
+See `docs/SARAH_2_2_EVENT_READ_FIRST.md` and `docs/SARAH_2_2_REAL_WORLD_TESTS.md`.
 
 ## What Sarah 2.1 adds
 
