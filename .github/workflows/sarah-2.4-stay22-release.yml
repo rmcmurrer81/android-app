@@ -8,6 +8,10 @@ on:
       - 'public-release/2.4/READY.json'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'public-release/2.4/**'
+      - 'development-tools/sarah-2.4-android-upgrade/**'
+      - 'services/stay22-proxy/**'
   workflow_dispatch:
 
 permissions:
