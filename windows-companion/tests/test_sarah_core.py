@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 import tempfile
 
 from PIL import Image
@@ -38,6 +37,7 @@ def test_sync_crypto():
 def test_database_photo_and_backup_roundtrip(monkeypatch):
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "one"
+        root.mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv("SARAH_HOME", str(root))
         db = SarahDatabase(root)
         db.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
@@ -50,9 +50,14 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
         backup = Path(temp) / "backup.sarahmind"
         db.create_backup(backup, "correct horse battery")
         assert backup.exists()
+
+        wrong_root = Path(temp) / "wrong"
+        wrong_root.mkdir(parents=True, exist_ok=True)
         with pytest.raises(Exception):
-            SarahDatabase(Path(temp) / "wrong").restore_backup(backup, "wrong password")
+            SarahDatabase(wrong_root).restore_backup(backup, "wrong password")
+
         restored_root = Path(temp) / "restored"
+        restored_root.mkdir(parents=True, exist_ok=True)
         restored = SarahDatabase(restored_root)
         restored.restore_backup(backup, "correct horse battery")
         assert restored.path.exists()
@@ -60,12 +65,17 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
 
 def test_sync_import_merges_rows(monkeypatch):
     with tempfile.TemporaryDirectory() as temp:
-        first = SarahDatabase(Path(temp) / "first")
+        first_root = Path(temp) / "first"
+        first_root.mkdir(parents=True, exist_ok=True)
+        first = SarahDatabase(first_root)
         first.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
         first.add_trip("NZ", "New Zealand")
         first.add_message("user", "Hello")
         payload = first.export_sync(False)
-        second = SarahDatabase(Path(temp) / "second")
+
+        second_root = Path(temp) / "second"
+        second_root.mkdir(parents=True, exist_ok=True)
+        second = SarahDatabase(second_root)
         counts = second.import_sync(payload)
         assert counts["messages"] >= 1
         assert second.list_rows("trips")[0]["destination"] == "New Zealand"
