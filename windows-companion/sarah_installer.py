@@ -18,6 +18,7 @@ except Exception:
 APP_FOLDER = "SarahTravelOS"
 APP_EXE = "SarahTravelOS.exe"
 DISPLAY_NAME = "Sarah Travel OS"
+UNINSTALL_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SarahTravelOS"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -55,8 +56,20 @@ def start_menu_directory() -> Path:
     return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / DISPLAY_NAME
 
 
+def powershell_executable() -> Path:
+    discovered = shutil.which("powershell.exe") or shutil.which("powershell")
+    if discovered:
+        return Path(discovered)
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    return system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+
+
 def powershell_quote(value: Path | str) -> str:
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def command_argument_quote(value: str) -> str:
+    return '"' + value.replace('"', '\\"') + '"'
 
 
 def create_shortcut(path: Path, target: Path, arguments: str = "", description: str = "") -> None:
@@ -82,6 +95,78 @@ def create_shortcut(path: Path, target: Path, arguments: str = "", description: 
         raise RuntimeError(completed.stderr.strip() or "Windows could not create the Sarah shortcut.")
 
 
+def removal_powershell_command() -> str:
+    """Return a Windows-built-in uninstall command that does not reopen Sarah's unsigned installer."""
+    root = powershell_quote(install_root())
+    desktop_link = powershell_quote(desktop_directory() / "Sarah Travel OS.lnk")
+    start_folder = powershell_quote(start_menu_directory())
+    registry_key = powershell_quote(r"HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\SarahTravelOS")
+    return (
+        "$ErrorActionPreference='SilentlyContinue';"
+        "Get-Process -Name 'SarahTravelOS' | Stop-Process -Force;"
+        f"Remove-Item -LiteralPath {desktop_link} -Force;"
+        f"Remove-Item -LiteralPath {start_folder} -Recurse -Force;"
+        f"Remove-Item -LiteralPath {registry_key} -Recurse -Force;"
+        f"Remove-Item -LiteralPath {root} -Recurse -Force"
+    )
+
+
+def removal_arguments(*, hidden: bool = True) -> str:
+    window = " -WindowStyle Hidden" if hidden else ""
+    return (
+        f"-NoProfile -ExecutionPolicy Bypass{window} -Command "
+        + command_argument_quote(removal_powershell_command())
+    )
+
+
+def write_builtin_remover(root: Path) -> Path:
+    """Create a readable remover that invokes only Microsoft's built-in PowerShell executable."""
+    remover = root / "Remove Sarah Travel OS.cmd"
+    executable = str(powershell_executable())
+    remover.write_text(
+        "@echo off\r\n"
+        "rem Sarah Travel OS account-local remover. This does not disable Smart App Control.\r\n"
+        f'"{executable}" {removal_arguments(hidden=False)}\r\n'
+        "exit /b %errorlevel%\r\n",
+        encoding="utf-8",
+    )
+    return remover
+
+
+def register_windows_uninstaller(target: Path) -> None:
+    """Make Installed Apps use trusted Windows PowerShell instead of rerunning the unsigned installer."""
+    if os.name != "nt":
+        return
+    import winreg
+
+    uninstall_string = f'"{powershell_executable()}" {removal_arguments(hidden=False)}'
+    quiet_uninstall_string = f'"{powershell_executable()}" {removal_arguments(hidden=True)}'
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_REGISTRY_KEY) as key:
+        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, DISPLAY_NAME)
+        winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, "2.5.1-uninstall-hotfix")
+        winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, "Kira World")
+        winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, str(install_root()))
+        winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, str(target))
+        winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall_string)
+        winreg.SetValueEx(key, "QuietUninstallString", 0, winreg.REG_SZ, quiet_uninstall_string)
+        winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)
+        winreg.SetValueEx(key, "EstimatedSize", 0, winreg.REG_DWORD, max(1, target.stat().st_size // 1024))
+
+
+def remove_uninstall_registry_entry() -> None:
+    if os.name != "nt":
+        return
+    import winreg
+
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_REGISTRY_KEY)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
 def install(*, launch: bool = True, shortcuts: bool = True, target_root: Path | None = None) -> Path:
     source = bundled_payload()
     root = target_root or install_root()
@@ -98,18 +183,13 @@ def install(*, launch: bool = True, shortcuts: bool = True, target_root: Path | 
 
     metadata = {
         "display_name": DISPLAY_NAME,
-        "version": "2.5-event-ready",
+        "version": "2.5.1-uninstall-hotfix",
         "installed_at": int(time.time()),
         "executable": str(target),
+        "uninstall_method": "windows-built-in-powershell",
     }
     (root / "install.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    uninstall_command = f'"{Path(sys.executable).resolve()}" --uninstall'
-    (root / "Uninstall Sarah Travel OS.cmd").write_text(
-        "@echo off\r\n"
-        "taskkill /IM SarahTravelOS.exe /F >nul 2>nul\r\n"
-        f"{uninstall_command}\r\n",
-        encoding="utf-8",
-    )
+    write_builtin_remover(root)
 
     if shortcuts:
         create_shortcut(
@@ -120,11 +200,12 @@ def install(*, launch: bool = True, shortcuts: bool = True, target_root: Path | 
         start = start_menu_directory()
         create_shortcut(start / "Sarah Travel OS.lnk", target, description=DISPLAY_NAME)
         create_shortcut(
-            start / "Uninstall Sarah Travel OS.lnk",
-            Path(sys.executable).resolve(),
-            "--uninstall",
-            "Remove Sarah Travel OS from this Windows account.",
+            start / "Remove Sarah Travel OS.lnk",
+            powershell_executable(),
+            removal_arguments(hidden=False),
+            "Remove Sarah Travel OS without disabling Smart App Control.",
         )
+        register_windows_uninstaller(target)
 
     if launch:
         subprocess.Popen([str(target)], cwd=str(root), creationflags=CREATE_NO_WINDOW)
@@ -137,6 +218,7 @@ def uninstall() -> None:
         desktop_directory() / "Sarah Travel OS.lnk",
         start_menu_directory() / "Sarah Travel OS.lnk",
         start_menu_directory() / "Uninstall Sarah Travel OS.lnk",
+        start_menu_directory() / "Remove Sarah Travel OS.lnk",
     ]:
         try:
             shortcut.unlink()
@@ -146,8 +228,9 @@ def uninstall() -> None:
         start_menu_directory().rmdir()
     except OSError:
         pass
+    remove_uninstall_registry_entry()
 
-    # A running installer cannot delete itself immediately. Schedule cleanup in a detached command.
+    # A running installer cannot delete itself immediately. Schedule cleanup in trusted Windows cmd.
     if root.exists():
         command = f'timeout /t 2 /nobreak >nul & rmdir /s /q "{root}"'
         subprocess.Popen(
@@ -171,6 +254,9 @@ def self_test() -> int:
             raise RuntimeError(f"The installed Sarah application self-test returned {completed.returncode}.")
         if not target.is_file():
             raise RuntimeError("The Sarah application was not installed.")
+        remover = target.parent / "Remove Sarah Travel OS.cmd"
+        if not remover.is_file() or "powershell" not in remover.read_text(encoding="utf-8").lower():
+            raise RuntimeError("The Smart App Control-safe remover was not installed.")
     return 0
 
 
@@ -203,6 +289,7 @@ def main() -> int:
             show_result(
                 DISPLAY_NAME,
                 "Sarah Travel OS is installed. The desktop and Start menu shortcuts are ready.\n\n"
+                "The Remove Sarah shortcut and Windows Installed Apps entry now use Windows' built-in PowerShell, so removal does not require rerunning the unsigned installer.\n\n"
                 "When Sarah finds your phone on private Wi-Fi, approve only when the device name and six-digit code match.",
             )
         return 0
