@@ -9,6 +9,8 @@ public final class Sarah25ConversationContextTest {
     public static void main(String[] args) {
         require(KnownEventCatalog.find("I need plane ticket prices") == null,
                 "CES must not match inside the word prices");
+        require(KnownEventCatalog.find("Show me places to visit") == null,
+                "CES must not match inside the word places");
         require(KnownEventCatalog.find("I am going to CES") != null,
                 "CES must still match as a complete event name");
 
