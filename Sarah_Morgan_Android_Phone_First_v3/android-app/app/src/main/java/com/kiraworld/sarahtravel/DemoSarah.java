@@ -102,6 +102,14 @@ public final class DemoSarah {
             return "Automatic mode uses the team-selected OpenAI connection when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key. The airplane icon opens a separate flight companion that is fully local.";
         }
 
+        if (isFrustratedOrHostile(lower)) {
+            return "I can tell I lost the thread, and I’m sorry. I’ll stop repeating your words or pulling an old trip into the conversation. Tell me what I got wrong, and I’ll follow the subject you choose.";
+        }
+
+        if (asksForGeneralTravelHelp(lower)) {
+            return "Yes. We can start with the destination, transportation, hotel, budget, dates, or whatever part is on your mind. You do not have to answer everything at once.";
+        }
+
         if (isGreeting(lower)) {
             return pick(safe,
                     "Hey, " + name + ". I’m here. What are you in the mood to talk about?",
@@ -162,12 +170,11 @@ public final class DemoSarah {
             return "I do not have enough reliable local knowledge to answer that accurately. I can use selected public sources while online, and the team OpenAI build can handle broader questions when its connection is present. I won’t invent an answer.";
         }
 
-        String idea = keyIdea(safe);
-        if (!idea.isEmpty()) {
+        if (!safe.isEmpty()) {
             return pick(safe,
-                    "I understand the main point about " + idea + ". We can stay with that subject.",
-                    "That gives me a clearer picture of " + idea + ".",
-                    "I hear you about " + idea + ". I won’t redirect it to travel unless you do.");
+                    "Okay. I’m listening—go on.",
+                    "I’m with you. We can stay with this subject.",
+                    "Understood. I’ll follow your lead.");
         }
         return "I’m here, " + name + ".";
     }
@@ -207,23 +214,20 @@ public final class DemoSarah {
         return value.length() > 90 ? value.substring(0, 90).trim() : value;
     }
 
-    private static String keyIdea(String text) {
-        String value = text == null ? "" : text.trim();
-        value = value.replaceFirst("(?i)^(?:I think|I feel|I want|I need|I was|I am|I'm|we are|we were)\\s+", "");
-        value = value.replaceAll("[.!?]+$", "").trim();
-        if (value.length() < 3) return "";
-        String[] words = value.split("\\s+");
-        int count = Math.min(words.length, 10);
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            if (i > 0) out.append(' ');
-            out.append(words[i]);
-        }
-        return out.toString();
-    }
-
     private static boolean asksAboutMode(String lower) {
         return containsAny(lower, "offline mode", "online mode", "smart mode", "local mode", "automatic mode", "switch mode", "change mode", "openai");
+    }
+
+    private static boolean asksForGeneralTravelHelp(String lower) {
+        return lower.matches(".*\\b(?:need|want|would like) help with travel\\b.*")
+                || lower.matches("^(?:travel help|help me with travel)[.! ]*$");
+    }
+
+    private static boolean isFrustratedOrHostile(String lower) {
+        return containsAny(lower,
+                "fuck you", "shut up", "you are not listening", "you're not listening",
+                "stop repeating", "wrong topic", "wrong subject", "that is not what i asked",
+                "that's not what i asked", "why do you keep", "you keep talking about");
     }
 
     private static boolean isGreeting(String lower) {
