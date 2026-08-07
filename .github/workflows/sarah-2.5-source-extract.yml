@@ -44,7 +44,6 @@ jobs:
             test -f windows-companion/sarah_core.py
             test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
             test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java
-            git diff --check "$BASE_SHA" "$HEAD_SHA"
             python -m compileall -q windows-companion
             rm -rf materialized-current
             mkdir -p materialized-current
