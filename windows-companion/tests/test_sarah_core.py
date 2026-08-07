@@ -1,5 +1,7 @@
 from pathlib import Path
+import gc
 import tempfile
+import time
 
 from PIL import Image
 import pytest
@@ -16,6 +18,14 @@ def make_sarah_home(path: Path) -> Path:
     (path / "voice_cache").mkdir(exist_ok=True)
     (path / "backups").mkdir(exist_ok=True)
     return path
+
+
+def release_sqlite_handles(*objects) -> None:
+    for value in objects:
+        del value
+    gc.collect()
+    if __import__("os").name == "nt":
+        time.sleep(0.15)
 
 
 def test_identity_and_calm():
@@ -43,7 +53,7 @@ def test_sync_crypto():
 
 
 def test_database_photo_and_backup_roundtrip(monkeypatch):
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "one")
         monkeypatch.setenv("SARAH_HOME", str(root))
         db = SarahDatabase(root)
@@ -59,17 +69,19 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
         assert backup.exists()
 
         wrong_root = make_sarah_home(Path(temp) / "wrong")
+        wrong = SarahDatabase(wrong_root)
         with pytest.raises(Exception):
-            SarahDatabase(wrong_root).restore_backup(backup, "wrong password")
+            wrong.restore_backup(backup, "wrong password")
 
         restored_root = make_sarah_home(Path(temp) / "restored")
         restored = SarahDatabase(restored_root)
         restored.restore_backup(backup, "correct horse battery")
         assert restored.path.exists()
+        release_sqlite_handles(db, wrong, restored)
 
 
 def test_sync_import_merges_rows(monkeypatch):
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         first_root = make_sarah_home(Path(temp) / "first")
         first = SarahDatabase(first_root)
         first.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
@@ -80,5 +92,7 @@ def test_sync_import_merges_rows(monkeypatch):
         second_root = make_sarah_home(Path(temp) / "second")
         second = SarahDatabase(second_root)
         counts = second.import_sync(payload)
+        rows = second.list_rows("trips")
         assert counts["messages"] >= 1
-        assert second.list_rows("trips")[0]["destination"] == "New Zealand"
+        assert rows[0]["destination"] == "New Zealand"
+        release_sqlite_handles(first, second)
