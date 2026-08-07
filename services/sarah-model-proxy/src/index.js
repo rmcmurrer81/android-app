@@ -76,10 +76,14 @@ export default {
       : [];
 
     const input = [];
-    for (const row of history) {
+    for (let index = 0; index < history.length; index += 1) {
+      const row = history[index];
       const role = row && row.role === "assistant" ? "assistant" : "user";
       const content = boundedText(row && row.content, MAX_TEXT_CHARS);
-      if (content) input.push({ role, content });
+      const duplicatesCurrentMessage = index === history.length - 1
+        && role === "user"
+        && content === message;
+      if (content && !duplicatesCurrentMessage) input.push({ role, content });
     }
 
     const currentContent = [{ type: "input_text", text: message }];
