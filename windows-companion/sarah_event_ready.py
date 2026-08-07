@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 from pathlib import Path
 import secrets
@@ -276,7 +277,7 @@ class SarahEventReadyApp(SarahApp):
 
 
 def self_test() -> int:
-    with tempfile.TemporaryDirectory(prefix="sarah-event-ready-") as folder:
+    with tempfile.TemporaryDirectory(prefix="sarah-event-ready-", ignore_cleanup_errors=True) as folder:
         database = SarahDatabase(Path(folder))
         token = secrets.token_urlsafe(32)
         message = json.dumps({"event_ready": True, "time": int(time.time())})
@@ -298,6 +299,10 @@ def self_test() -> int:
         state = server.pair_status(request_id, "test-phone")
         if state.get("status") != "approved" or not state.get("token"):
             raise RuntimeError("Approved request did not produce a trusted token")
+        del state, server, database
+        gc.collect()
+        if sys.platform.startswith("win"):
+            time.sleep(0.15)
     print("SARAH_EVENT_READY_SELF_TEST_OK")
     return 0
 
