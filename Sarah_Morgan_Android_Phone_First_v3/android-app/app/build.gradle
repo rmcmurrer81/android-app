@@ -30,8 +30,8 @@ android {
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 25
-        versionName '2.5-event-ready'
+        versionCode 26
+        versionName '2.6-windows-repair'
 
         // Team-owned connections. People installing Sarah do not enter provider keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
