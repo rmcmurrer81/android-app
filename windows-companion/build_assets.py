@@ -5,12 +5,30 @@ import hashlib
 from pathlib import Path
 
 
-# The local WebP encoder first produced the visually equivalent asset as
-# sha256:3217b403b293730bc21956020de7c5df8bf52643714494cb4018db3b7a1467c0.
-# The repository stores the final byte-for-byte encoding pinned below.
 EXPECTED = {
-    "sarah_full_neutral.webp": "ef42787d141bff25f5e65c5d23dd92ae40a6a67cc1dbf151c4164148ab74697b",
+    "sarah_full_neutral.webp": {
+        "sha256": "3217b403b293730bc21956020de7c5df8bf52643714494cb4018db3b7a1467c0",
+        "size": 13_934,
+    },
 }
+
+
+def encoded_asset(source_root: Path, filename: str) -> str:
+    """Read a complete encoded asset from ordered GitHub-safe chunks."""
+    chunks = sorted(source_root.glob(f"{filename}.b64.part*"))
+    if chunks:
+        expected_names = [f"{filename}.b64.part{index:02d}" for index in range(len(chunks))]
+        actual_names = [path.name for path in chunks]
+        if actual_names != expected_names:
+            raise RuntimeError(
+                f"Sarah asset chunks are incomplete or out of order: expected {expected_names}, got {actual_names}"
+            )
+        return "".join("".join(path.read_text(encoding="ascii").split()) for path in chunks)
+
+    single = source_root / f"{filename}.b64"
+    if single.is_file():
+        return "".join(single.read_text(encoding="ascii").split())
+    raise FileNotFoundError(f"Missing encoded Sarah asset: {filename}")
 
 
 def build_assets() -> list[Path]:
@@ -20,16 +38,16 @@ def build_assets() -> list[Path]:
     target_root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    for filename, expected_sha in EXPECTED.items():
-        source = source_root / f"{filename}.b64"
-        if not source.is_file():
-            raise FileNotFoundError(f"Missing encoded Sarah asset: {source}")
-        encoded = "".join(source.read_text(encoding="ascii").split())
+    for filename, contract in EXPECTED.items():
+        encoded = encoded_asset(source_root, filename)
         raw = base64.b64decode(encoded, validate=True)
         actual_sha = hashlib.sha256(raw).hexdigest()
-        if actual_sha != expected_sha:
+        expected_sha = contract["sha256"]
+        expected_size = int(contract["size"])
+        if actual_sha != expected_sha or len(raw) != expected_size:
             raise RuntimeError(
-                f"Sarah asset checksum mismatch for {filename}: expected {expected_sha}, got {actual_sha}"
+                f"Sarah asset mismatch for {filename}: expected {expected_size} bytes / {expected_sha}, "
+                f"got {len(raw)} bytes / {actual_sha}"
             )
         target = target_root / filename
         target.write_bytes(raw)
