@@ -19,6 +19,8 @@ def sarahElevenLabsBackendUrl = System.getenv('SARAH_ELEVENLABS_BACKEND_URL') ?:
 def sarahElevenLabsBackendToken = System.getenv('SARAH_ELEVENLABS_BACKEND_TOKEN') ?: ''
 def sarahTavilyApiKey = System.getenv('SARAH_TAVILY_API_KEY') ?: ''
 def sarahStay22Aid = System.getenv('SARAH_STAY22_AID') ?: ''
+def sarahStay22BackendUrl = System.getenv('SARAH_STAY22_BACKEND_URL') ?: ''
+def sarahStay22BackendToken = System.getenv('SARAH_STAY22_BACKEND_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -28,8 +30,8 @@ android {
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 22
-        versionName '2.2-phone-windows-continuity'
+        versionCode 25
+        versionName '2.5-event-ready'
 
         // Team-owned connections. People installing Sarah do not enter provider keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
@@ -46,6 +48,8 @@ android {
         buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', javaString(sarahElevenLabsBackendToken)
         buildConfigField 'String', 'SARAH_TAVILY_API_KEY', javaString(sarahTavilyApiKey)
         buildConfigField 'String', 'SARAH_STAY22_AID', javaString(sarahStay22Aid)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_URL', javaString(sarahStay22BackendUrl)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_TOKEN', javaString(sarahStay22BackendToken)
     }
 
     buildFeatures {
@@ -54,7 +58,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
         }
         release {
