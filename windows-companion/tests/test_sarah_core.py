@@ -1,5 +1,6 @@
 from pathlib import Path
 import gc
+import os
 import tempfile
 import time
 
@@ -20,12 +21,10 @@ def make_sarah_home(path: Path) -> Path:
     return path
 
 
-def release_sqlite_handles(*objects) -> None:
-    for value in objects:
-        del value
+def wait_for_windows_handles() -> None:
     gc.collect()
-    if __import__("os").name == "nt":
-        time.sleep(0.15)
+    if os.name == "nt":
+        time.sleep(0.25)
 
 
 def test_identity_and_calm():
@@ -56,43 +55,47 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "one")
         monkeypatch.setenv("SARAH_HOME", str(root))
-        db = SarahDatabase(root)
-        db.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
-        db.add_trip("New Zealand test", "New Zealand")
-        db.add_message("user", "Plan my trip")
-        db.add_mind_event(ChannelResponse("Okay", "curious", "No booking occurred", "TRUTHFUL_STATEMENT", True), "test")
+        database = SarahDatabase(root)
+        database.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
+        database.add_trip("New Zealand test", "New Zealand")
+        database.add_message("user", "Plan my trip")
+        database.add_mind_event(ChannelResponse("Okay", "curious", "No booking occurred", "TRUTHFUL_STATEMENT", True), "test")
         source = Path(temp) / "photo.png"
         Image.new("RGB", (20, 20), "blue").save(source)
-        db.import_photo(source, "test photo")
+        database.import_photo(source, "test photo")
         backup = Path(temp) / "backup.sarahmind"
-        db.create_backup(backup, "correct horse battery")
+        database.create_backup(backup, "correct horse battery")
         assert backup.exists()
 
         wrong_root = make_sarah_home(Path(temp) / "wrong")
-        wrong = SarahDatabase(wrong_root)
+        wrong_database = SarahDatabase(wrong_root)
         with pytest.raises(Exception):
-            wrong.restore_backup(backup, "wrong password")
+            wrong_database.restore_backup(backup, "wrong password")
 
         restored_root = make_sarah_home(Path(temp) / "restored")
-        restored = SarahDatabase(restored_root)
-        restored.restore_backup(backup, "correct horse battery")
-        assert restored.path.exists()
-        release_sqlite_handles(db, wrong, restored)
+        restored_database = SarahDatabase(restored_root)
+        restored_database.restore_backup(backup, "correct horse battery")
+        assert restored_database.path.exists()
+
+        del database, wrong_database, restored_database
+        wait_for_windows_handles()
 
 
 def test_sync_import_merges_rows(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         first_root = make_sarah_home(Path(temp) / "first")
-        first = SarahDatabase(first_root)
-        first.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
-        first.add_trip("NZ", "New Zealand")
-        first.add_message("user", "Hello")
-        payload = first.export_sync(False)
+        first_database = SarahDatabase(first_root)
+        first_database.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
+        first_database.add_trip("NZ", "New Zealand")
+        first_database.add_message("user", "Hello")
+        payload = first_database.export_sync(False)
 
         second_root = make_sarah_home(Path(temp) / "second")
-        second = SarahDatabase(second_root)
-        counts = second.import_sync(payload)
-        rows = second.list_rows("trips")
+        second_database = SarahDatabase(second_root)
+        counts = second_database.import_sync(payload)
+        rows = second_database.list_rows("trips")
         assert counts["messages"] >= 1
         assert rows[0]["destination"] == "New Zealand"
-        release_sqlite_handles(first, second)
+
+        del first_database, second_database
+        wait_for_windows_handles()
