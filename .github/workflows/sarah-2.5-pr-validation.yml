@@ -54,8 +54,14 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah25ConversationContextTest.java
           java -cp build/sarah25-core Sarah22CoreTest
+          java -cp build/sarah25-core Sarah25ConversationContextTest
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
