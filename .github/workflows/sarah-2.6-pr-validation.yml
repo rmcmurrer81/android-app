@@ -49,7 +49,7 @@ jobs:
           required = [
               'self.root.minsize(720, 500)', 'composer.grid(row=1',
               'SAPI.SpVoice', 'class ResilientModelClient',
-              'Mexico sounds worth exploring', 'class SarahRepairApp',
+              'saved it as a trip idea, not a booking', 'class SarahRepairApp',
               'Approve a new Sarah device?', 'def start_listening',
           ]
           missing = [item for item in required if item not in source]
