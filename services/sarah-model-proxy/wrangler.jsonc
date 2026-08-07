@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarah-model-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": true,
+  "keep_vars": true,
+  "secrets": {
+    "required": [
+      "OPENAI_API_KEY",
+      "SARAH_BACKEND_TOKEN"
+    ]
+  },
+  "vars": {
+    "SARAH_MAX_OUTPUT_TOKENS": "1200"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
