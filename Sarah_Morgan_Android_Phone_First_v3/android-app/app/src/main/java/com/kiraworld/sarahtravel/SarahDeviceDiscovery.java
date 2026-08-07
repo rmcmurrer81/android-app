@@ -2,9 +2,9 @@ package com.kiraworld.sarahtravel;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
+import android.net.DhcpInfo;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.wifi.DhcpInfo;
 import android.net.wifi.WifiManager;
 
 import org.json.JSONObject;
