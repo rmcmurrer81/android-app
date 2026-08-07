@@ -10,6 +10,14 @@ from sarah_core import (
 )
 
 
+def make_sarah_home(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "photos").mkdir(exist_ok=True)
+    (path / "voice_cache").mkdir(exist_ok=True)
+    (path / "backups").mkdir(exist_ok=True)
+    return path
+
+
 def test_identity_and_calm():
     assert is_stress_or_fear("I am stressing")
     assert corrected_name("I am stressing") == ""
@@ -36,8 +44,7 @@ def test_sync_crypto():
 
 def test_database_photo_and_backup_roundtrip(monkeypatch):
     with tempfile.TemporaryDirectory() as temp:
-        root = Path(temp) / "one"
-        root.mkdir(parents=True, exist_ok=True)
+        root = make_sarah_home(Path(temp) / "one")
         monkeypatch.setenv("SARAH_HOME", str(root))
         db = SarahDatabase(root)
         db.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
@@ -51,13 +58,11 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
         db.create_backup(backup, "correct horse battery")
         assert backup.exists()
 
-        wrong_root = Path(temp) / "wrong"
-        wrong_root.mkdir(parents=True, exist_ok=True)
+        wrong_root = make_sarah_home(Path(temp) / "wrong")
         with pytest.raises(Exception):
             SarahDatabase(wrong_root).restore_backup(backup, "wrong password")
 
-        restored_root = Path(temp) / "restored"
-        restored_root.mkdir(parents=True, exist_ok=True)
+        restored_root = make_sarah_home(Path(temp) / "restored")
         restored = SarahDatabase(restored_root)
         restored.restore_backup(backup, "correct horse battery")
         assert restored.path.exists()
@@ -65,16 +70,14 @@ def test_database_photo_and_backup_roundtrip(monkeypatch):
 
 def test_sync_import_merges_rows(monkeypatch):
     with tempfile.TemporaryDirectory() as temp:
-        first_root = Path(temp) / "first"
-        first_root.mkdir(parents=True, exist_ok=True)
+        first_root = make_sarah_home(Path(temp) / "first")
         first = SarahDatabase(first_root)
         first.ensure_profile("Robert", 45, "Newark", "Power Rangers", True)
         first.add_trip("NZ", "New Zealand")
         first.add_message("user", "Hello")
         payload = first.export_sync(False)
 
-        second_root = Path(temp) / "second"
-        second_root.mkdir(parents=True, exist_ok=True)
+        second_root = make_sarah_home(Path(temp) / "second")
         second = SarahDatabase(second_root)
         counts = second.import_sync(payload)
         assert counts["messages"] >= 1
