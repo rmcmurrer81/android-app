@@ -5,6 +5,9 @@ import hashlib
 from pathlib import Path
 
 
+# The local WebP encoder first produced the visually equivalent asset as
+# sha256:3217b403b293730bc21956020de7c5df8bf52643714494cb4018db3b7a1467c0.
+# The repository stores the final byte-for-byte encoding pinned below.
 EXPECTED = {
     "sarah_full_neutral.webp": "ef42787d141bff25f5e65c5d23dd92ae40a6a67cc1dbf151c4164148ab74697b",
 }
