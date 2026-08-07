@@ -66,7 +66,7 @@ public final class JourneyIntentParser {
         List<String> modes = detectModes(lower);
         boolean monitor = containsAny(lower,
                 "monitor", "notify me", "alert me", "watch", "track", "deal",
-                "cheapest", "price", "fare", "service change", "delay");
+                "cheapest", "price", "fare", "ticket", "service change", "delay");
         boolean crossCountry = containsAny(lower, "cross country", "cross-country", "coast to coast");
 
         EventTripIntentParser.EventIntent event = EventTripIntentParser.parse(safe);
