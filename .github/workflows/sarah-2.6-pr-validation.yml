@@ -34,28 +34,36 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Compile and self-test repaired Windows source
+      - name: Decode, verify, compile, and self-test repaired Windows source
         working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python build_assets.py
           python -m compileall -q .
-          python sarah_event_ready.py --self-test
+          python sarah_26.py --self-test
       - name: Verify repaired source contracts
         run: |
           python - <<'PY'
           from pathlib import Path
-          source = Path('windows-companion/sarah_event_ready.py').read_text(encoding='utf-8')
-          required = [
+          core = Path('windows-companion/sarah_event_ready.py').read_text(encoding='utf-8')
+          shell = Path('windows-companion/sarah_26.py').read_text(encoding='utf-8')
+          assets = Path('windows-companion/build_assets.py').read_text(encoding='utf-8')
+          required_core = [
               'self.root.minsize(720, 500)', 'composer.grid(row=1',
               'SAPI.SpVoice', 'class ResilientModelClient',
               'saved it as a trip idea, not a booking', 'class SarahRepairApp',
               'Approve a new Sarah device?', 'def start_listening',
           ]
-          missing = [item for item in required if item not in source]
+          missing = [item for item in required_core if item not in core]
+          missing += [item for item in ('class Sarah26App', 'CANVAS_HEIGHT = 360', 'sarah_full_neutral.webp') if item not in shell]
+          missing += [item for item in ('3217b403b293730bc21956020de7c5df8bf52643714494cb4018db3b7a1467c0',) if item not in assets]
           if missing: raise SystemExit(f'Missing repair contracts: {missing}')
-          if 'My stronger connected or local model is not configured' in source:
+          if 'My stronger connected or local model is not configured' in core:
               raise SystemExit('The old unusable reply remains.')
+          avatar = Path('windows-companion/assets/sarah_full_neutral.webp')
+          if not avatar.is_file() or avatar.stat().st_size < 10_000:
+              raise SystemExit('The polished Sarah avatar was not materialized correctly.')
           PY
       - name: Test Android identity, calm, channels, and sync
         run: |
@@ -98,14 +106,15 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: windows-companion/requirements.txt
-      - name: Install dependencies and test source
+      - name: Install dependencies and test repaired source
         shell: pwsh
         working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+          python build_assets.py
           python -m compileall -q .
-          python sarah_event_ready.py --self-test
+          python sarah_26.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Sarah source self-test failed.' }
       - name: Verify an offline Windows voice exists
         shell: pwsh
@@ -113,6 +122,7 @@ jobs:
           Add-Type -AssemblyName System.Speech
           $speaker=New-Object System.Speech.Synthesis.SpeechSynthesizer
           if ($speaker.GetInstalledVoices().Count -lt 1) { throw 'No Windows voice is installed.' }
+          $speaker.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name }
           $speaker.Dispose()
       - name: Write non-secret build hints
         shell: pwsh
@@ -131,16 +141,17 @@ jobs:
               '    return str(CONFIG.get(name, default) or "").strip()\n'
               'def configured(name: str) -> bool: return bool(get(name))\n', encoding='utf-8')
           '@ | python -
-      - name: Build Sarah and one-file installer
+      - name: Build polished Sarah and one-file installer
         shell: pwsh
         working-directory: windows-companion
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
             --name SarahTravelOS `
+            --add-data 'assets\sarah_full_neutral.webp;assets' `
             --collect-all pystray --collect-all PIL --collect-all playsound3 `
             --hidden-import win32com.client --hidden-import pythoncom --hidden-import pywintypes `
             --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow `
-            sarah_event_ready.py
+            sarah_26.py
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
             --name SarahMorganTravelOS-Setup `
             --add-binary 'dist\SarahTravelOS.exe;payload' `
@@ -189,7 +200,7 @@ jobs:
           - Windows: `SarahMorganTravelOS-Setup.exe`
           - Android: `Sarah-Morgan-2.6-windows-repair.apk`
 
-          This prerelease repairs Robert's physical-test findings: the composer remains visible in a normal window, the female humanoid is more detailed and animated, ordinary offline conversation is useful, Windows SAPI supplies an audible fallback, a deliberate microphone button is present, and the Windows removal path does not depend on rerunning the unsigned installer.
+          This prerelease repairs Robert's physical-test findings. The composer remains visible in a normal window, Sarah now uses a polished adult full-body humanoid cartoon embodiment rather than the geometric placeholder, ordinary offline conversation remains useful, Windows SAPI supplies an audible fallback, a deliberate microphone button is present, and the removal path does not depend on rerunning the unsigned installer.
 
           Pairing still requires the existing trusted device to show the same six-digit code and explicitly approve the named new device before encrypted synchronization begins.
           EOF
