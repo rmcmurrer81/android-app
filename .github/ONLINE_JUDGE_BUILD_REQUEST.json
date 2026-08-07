@@ -1,0 +1,4 @@
+{
+  "model": "gpt-5.1",
+  "reason": "Initial Sunday judge build: prove online conversation, airplane-mode fallback, and automatic reconnection"
+}
