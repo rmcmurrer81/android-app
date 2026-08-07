@@ -150,8 +150,8 @@ jobs:
         shell: pwsh
         working-directory: windows-companion
         run: |
-          & '.\dist\SarahMorganTravelOS-Setup.exe' --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Installer self-test returned $LASTEXITCODE." }
+          $process = Start-Process -FilePath '.\dist\SarahMorganTravelOS-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
           $file=Get-Item '.\dist\SarahMorganTravelOS-Setup.exe'
           if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
           $bytes=[IO.File]::ReadAllBytes($file.FullName)
@@ -194,35 +194,3 @@ jobs:
           Pairing still requires the existing trusted device to show the same six-digit code and explicitly approve the named new device before encrypted synchronization begins.
           EOF
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "${{ github.event.pull_request.head.sha }}" --title 'Sarah Travel OS 2.6 — Windows Repair' --notes-file /tmp/notes.md --prerelease release/*
-
-  report:
-    needs: [android, windows, publish]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: agent/sarah-2.6-windows-repair
-          fetch-depth: 0
-      - name: Record validation result
-        env:
-          ANDROID: ${{ needs.android.result }}
-          WINDOWS: ${{ needs.windows.result }}
-          PUBLISH: ${{ needs.publish.result }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          mkdir -p public-release/2.6
-          cat > public-release/2.6/REPAIR_STATUS.json <<EOF
-          {
-            "run_id": "$RUN_ID",
-            "android": "$ANDROID",
-            "windows": "$WINDOWS",
-            "publish": "$PUBLISH",
-            "release_tag": "sarah-travel-os-v2.6-windows-repair"
-          }
-          EOF
-          git config user.name 'Sarah Repair Builder'
-          git config user.email 'actions@users.noreply.github.com'
-          git add public-release/2.6/REPAIR_STATUS.json
-          git commit -m '[skip ci] Record Sarah 2.6 repair validation' || exit 0
-          git push origin HEAD:agent/sarah-2.6-windows-repair
