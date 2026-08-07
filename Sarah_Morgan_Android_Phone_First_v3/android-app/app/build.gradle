@@ -6,6 +6,7 @@ def javaString = { String value ->
     '"' + (value ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
+def sarahOpenAiModel = System.getenv('SARAH_OPENAI_MODEL') ?: 'gpt-5.1'
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
 def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
 def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
@@ -35,6 +36,7 @@ android {
 
         // Team-owned connections. People installing Sarah do not enter provider keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
+        buildConfigField 'String', 'SARAH_OPENAI_MODEL', javaString(sarahOpenAiModel)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
         buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_URL', javaString(sarahTravelCommerceUrl)
