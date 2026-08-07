@@ -47,7 +47,14 @@ public final class TravelContextResolver {
 
     public static boolean clearsTravelContext(String lower) {
         if (lower == null) return false;
-        return lower.matches("^(i don'?t know( yet)?|not sure( yet)?|nothing yet|no destination yet|undecided|i have no idea)[.! ]*$");
+        String safe = lower.toLowerCase(Locale.US).trim();
+        if (safe.matches("^(i don'?t know( yet)?|not sure( yet)?|nothing yet|no destination yet|undecided|i have no idea)[.! ]*$")) {
+            return true;
+        }
+        if (safe.contains(" but ") || safe.contains(" instead ")) return false;
+        return safe.matches("^(?:i am|i'm|im|we are|we're) not (?:going|traveling|travelling|flying|driving)(?: to)? .+[.! ]*$")
+                || safe.matches("^not (?:going|traveling|travelling|flying|driving)(?: to)? (?:there|.+)[.! ]*$")
+                || safe.matches("^(?:cancel|forget|drop|clear) (?:(?:that|this|the) )?(?:trip|destination|travel plan|travel context)[.! ]*$");
     }
 
     private static boolean startsNewTopic(String lower) {
