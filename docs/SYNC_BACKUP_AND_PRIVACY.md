@@ -13,4 +13,3 @@ The owner can revoke any paired device. Passwords, payment-card details, booking
 Android stores several separately approved Windows peers. After a reply, best-effort automatic sync can contact the desktop and laptop independently; an unavailable computer does not block the other one. Each Windows companion has its own revocable token. The phone can also run **Sync desktop and laptop now** manually.
 
 The encrypted Windows archive contains both the SQLite snapshot and Sarah's device encryption key. Without that key, restored private-mind and factual records would be unreadable. Google Drive receives only the already password-encrypted `.sarahmind` archive. A clean Windows installation can download the newest archive, decrypt it locally with the owner's password, restart Sarah, and then pair a replacement phone.
-
