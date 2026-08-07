@@ -1,0 +1,270 @@
+name: Sarah 2.5 online judge build
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenAI API model ID requested by this APK
+        required: true
+        default: gpt-5.1
+        type: string
+  push:
+    branches:
+      - agent/sarah-2.5-event-ready
+    paths:
+      - .github/ONLINE_JUDGE_BUILD_REQUEST.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sarah-2-5-online-judge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-smoke-test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
+      SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+      SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+      SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+      SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
+      SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+      SARAH_TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
+      SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
+      SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
+      SARAH_STAY22_BACKEND_TOKEN: ${{ secrets.SARAH_STAY22_BACKEND_TOKEN }}
+      SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
+      SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
+      SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
+      SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
+
+    steps:
+      - name: Check out Sarah 2.5 source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/sarah-model-proxy/package.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Resolve model and require the three private deployment secrets
+        id: config
+        shell: bash
+        env:
+          DISPATCH_MODEL: ${{ inputs.model }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository Actions secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            MODEL="${DISPATCH_MODEL:-gpt-5.1}"
+          else
+            MODEL=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('.github/ONLINE_JUDGE_BUILD_REQUEST.json').read_text(encoding='utf-8'))
+          print(str(data.get('model') or 'gpt-5.1').strip())
+          PY
+          )
+          fi
+
+          if ! [[ "$MODEL" =~ ^[A-Za-z0-9._:-]{1,80}$ ]]; then
+            echo "::error::Invalid model ID: $MODEL"
+            exit 1
+          fi
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "Selected model: $MODEL"
+
+      - name: Install and syntax-check the protected Sarah model proxy
+        working-directory: services/sarah-model-proxy
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+
+      - name: Generate a new short-lived Sarah backend token
+        id: token
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN=$(python - <<'PY'
+          import secrets
+          print(secrets.token_urlsafe(36))
+          PY
+          )
+          echo "::add-mask::$TOKEN"
+          echo "value=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Sarah's protected online mind
+        id: deploy
+        working-directory: services/sarah-model-proxy
+        shell: bash
+        env:
+          SARAH_BACKEND_TOKEN: ${{ steps.token.outputs.value }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          secrets = {
+              'OPENAI_API_KEY': os.environ['OPENAI_API_KEY'],
+              'SARAH_BACKEND_TOKEN': os.environ['SARAH_BACKEND_TOKEN'],
+          }
+          path = Path('/tmp/sarah-model-proxy-secrets.json')
+          path.write_text(json.dumps(secrets), encoding='utf-8')
+          path.chmod(0o600)
+          PY
+
+          set +e
+          npx wrangler deploy --secrets-file /tmp/sarah-model-proxy-secrets.json --keep-vars 2>&1 | tee /tmp/sarah-model-proxy-deploy.log
+          deploy_status=${PIPESTATUS[0]}
+          set -e
+          rm -f /tmp/sarah-model-proxy-secrets.json
+          if [ "$deploy_status" -ne 0 ]; then
+            exit "$deploy_status"
+          fi
+
+          BACKEND_URL=$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('/tmp/sarah-model-proxy-deploy.log').read_text(encoding='utf-8', errors='replace')
+          matches = re.findall(r'https://[A-Za-z0-9.-]+\.workers\.dev(?:/[A-Za-z0-9._~!$&\'()*+,;=:@%/-]*)?', text)
+          if not matches:
+              raise SystemExit('Could not find the deployed workers.dev URL in Wrangler output.')
+          print(matches[-1].rstrip('/'))
+          PY
+          )
+          echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed Sarah model proxy: $BACKEND_URL"
+
+      - name: Prove the online mind answers before building the APK
+        shell: bash
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          SARAH_BACKEND_TOKEN: ${{ steps.token.outputs.value }}
+          SARAH_OPENAI_MODEL: ${{ steps.config.outputs.model }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$BACKEND_URL/health" > /tmp/sarah-health.json
+          python - <<'PY'
+          import json
+          health = json.load(open('/tmp/sarah-health.json', encoding='utf-8'))
+          if health.get('ok') is not True:
+              raise SystemExit(f"Sarah backend health failed: {health}")
+          print('Sarah backend health passed.')
+          PY
+
+          python - <<'PY'
+          import json, os
+          request = {
+              'provider': 'openai',
+              'model': os.environ['SARAH_OPENAI_MODEL'],
+              'system_prompt': 'This is a deployment test. Reply with exactly ONLINE_READY and nothing else.',
+              'history': [],
+              'message': 'Reply with exactly ONLINE_READY.',
+              'web_search': False,
+          }
+          json.dump(request, open('/tmp/sarah-smoke-request.json', 'w', encoding='utf-8'))
+          PY
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/sarah-smoke-request.json \
+            "$BACKEND_URL/" > /tmp/sarah-smoke-response.json
+          python - <<'PY'
+          import json
+          response = json.load(open('/tmp/sarah-smoke-response.json', encoding='utf-8'))
+          reply = str(response.get('reply') or '').strip()
+          if reply != 'ONLINE_READY':
+              raise SystemExit(f"Unexpected model smoke-test reply: {reply!r}")
+          print('Live Sarah online-mind smoke test passed with model:', response.get('model'))
+          PY
+
+      - name: Preserve Sarah private-test Android signing continuity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-debug-signing-v1
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build the online/offline judge APK
+        env:
+          SARAH_OPENAI_API_KEY: ''
+          SARAH_OPENAI_MODEL: ${{ steps.config.outputs.model }}
+          SARAH_MODEL_BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          SARAH_MODEL_BACKEND_TOKEN: ${{ steps.token.outputs.value }}
+        run: |
+          set -euo pipefail
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk \
+            Sarah-Morgan-2.5-ONLINE-JUDGE.apk
+          test -s Sarah-Morgan-2.5-ONLINE-JUDGE.apk
+          unzip -t Sarah-Morgan-2.5-ONLINE-JUDGE.apk >/dev/null
+          if strings Sarah-Morgan-2.5-ONLINE-JUDGE.apk | grep -Eq 'sk-[A-Za-z0-9_-]{20,}'; then
+            echo '::error::An OpenAI-key-like value was found in the APK.'
+            exit 1
+          fi
+          sha256sum Sarah-Morgan-2.5-ONLINE-JUDGE.apk | tee Sarah-Morgan-2.5-ONLINE-JUDGE.sha256
+
+      - name: Record exactly what the judges' APK contains
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          SARAH_OPENAI_MODEL: ${{ steps.config.outputs.model }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          manifest = {
+              'product': 'Sarah Morgan Travel OS',
+              'version': '2.5-event-ready',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'model_requested_by_apk': os.environ['SARAH_OPENAI_MODEL'],
+              'backend_url': os.environ['BACKEND_URL'],
+              'openai_key_embedded': False,
+              'live_online_smoke_test': 'passed',
+              'offline_fallback': 'included',
+              'built_at_utc': datetime.now(timezone.utc).isoformat(),
+              'note': 'Cloudflare SARAH_OPENAI_MODEL may override the APK model without rebuilding.',
+          }
+          with open('Sarah-Morgan-2.5-ONLINE-JUDGE-manifest.json', 'w', encoding='utf-8') as handle:
+              json.dump(manifest, handle, indent=2)
+          PY
+
+      - name: Upload the judge-ready APK only after the live model proof passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.5-ONLINE-JUDGE-APK
+          path: |
+            Sarah-Morgan-2.5-ONLINE-JUDGE.apk
+            Sarah-Morgan-2.5-ONLINE-JUDGE.sha256
+            Sarah-Morgan-2.5-ONLINE-JUDGE-manifest.json
+          if-no-files-found: error
+          retention-days: 14
