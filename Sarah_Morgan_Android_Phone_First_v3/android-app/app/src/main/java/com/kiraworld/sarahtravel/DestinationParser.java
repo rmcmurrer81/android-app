@@ -15,7 +15,8 @@ public final class DestinationParser {
             "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|fly to|flights to|ride to|head to|heading to|take a train to|take the train to|planning on going to|thinking about going to)\\s+([A-Za-z][A-Za-z .,'-]{1,80})");
 
     static {
-        KNOWN.put("Paris", new String[]{"paris"});
+        KNOWN.put("Paris, Texas", new String[]{"paris texas", "paris, texas", "paris tx", "paris, tx"});
+        KNOWN.put("Paris", new String[]{"paris france", "paris, france", "paris"});
         KNOWN.put("London", new String[]{"london"});
         KNOWN.put("New York City", new String[]{"new york city", "new york", "nyc", "manhattan"});
         KNOWN.put("California", new String[]{"california"});
@@ -54,8 +55,10 @@ public final class DestinationParser {
         List<String> result = new ArrayList<>();
         String lower = normalize(text);
         if (lower.isEmpty()) return result;
+        boolean parisTexasNamed = containsParisTexas(lower);
 
         for (Map.Entry<String, String[]> entry : KNOWN.entrySet()) {
+            if (parisTexasNamed && "Paris".equals(entry.getKey())) continue;
             for (String alias : entry.getValue()) {
                 if (containsWholePhrase(lower, alias)) {
                     addUnique(result, entry.getKey());
@@ -128,6 +131,13 @@ public final class DestinationParser {
         cleaned = cleaned.replaceAll("[?.!,]+$", "").trim();
         if (cleaned.length() < 2 || cleaned.length() > 50) return "";
         return cleaned;
+    }
+
+    private static boolean containsParisTexas(String text) {
+        return containsWholePhrase(text, "paris texas")
+                || containsWholePhrase(text, "paris, texas")
+                || containsWholePhrase(text, "paris tx")
+                || containsWholePhrase(text, "paris, tx");
     }
 
     private static boolean containsWholePhrase(String text, String phrase) {
