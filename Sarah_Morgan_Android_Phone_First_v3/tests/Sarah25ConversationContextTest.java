@@ -31,6 +31,8 @@ public final class Sarah25ConversationContextTest {
 
         require(TravelContextResolver.clearsTravelContext("I am not going to New York"),
                 "a direct cancellation must clear old travel context");
+        require(TravelContextResolver.clearsTravelContext("I am not traveling to Paris Texas"),
+                "a direct travel cancellation must clear old travel context");
         require(TravelContextResolver.clearsTravelContext("clear that trip"),
                 "an explicit clear command must clear old travel context");
 
