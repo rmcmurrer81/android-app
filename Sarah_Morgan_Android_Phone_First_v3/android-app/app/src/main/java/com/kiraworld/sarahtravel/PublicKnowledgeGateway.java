@@ -86,7 +86,6 @@ public final class PublicKnowledgeGateway {
         String normalized = normalize(subject);
         if (subject.length() < 2 || subject.length() > 100) return "";
         if (normalized.matches("^(it|that|this|they|he|she|there)$")) return "";
-        if (!DestinationParser.extractDestinations(subject).isEmpty()) return "";
         return subject;
     }
 
