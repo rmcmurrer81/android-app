@@ -48,8 +48,15 @@ public final class GenericEventReference {
 
     public static boolean isFollowUp(String message) {
         String lower = normalize(message);
-        return lower.matches(".*\\b(when|what date|which date|dates|where|venue|address|hours|tickets|price|guests|schedule|parking|hotel)\\b.*")
-                || lower.matches("^(when is it|where is it|what are the dates|how much is it|who will be there)[?.! ]*$");
+        if (lower.isEmpty()
+                || KnownEventCatalog.find(message) != null
+                || !extract(message).isEmpty()
+                || !DestinationParser.extractDestinations(message).isEmpty()
+                || TravelContextResolver.clearsTravelContext(lower)) {
+            return false;
+        }
+        return lower.matches("^(?:and\\s+)?(?:when is it|where is it|what are the dates|what date is it|which dates|how much is it|how much are (?:the )?tickets|who will be there|what(?:'s| is) the venue|what(?:'s| is) the address|what(?:'s| are) the hours|what(?:'s| is) the schedule|where can i park|show me the official page|open the official page|what(?:'s| is) the official (?:site|page))[?.! ]*$")
+                || lower.matches(".*\\b(?:for it|for that event|at the event|at that event|near the event|to the event)\\b.*");
     }
 
     public static boolean looksLikeEvent(String value) {
