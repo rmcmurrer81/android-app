@@ -39,12 +39,13 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Windows core and approval-gate tests
+        working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r windows-companion/requirements.txt
-          python -m pytest -q windows-companion/tests
-          python -m compileall -q windows-companion
-          python windows-companion/sarah_event_ready.py --self-test
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
       - name: Android pure-Java contracts
         run: |
           rm -rf build/sarah25-core && mkdir -p build/sarah25-core
@@ -90,12 +91,13 @@ jobs:
           cache-dependency-path: windows-companion/requirements.txt
       - name: Test Windows source
         shell: pwsh
+        working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r windows-companion\requirements.txt
-          python -m pytest -q windows-companion\tests
-          python -m compileall -q windows-companion
-          python windows-companion\sarah_event_ready.py --self-test
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Source self-test failed.' }
       - name: Build Sarah application and one-file installer
         shell: pwsh
