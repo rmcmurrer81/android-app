@@ -60,13 +60,14 @@ jobs:
 
       - name: Compile and test Sarah's Windows core on Linux
         shell: bash
+        working-directory: windows-companion
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install -r windows-companion/requirements.txt
-          python -m pytest -q windows-companion/tests
-          python -m compileall -q windows-companion
-          python windows-companion/sarah_event_ready.py --self-test
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
 
       - name: Test Sarah identity, calm support, channels, and trusted sync contracts
         shell: bash
@@ -158,16 +159,18 @@ jobs:
 
       - name: Install build dependencies
         shell: pwsh
+        working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r windows-companion\requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Run Windows source tests and event-ready self-test
         shell: pwsh
+        working-directory: windows-companion
         run: |
-          python -m pytest -q windows-companion\tests
-          python -m compileall -q windows-companion
-          python windows-companion\sarah_event_ready.py --self-test
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Sarah source self-test failed.' }
 
       - name: Build the installed Sarah application payload
@@ -277,3 +280,46 @@ jobs:
             release/Sarah-Morgan-2.5-event-ready.apk \
             release/SarahMorganTravelOS-Setup.exe \
             release/SHA256SUMS.txt
+
+  report:
+    name: Record release result on the branch
+    if: always()
+    needs: [android, windows, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the event-ready branch
+        uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.5-event-ready
+          fetch-depth: 0
+
+      - name: Commit a machine-readable release status
+        shell: bash
+        env:
+          ANDROID_RESULT: ${{ needs.android.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-release/2.5
+          cat > public-release/2.5/EVENT_READY_STATUS.json <<EOF
+          {
+            "run_id": "$RUN_ID",
+            "source_sha": "$SOURCE_SHA",
+            "android": "$ANDROID_RESULT",
+            "windows": "$WINDOWS_RESULT",
+            "publish": "$PUBLISH_RESULT",
+            "release_tag": "sarah-travel-os-v2.5-event-ready"
+          }
+          EOF
+          git config user.name 'Sarah Event Ready Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.5/EVENT_READY_STATUS.json
+          if git diff --cached --quiet; then
+            echo 'Release status did not change.'
+          else
+            git commit -m '[skip ci] Record Sarah 2.5 event-ready release result'
+            git push origin HEAD:agent/sarah-2.5-event-ready
+          fi
