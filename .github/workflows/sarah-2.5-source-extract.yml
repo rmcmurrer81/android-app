@@ -39,7 +39,8 @@ jobs:
           if [ "$EVENT_NAME" = 'pull_request' ]; then
             test -d windows-companion
             test -d Sarah_Morgan_Android_Phone_First_v3/android-app
-            test -f windows-companion/SarahMorganInstaller.spec
+            test -f windows-companion/sarah_event_ready.py
+            test -f windows-companion/sarah_installer.py
             test -f windows-companion/sarah_core.py
             test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
             test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java
