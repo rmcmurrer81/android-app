@@ -41,8 +41,7 @@ jobs:
         working-directory: services/sarah-model-proxy
         run: npm install --no-audit --no-fund
 
-      - name: Deploy with one diagnostic token
-        id: deploy
+      - name: Deploy and distinguish Worker authentication from OpenAI authentication or billing
         working-directory: services/sarah-model-proxy
         shell: bash
         run: |
@@ -53,22 +52,17 @@ jobs:
           PY
           )
           echo "::add-mask::$TOKEN"
-          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
-          OPENAI_API_KEY="$OPENAI_API_KEY" SARAH_BACKEND_TOKEN="$TOKEN" python - <<'PY'
-          import json, os
-          from pathlib import Path
-          path = Path('/tmp/sarah-diagnostic-secrets.json')
-          path.write_text(json.dumps({
-              'OPENAI_API_KEY': os.environ['OPENAI_API_KEY'],
-              'SARAH_BACKEND_TOKEN': os.environ['SARAH_BACKEND_TOKEN'],
-          }), encoding='utf-8')
-          path.chmod(0o600)
-          PY
+          # Wrangler's --secrets-file consumes dotenv syntax. Keeping deployment
+          # and verification in one shell also guarantees the exact same token.
+          umask 077
+          printf 'OPENAI_API_KEY=%s\nSARAH_BACKEND_TOKEN=%s\n' \
+            "$OPENAI_API_KEY" "$TOKEN" > /tmp/sarah-diagnostic-secrets.env
 
-          npx wrangler deploy --secrets-file /tmp/sarah-diagnostic-secrets.json --keep-vars 2>&1 | tee /tmp/deploy.log
-          rm -f /tmp/sarah-diagnostic-secrets.json
-          URL=$(python - <<'PY'
+          npx wrangler deploy --secrets-file /tmp/sarah-diagnostic-secrets.env --keep-vars 2>&1 | tee /tmp/deploy.log
+          rm -f /tmp/sarah-diagnostic-secrets.env
+
+          BACKEND_URL=$(python - <<'PY'
           import re
           from pathlib import Path
           text = Path('/tmp/deploy.log').read_text(encoding='utf-8', errors='replace')
@@ -78,20 +72,12 @@ jobs:
           print(matches[-1])
           PY
           )
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
           echo "Sarah proxy deployed. Waiting briefly for edge propagation."
           sleep 20
 
-      - name: Distinguish Worker authentication from OpenAI authentication or billing
-        shell: bash
-        env:
-          BACKEND_URL: ${{ steps.deploy.outputs.url }}
-          SARAH_BACKEND_TOKEN: ${{ steps.deploy.outputs.token }}
-        run: |
-          set -euo pipefail
           curl --silent --show-error --retry 20 --retry-all-errors --retry-delay 3 \
             "$BACKEND_URL/health" > /tmp/health.json
-
           python - <<'PY'
           import json
           health = json.load(open('/tmp/health.json', encoding='utf-8'))
@@ -113,7 +99,7 @@ jobs:
 
           STATUS=$(curl --silent --show-error \
             -o /tmp/response.json -w '%{http_code}' \
-            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+            -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/request.json \
             "$BACKEND_URL/")
@@ -130,8 +116,7 @@ jobs:
           error = str(data.get('error') or '')
           upstream = data.get('upstream_status')
           message = str(data.get('message') or '')
-          message = re.sub(r'sk-[A-Za-z0-9_-]+', '[redacted-key]', message)
-          message = message[:300]
+          message = re.sub(r'sk-[A-Za-z0-9_-]+', '[redacted-key]', message)[:300]
           if status == 200:
               reply = str(data.get('reply') or '').strip()
               if reply != 'ONLINE_READY':
@@ -140,7 +125,7 @@ jobs:
           else:
               print(f"DIAGNOSTIC_ERROR error={error!r} upstream_status={upstream!r} message={message!r}")
               if error == 'unauthorized':
-                  raise SystemExit('The temporary Sarah-to-Worker token was rejected.')
+                  raise SystemExit('The Sarah-to-Worker token was rejected after a same-shell deployment.')
               if error == 'openai_error' and upstream == 401:
                   raise SystemExit('OpenAI rejected the saved API key. Replace OPENAI_API_KEY with only the complete key value.')
               if error == 'openai_error' and upstream == 429:
