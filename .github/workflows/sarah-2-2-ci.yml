@@ -67,11 +67,17 @@ jobs:
           python-version: '3.12'
       - name: Install and test Windows Sarah
         shell: pwsh
+        working-directory: windows-companion
         run: |
+          $ErrorActionPreference = 'Stop'
           python -m pip install --upgrade pip
-          pip install -r windows-companion/requirements.txt
-          python -m pytest -q windows-companion/tests
-          python -m py_compile windows-companion/sarah_core.py windows-companion/sarah_sync_server.py windows-companion/google_drive_backup.py windows-companion/sarah_windows.py
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows dependencies failed to install.' }
+          python -m pytest -q tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source tests failed.' }
+          python -m py_compile sarah_core.py sarah_sync_server.py google_drive_backup.py sarah_windows.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source compilation failed.' }
       - name: Build Windows executable
         shell: pwsh
         working-directory: windows-companion

@@ -170,6 +170,34 @@ The repaired source still requires a fresh hosted Gradle compile before any R2
 APK is claimed. The second Windows artifact is superseded by that source repair
 and remains engineering evidence only.
 
+## Third hosted R2 evidence
+
+Commit `68d325bcff3ca29e73bc451939b7b3346552b7f3` passed the authoritative
+observable validation:
+
+- Source extraction run `31264002487` passed; artifact `9023588928`, digest
+  `sha256:74be19f1a1f7d2beaa5d7ef0522b083cbadf1af8b6c36ad2c7c64763ef1647a1`.
+- Observable run `31264002507` passed. Android compiled with Gradle, all pure
+  Java and policy tests passed, and artifact `9023606415` was produced as
+  version code 26 / `2.5-r2-owner-repair-debug`, digest
+  `sha256:9dd3fd218fbefc8e1aac8740fde678d36d15cb0b9afd8bf1df0714ac20abff61`.
+- The same observable run's Windows job passed 57/57 source tests, exact source
+  self-test, installer build, and exact public installer self-test. Artifact
+  `9023613150` has digest
+  `sha256:b445f7a34c18a98b030886e5fda2b9c73045223e5329c55388bf17c2a8c1f276`.
+
+These are hosted engineering passes, not physical Galaxy A17 or 8 GB laptop
+owner acceptance. The unchanged online-judge request did not rerun, so the
+missing protected Tavily credential remains a separate fail-closed setup gate.
+
+The parallel legacy 2.2 workflow was green for the same commit but masked
+three Windows pytest collection errors: it ran from the repository root, then
+let a later successful `py_compile` command replace pytest's nonzero status.
+The narrow repair runs from `windows-companion` and checks every native exit
+code. Local execution from that exact directory passes 57/57. A fresh hosted
+run must prove the repaired legacy gate; the prior green result is retained as
+false-positive evidence and is not cited as Windows acceptance.
+
 The Android candidate is an in-place upgrade only: it retains
 `com.kiraworld.sarahtravel`. CI must have an exact R1 signing-cache hit, require
 the recorded R1 APK and signer SHA-256 checkpoints, compare the R2 signer to R1,

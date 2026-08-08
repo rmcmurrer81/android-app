@@ -15,6 +15,7 @@ required=[
     APP/'app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/MediaSuggestionEngine.java',
     REPO/'.github/workflows/build-apk.yml',
+    REPO/'.github/workflows/sarah-2-2-ci.yml',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TurnRoute.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationArchiveStore.java',
@@ -56,6 +57,15 @@ assert re.search(r'^android\.useAndroidX\s*=\s*true\s*$', gradle_properties, re.
 discovery_button=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ProactiveDiscoveryButton.java').read_text(encoding='utf-8')
 assert 'extends Button' in discovery_button, 'discovery button must use the platform Button available in this package'
 assert 'androidx.appcompat' not in discovery_button, 'AppCompat is not a declared Android dependency'
+
+legacy_ci=(REPO/'.github/workflows/sarah-2-2-ci.yml').read_text(encoding='utf-8')
+for phrase in (
+    'working-directory: windows-companion',
+    'python -m pytest -q tests',
+    "throw 'Windows source tests failed.'",
+    "throw 'Windows source compilation failed.'",
+):
+    assert phrase in legacy_ci, f'legacy Windows CI fail-closed contract missing: {phrase}'
 
 for p in (APP/'app/src/main/res').rglob('*.xml'):
     root=ET.parse(p).getroot()
