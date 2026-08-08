@@ -1,0 +1,121 @@
+name: Materialize Sarah Public Source Baseline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'public-release/2.5/BASELINE_KICKOFF.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify the complete Sarah 2.3 source archive
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t parts < <(find public-release/parts -maxdepth 1 -type f -name 'part-*.txt' | sort)
+          if [ "${#parts[@]}" -ne 15 ]; then
+            echo "Expected 15 source parts and found ${#parts[@]}."
+            exit 1
+          fi
+          cat "${parts[@]}" > /tmp/sarah23.b64
+          base64 --decode /tmp/sarah23.b64 > /tmp/Sarah_Travel_OS_2.3_Source.zip
+          expected="$(awk '{print $1}' public-release/SOURCE_SHA256.txt)"
+          actual="$(sha256sum /tmp/Sarah_Travel_OS_2.3_Source.zip | awk '{print $1}')"
+          if [ "$actual" != "$expected" ]; then
+            echo "Sarah source checksum mismatch: expected $expected, received $actual."
+            exit 1
+          fi
+          rm -rf /tmp/sarah23-extract
+          mkdir -p /tmp/sarah23-extract
+          unzip -q /tmp/Sarah_Travel_OS_2.3_Source.zip -d /tmp/sarah23-extract
+          release_file="$(find /tmp/sarah23-extract -type f -name PUBLIC_RELEASE.json -print -quit)"
+          if [ -z "$release_file" ]; then
+            echo 'PUBLIC_RELEASE.json was not found in the verified source archive.'
+            exit 1
+          fi
+          source_root="$(dirname "$release_file")"
+          echo "SOURCE_ROOT=$source_root" >> "$GITHUB_ENV"
+          test -d "$source_root/windows-companion"
+          test -d "$source_root/android-upgrade"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['SOURCE_ROOT'])
+          release = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
+          if release.get('version') != '2.3-public-continuity':
+              raise SystemExit(f"Unexpected baseline version: {release.get('version')}")
+          print(f"Verified Sarah baseline at {root} with {sum(p.is_file() for p in root.rglob('*'))} files")
+          PY
+
+      - name: Materialize readable phone and Windows source on main
+        id: materialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf windows-companion development-tools/sarah-2.3-android-upgrade docs/sarah-2.3
+          cp -a "$SOURCE_ROOT/windows-companion" ./windows-companion
+          mkdir -p development-tools docs/sarah-2.3
+          cp -a "$SOURCE_ROOT/android-upgrade" development-tools/sarah-2.3-android-upgrade
+          if [ -d "$SOURCE_ROOT/docs" ]; then cp -a "$SOURCE_ROOT/docs/." docs/sarah-2.3/; fi
+          if [ -d "$SOURCE_ROOT/email" ]; then mkdir -p docs/sarah-2.3/email && cp -a "$SOURCE_ROOT/email/." docs/sarah-2.3/email/; fi
+          if [ -f "$SOURCE_ROOT/README_FIRST.md" ]; then cp "$SOURCE_ROOT/README_FIRST.md" README_SARAH_2_3_PUBLIC.md; fi
+          if [ -f "$SOURCE_ROOT/PUBLIC_RELEASE.json" ]; then cp "$SOURCE_ROOT/PUBLIC_RELEASE.json" SARAH_PUBLIC_RELEASE.json; fi
+          python development-tools/sarah-2.3-android-upgrade/apply_android_upgrade.py "$GITHUB_WORKSPACE"
+          rm -rf .sarah-upgrade-backup
+          find windows-companion development-tools/sarah-2.3-android-upgrade -type d -name __pycache__ -prune -exec rm -rf {} +
+          find windows-companion development-tools/sarah-2.3-android-upgrade -type f -name '*.pyc' -delete
+
+      - name: Verify baseline tests before committing
+        id: tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet -r windows-companion/requirements.txt
+          python -m unittest discover -s windows-companion/tests -v
+          python -m compileall -q windows-companion
+          python development-tools/sarah-2.3-android-upgrade/run_android_upgrade_tests.py
+
+      - name: Record result and commit readable baseline source
+        if: always()
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ steps.source.outcome }}
+          MATERIALIZE_RESULT: ${{ steps.materialize.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-release/2.5
+          {
+            echo "run_id=$RUN_ID"
+            echo "event_sha=$EVENT_SHA"
+            echo "source=$SOURCE_RESULT"
+            echo "materialize=$MATERIALIZE_RESULT"
+            echo "tests=$TEST_RESULT"
+            echo "baseline_files=$(find windows-companion development-tools/sarah-2.3-android-upgrade -type f 2>/dev/null | wc -l)"
+          } > public-release/2.5/BASELINE_STATUS.txt
+          git config user.name 'Sarah Source Materializer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.5/BASELINE_STATUS.txt
+          if [ "$SOURCE_RESULT" = success ] && [ "$MATERIALIZE_RESULT" = success ] && [ "$TEST_RESULT" = success ]; then
+            git add windows-companion development-tools/sarah-2.3-android-upgrade docs/sarah-2.3 README_SARAH_2_3_PUBLIC.md SARAH_PUBLIC_RELEASE.json Sarah_Morgan_Android_Phone_First_v3
+          fi
+          if git diff --cached --quiet; then
+            echo 'No Sarah baseline changes were needed.'
+          else
+            git commit -m '[skip ci] Materialize verified Sarah phone and Windows baseline source'
+            git push origin HEAD:main
+          fi

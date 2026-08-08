@@ -1,0 +1,81 @@
+name: Sarah 2.5 Repair Source Materializer
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'public-release/2.4/KICKOFF.json'
+      - 'public-release/2.5/KICKOFF.json'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the Sarah 2.5 repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/sarah-2.5-futuristic-sync
+          fetch-depth: 0
+
+      - name: Reconstruct the complete Sarah 2.4 source
+        id: extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t parts < <(find public-release/2.4/chunks -maxdepth 1 -type f -name 'chunk-*.txt' | sort)
+          if [ "${#parts[@]}" -ne 3 ]; then
+            echo "Expected exactly 3 complete-source chunks; found ${#parts[@]}."
+            exit 1
+          fi
+          cat "${parts[@]}" > /tmp/sarah24-source.b64
+          base64 --decode /tmp/sarah24-source.b64 > /tmp/Sarah_Travel_OS_2.4_Source.zip
+          rm -rf extracted-source materialized-sarah24
+          mkdir -p extracted-source materialized-sarah24
+          unzip -q /tmp/Sarah_Travel_OS_2.4_Source.zip -d extracted-source
+          test -d extracted-source/sarah24_source
+          test -f extracted-source/sarah24_source/PUBLIC_RELEASE.json
+          test -d extracted-source/sarah24_source/windows-companion
+          test -f extracted-source/sarah24_source/windows-companion/SarahMorganInstaller.spec
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root = Path('extracted-source/sarah24_source')
+          status = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
+          if status.get('version') != '2.4-stay22-live-public':
+              raise SystemExit(f"Unexpected source version: {status.get('version')}")
+          files = [p for p in root.rglob('*') if p.is_file()]
+          print(f'Validated Sarah 2.4 source with {len(files)} files.')
+          PY
+          cp -a extracted-source/sarah24_source/. materialized-sarah24/
+          find materialized-sarah24 -type d -name __pycache__ -prune -exec rm -rf {} +
+          find materialized-sarah24 -type f -name '*.pyc' -delete
+
+      - name: Commit the readable source and extraction result
+        if: always()
+        shell: bash
+        env:
+          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
+          SOURCE_EVENT_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-release/2.5
+          {
+            echo "outcome=$EXTRACT_OUTCOME"
+            echo "event_sha=$SOURCE_EVENT_SHA"
+            echo "run_id=$SOURCE_RUN_ID"
+            echo "file_count=$(find materialized-sarah24 -type f 2>/dev/null | wc -l)"
+          } > public-release/2.5/SOURCE_EXTRACT_STATUS.txt
+          git config user.name 'Sarah Source Materializer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.5/SOURCE_EXTRACT_STATUS.txt
+          if [ -d materialized-sarah24 ]; then git add materialized-sarah24; fi
+          if git diff --cached --quiet; then
+            echo 'No source materialization changes were needed.'
+          else
+            git commit -m '[skip ci] Materialize Sarah 2.4 source for the 2.5 repair'
+            git push origin HEAD:agent/sarah-2.5-futuristic-sync
+          fi

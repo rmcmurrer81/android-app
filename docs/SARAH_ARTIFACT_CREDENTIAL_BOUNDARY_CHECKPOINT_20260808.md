@@ -29,7 +29,12 @@ concierge build fields could also inherit CI secrets.
 - Sarah text, protected current-source lookup, and protected ElevenLabs voice
   share that one owner-activated backend root and access code. Direct Android
   OpenAI and direct ElevenLabs credentials remain disabled.
-- All 13 active workflow files are covered by the artifact-credential scan.
+- All 19 active workflow files are covered by the artifact-credential scan
+  after reconciling the current `main` history. The imported legacy
+  `sarah-2.4-stay22-release.yml` and `sarah-public-release.yml` workflows had
+  unused reusable credentials at workflow-global scope; those declarations
+  were removed so materialization, build, package, and upload steps cannot
+  inherit them.
   Current artifact build steps receive no reusable credential. All six active
   legacy 2.2 workflows have no job-level credential environment; only their
   exact live ElevenLabs/Tavily validation steps retain narrow step-scoped
@@ -88,7 +93,7 @@ from this source can satisfy the new artifact boundary.
 - Windows companion suite, including real DPAPI round-trip and legacy migration
   on this Windows host: 69/69 pass after the final suite rerun; packaged live-
   avatar self-test also reports `SARAH_EVENT_READY_SELF_TEST_OK`.
-- All 13 active workflow YAML files parse; `git diff --check` reports no errors
+- All 19 active workflow YAML files parse; `git diff --check` reports no errors
   (only existing Windows line-ending conversion warnings).
 
 These tests prove source/build isolation and local crypto behavior. They do not

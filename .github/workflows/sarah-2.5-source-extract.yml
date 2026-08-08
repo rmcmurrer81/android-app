@@ -1,0 +1,122 @@
+name: Sarah 2.5 Source Extraction Gate
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'public-release/2.5/EXTRACT_REQUEST.json'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the source appropriate to this event
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'agent/sarah-2.5-futuristic-sync' }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate current readable source or reconstruct the legacy repair archive
+        id: extract
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'pull_request' ]; then
+            test -d windows-companion
+            test -d Sarah_Morgan_Android_Phone_First_v3/android-app
+            test -f windows-companion/sarah_event_ready.py
+            test -f windows-companion/sarah_installer.py
+            test -f windows-companion/sarah_core.py
+            test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
+            test -f Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java
+            python -m compileall -q windows-companion
+            rm -rf materialized-current
+            mkdir -p materialized-current
+            rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.venv' --exclude='build' --exclude='dist' \
+              windows-companion materialized-current/
+            rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.gradle' --exclude='build' \
+              Sarah_Morgan_Android_Phone_First_v3 materialized-current/
+            if [ -d docs ]; then rsync -a docs materialized-current/; fi
+            printf 'source_sha=%s\nsource_kind=readable-pr-source\n' "$HEAD_SHA" \
+              > materialized-current/SOURCE_EXTRACT_STATUS.txt
+            echo "Validated readable Sarah 2.5 source with $(find materialized-current -type f | wc -l) files."
+          else
+            mapfile -t parts < <(find public-release/2.4/chunks -maxdepth 1 -type f -name 'chunk-*.txt' | sort)
+            if [ "${#parts[@]}" -ne 3 ]; then
+              echo "Expected exactly 3 complete-source chunks; found ${#parts[@]}."
+              exit 1
+            fi
+            cat "${parts[@]}" > /tmp/sarah24-source.b64
+            base64 --decode /tmp/sarah24-source.b64 > /tmp/Sarah_Travel_OS_2.4_Source.zip
+            rm -rf extracted-source materialized-sarah24
+            mkdir -p extracted-source materialized-sarah24
+            unzip -q /tmp/Sarah_Travel_OS_2.4_Source.zip -d extracted-source
+            test -d extracted-source/sarah24_source
+            test -d extracted-source/sarah24_source/windows-companion
+            test -f extracted-source/sarah24_source/windows-companion/SarahMorganInstaller.spec
+            test -f extracted-source/sarah24_source/PUBLIC_RELEASE.json
+            python - <<'PY'
+          from pathlib import Path
+          import json
+          root = Path('extracted-source/sarah24_source')
+          status = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
+          if status.get('version') != '2.4-stay22-live-public':
+              raise SystemExit(f"Unexpected source version: {status.get('version')}")
+          files = [p for p in root.rglob('*') if p.is_file()]
+          print(f'Validated Sarah 2.4 source with {len(files)} files.')
+          PY
+            cp -a extracted-source/sarah24_source/. materialized-sarah24/
+            find materialized-sarah24 -type d -name __pycache__ -prune -exec rm -rf {} +
+            find materialized-sarah24 -type f -name '*.pyc' -delete
+          fi
+
+      - name: Record legacy extraction result on the repair branch
+        if: always() && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          EXTRACT_OUTCOME: ${{ steps.extract.outcome }}
+          SOURCE_EVENT_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-release/2.5
+          {
+            echo "outcome=$EXTRACT_OUTCOME"
+            echo "event_sha=$SOURCE_EVENT_SHA"
+            echo "run_id=$SOURCE_RUN_ID"
+            echo "file_count=$(find materialized-sarah24 -type f 2>/dev/null | wc -l)"
+          } > public-release/2.5/SOURCE_EXTRACT_STATUS.txt
+          git config user.name 'Sarah Source Extractor'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.5/SOURCE_EXTRACT_STATUS.txt
+          if [ -d materialized-sarah24 ]; then git add materialized-sarah24; fi
+          if git diff --cached --quiet; then
+            echo 'No source extraction status changes were needed.'
+          else
+            git commit -m '[skip ci] Record Sarah 2.5 source extraction result'
+            git push origin HEAD:agent/sarah-2.5-futuristic-sync
+          fi
+
+      - name: Upload readable source for validation or repair work
+        if: steps.extract.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && 'Sarah-2.5-Current-Readable-Source' || 'Sarah-2.4-Complete-Readable-Source' }}
+          path: ${{ github.event_name == 'pull_request' && 'materialized-current' || 'materialized-sarah24' }}
+          if-no-files-found: error
+          retention-days: 7
