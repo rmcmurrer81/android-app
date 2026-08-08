@@ -30,7 +30,8 @@ public final class TravelSearchHelper {
 
     public static void show(Activity activity, String message, Map<String, String> profile) {
         EventTripIntentParser.EventIntent event = EventTripIntentParser.parse(message);
-        JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(message, profile, List.of());
+        JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(
+                message, profile, Collections.emptyList());
         List<String> places = DestinationParser.extractDestinations(message);
         KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(message);
         Map<String, String> storedEvent = event.recognized()

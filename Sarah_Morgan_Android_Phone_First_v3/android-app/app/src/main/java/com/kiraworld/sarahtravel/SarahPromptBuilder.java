@@ -15,6 +15,17 @@ public final class SarahPromptBuilder {
             List<Map<String, String>> wishes,
             boolean photoIncluded,
             boolean webEnabled) {
+        return build(profile, memories, trips, wishes, photoIncluded, webEnabled, TurnRoute.UNKNOWN_LEGACY);
+    }
+
+    public static String build(
+            Map<String, String> profile,
+            List<Map<String, String>> memories,
+            List<Map<String, String>> trips,
+            List<Map<String, String>> wishes,
+            boolean photoIncluded,
+            boolean webEnabled,
+            String authoritativeTurnRoute) {
         StringBuilder b = new StringBuilder();
         boolean activeOwner = "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
         boolean sharedTrip = "going".equals(profile.getOrDefault("current_shared_trip_participation", "unknown"));
@@ -122,6 +133,12 @@ public final class SarahPromptBuilder {
         b.append("- Current fares, room prices, schedules, openings, weather, events, entry rules, inventory and availability require live reputable sources.\n");
         b.append("- Never ask the app user to paste an OpenAI, Claude, hotel, booking, loyalty, bank or payment password into chat or settings. Team provider credentials belong on protected backends or build configuration.\n");
         b.append("- Never claim you booked, purchased, called, reserved, requested a ride, checked in, changed, sent, confirmed or completed anything unless the application supplies a verified result.\n\n");
+
+        b.append("PRE-REQUEST ROUTE PLAN\n");
+        b.append("- Requested route: ").append(authoritativeTurnRoute).append("\n");
+        b.append("- This is a routing plan, not proof of the provider or path that will actually answer.\n");
+        b.append("- Do not state a provider, model, or route in SPOKEN. The application records the returned provider and fallback path only after the response.\n");
+        b.append("- Do not say 'I’m on it', promise a later summary, or claim a search/watch is running unless the application supplied a persisted runnable job or an actual tool result.\n\n");
 
         b.append("CAPABILITIES THIS TURN\n");
         b.append("- Photo included: ").append(photoIncluded).append("\n");

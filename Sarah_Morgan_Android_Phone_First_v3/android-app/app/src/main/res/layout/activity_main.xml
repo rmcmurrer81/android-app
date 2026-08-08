@@ -4,7 +4,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/chat_background"
-    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <LinearLayout
@@ -61,12 +60,31 @@
                 android:tint="#EAFBFF" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/tripContextToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:contentDescription="Show calm, profile, and notebook shortcuts"
+            android:focusable="true"
+            android:paddingLeft="14dp"
+            android:paddingTop="6dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="6dp"
+            android:text="Trip context and calm tools ▾"
+            android:textColor="#EAFBFF"
+            android:textSize="13sp" />
+
         <LinearLayout
+            android:id="@+id/tripContextPanel"
             android:layout_width="match_parent"
             android:layout_height="44dp"
             android:layout_marginTop="4dp"
             android:gravity="center"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:visibility="gone">
 
             <ImageButton
                 android:id="@+id/calmButton"
@@ -107,53 +125,6 @@
                 android:src="@android:drawable/ic_menu_agenda"
                 android:tint="#EAFBFF" />
         </LinearLayout>
-    </LinearLayout>
-
-    <com.kiraworld.sarahtravel.ExploreButton
-        android:id="@+id/exploreButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginRight="10dp"
-        android:layout_marginBottom="3dp"
-        android:background="@drawable/futuristic_media_panel"
-        android:contentDescription="Show a useful public photo preview, map, videos, route, and current travel sources"
-        android:minHeight="58dp"
-        android:text="MAP  •  PHOTOS  •  VIDEO  •  ROUTE"
-        android:textAllCaps="false"
-        android:textColor="#F4FDFF"
-        android:textSize="14sp"
-        android:textStyle="bold" />
-
-    <com.kiraworld.sarahtravel.TravelHubButton
-        android:id="@+id/travelHubButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginRight="10dp"
-        android:layout_marginBottom="4dp"
-        android:contentDescription="Open hotels, transportation, experiences, road trips, loyalty, accessibility, and trip readiness"
-        android:minHeight="62dp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingBottom="4dp">
-
-        <com.kiraworld.sarahtravel.ProactiveDiscoveryButton
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
-
-        <com.kiraworld.sarahtravel.TrustedSyncButton
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1" />
     </LinearLayout>
 
     <ScrollView
@@ -242,5 +213,50 @@
             android:padding="12dp"
             android:src="@android:drawable/ic_menu_send"
             android:tint="@color/white" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#F4F8FA"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingLeft="6dp"
+        android:paddingRight="6dp"
+        android:paddingBottom="4dp">
+
+        <Button
+            android:id="@+id/chatNavButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Chat"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/tripNavButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Trip"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/discoverNavButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Discover"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/connectionsNavButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:text="Connections"
+            android:textAllCaps="false"
+            android:textSize="12sp" />
     </LinearLayout>
 </LinearLayout>

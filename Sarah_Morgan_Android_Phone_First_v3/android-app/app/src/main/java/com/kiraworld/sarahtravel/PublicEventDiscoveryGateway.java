@@ -35,7 +35,7 @@ public final class PublicEventDiscoveryGateway {
 
     private PublicEventDiscoveryGateway() { }
 
-    public static String answer(
+    public static PublicSourceResult answerResult(
             Context context,
             String message,
             List<Map<String, String>> history) {
@@ -89,10 +89,18 @@ public final class PublicEventDiscoveryGateway {
                 reply.append(" I could not extract a verified date yet, so I will not invent one.");
             }
             reply.append(" I saved verified fields when available. Use the media panel for the official page, map, public photos, videos, and route. Because this event was discovered rather than pre-cataloged, check the official page before booking.");
-            return reply.toString();
+            return PublicSourceResult.verified(reply.toString(), candidate.url);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    public static String answer(
+            Context context,
+            String message,
+            List<Map<String, String>> history) {
+        PublicSourceResult result = answerResult(context, message, history);
+        return result == null ? null : result.reply;
     }
 
     private static Candidate findCandidate(String eventName) throws Exception {
@@ -105,7 +113,7 @@ public final class PublicEventDiscoveryGateway {
         candidates.sort(Comparator.comparingInt((Candidate c) -> c.score).reversed());
         for (Candidate candidate : candidates) {
             if (candidate.score < 1) continue;
-            if (candidate.url.startsWith("https://") || candidate.url.startsWith("http://")) return candidate;
+            if (candidate.url.startsWith("https://")) return candidate;
         }
         return null;
     }
@@ -265,6 +273,9 @@ public final class PublicEventDiscoveryGateway {
     }
 
     private static String get(String url, String accept) throws Exception {
+        if (url == null || !url.startsWith("https://")) {
+            throw new SecurityException("Public event sources must use HTTPS.");
+        }
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(12000);
         connection.setReadTimeout(18000);
@@ -272,6 +283,10 @@ public final class PublicEventDiscoveryGateway {
         connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.6 (public event discovery)");
         connection.setRequestProperty("Accept", accept);
         int status = connection.getResponseCode();
+        if (!"https".equalsIgnoreCase(connection.getURL().getProtocol())) {
+            connection.disconnect();
+            throw new SecurityException("Public event source redirected outside HTTPS.");
+        }
         if (status < 200 || status >= 400) {
             connection.disconnect();
             throw new IllegalStateException("Public event source returned " + status);

@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -87,7 +88,7 @@ public final class DestinationParser {
             List<String> found = extractDestinations(row.getOrDefault("content", ""));
             if (!found.isEmpty()) return found;
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     public static String join(List<String> destinations) {

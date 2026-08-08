@@ -21,7 +21,7 @@ public final class MobilityWatchCoordinator {
                     MobilityResult result = MobilityGateway.check(context, watch);
                     long now = System.currentTimeMillis();
                     if (!result.configured) {
-                        store.updateWatch(id, "backend_not_configured", now, "", result.sourceNote);
+                        store.updateWatch(id, "setup_required", now, "", result.sourceNote);
                     } else if (!result.found) {
                         store.updateWatch(id, "checked_no_result", now, "", result.sourceNote);
                     } else {

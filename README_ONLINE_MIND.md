@@ -1,8 +1,27 @@
-# Sarah 2.5 online mind and judge build
+# Sarah 2.5 online mind and owner-acceptance candidate build
+
+## Owner-use R2 route truth
+
+R2 treats online/offline state as application-owned evidence for each turn.
+The saved values are `ONLINE_WORKERS_AI`, `OFFLINE_LOCAL`,
+`ONLINE_FAILED_FELL_BACK_OFFLINE`, `TOOL_RESULT`, `TOOL_UNAVAILABLE`, or
+`UNKNOWN_LEGACY`. Android and Windows persist this value instead of guessing
+from Sarah's wording. Each message permits one short retry after a failed first
+connected attempt; both attempts share a strict 14.25-second network ceiling,
+within the 15-second Android/Windows owner-wait limit.
+Sarah then answers through the labeled offline path and tries online again on
+the next ordinary message. This avoids multi-minute same-turn waits without
+silently remaining offline.
+
+No reply may claim that Sarah started background research, monitoring, or a
+future summary unless an actual durable runnable job exists. A post-response
+grounding guard removes unsupported work promises while preserving any other
+natural sentence. Current travel prices, events, and provider results remain
+unavailable when their connected source is not configured.
 
 ## Current event route
 
-The judge APK uses a protected Cloudflare Worker with:
+The candidate APK uses a protected Cloudflare Worker with:
 
 ```text
 SARAH_MODEL_PROVIDER=workers-ai
@@ -13,22 +32,33 @@ This route does not require an OpenAI key or purchased OpenAI credits. Cloudflar
 
 OpenAI remains an explicit optional rollback provider. It is not the current required hackathon route.
 
-The ordinary `Sarah-2.5-validated-APK` is a source/build validation artifact. It is not judge-ready unless its manifest proves a live online smoke test. Use the artifact named `Sarah-2.5-ONLINE-JUDGE-APK`.
+The workflow output is an owner-acceptance candidate, not a judge-ready or
+owner-accepted build. Its manifest records live service smoke tests separately
+from the still-pending physical Galaxy A17, populated-profile migration,
+ten-message keyboard/inset, full route sequence, and hearing/latency gates.
 
-## What the judge workflow proves
+## What the candidate workflow proves
 
 The workflow `.github/workflows/sarah-2.5-online-judge-build.yml`:
 
 1. validates the requested provider and model;
 2. requires the owner-revocable `SARAH_MODEL_BACKEND_TOKEN` repository secret;
-3. deploys the Worker with that token through Wrangler dotenv secret transport;
-4. confirms Worker health and exact-token authentication;
+3. deploys a unique candidate Worker named from the immutable GitHub run ID
+   and attempt through Wrangler dotenv secret transport, leaving the R1 Worker
+   and every earlier candidate endpoint unchanged;
+4. confirms exact source/config/deployment identity, all three route-limit
+   bindings, Worker health, and exact-token authentication;
 5. receives exactly `ONLINE_READY` from the selected Workers AI model;
-6. generates a short real ElevenLabs audio response through the protected `/voice` route without playback;
-7. builds the Android APK with the tested Worker URL and the same event token;
-8. builds and self-tests a Windows event installer with a CI-generated bundled event configuration;
-9. verifies that direct OpenAI and ElevenLabs provider keys were not placed in either client;
-10. uploads the APK and Windows installer with hashes and truthful manifests only after every live gate passes.
+6. proves protected `/search`, then proves the real chat route applies the
+   Android-style contextual `search_query` and returns exact HTTPS receipts;
+7. generates a short real ElevenLabs audio response through the protected `/voice` route without playback;
+8. builds the Android APK with the tested Worker URL and the same event token;
+9. builds and self-tests a Windows event installer with a CI-generated bundled event configuration;
+10. verifies that direct OpenAI, ElevenLabs, and Tavily provider keys were not placed in either client;
+11. uploads only clearly labeled candidate artifacts with hashes and manifests.
+
+This workflow does not simulate or waive the 16 physical owner-acceptance
+gates. A successful build or service smoke test is not owner acceptance.
 
 Text chat remains independent of voice. If ElevenLabs fails in ordinary use, Android local speech is the fallback and text must remain available.
 
@@ -41,11 +71,33 @@ CLOUDFLARE_ACCOUNT_ID
 CLOUDFLARE_API_TOKEN
 SARAH_ELEVENLABS_API_KEY
 SARAH_MODEL_BACKEND_TOKEN
+SARAH_TAVILY_API_KEY
 ```
+
+The two R1 SHA-256 checkpoints are public mandatory migration evidence, not
+secrets: R1 APK
+`be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314`
+and signer certificate
+`d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c`.
+They are bound directly in the candidate workflow. The build stops if the
+preserved signing-key cache is not an
+exact hit or the built R2 signer differs from the recorded installed R1 signer.
+Never uninstall the populated R1 app to bypass that gate.
 
 `CLOUDFLARE_API_TOKEN` must be a restricted deployment token for the intended account, not a browser session value or global API key.
 
-Set `SARAH_MODEL_BACKEND_TOKEN` to a 32-256 character cryptographically random URL-safe value containing only letters, digits, `_`, and `-`. Keep the same repository value for a complete event build; rotation is a deliberate Worker redeploy plus client rebuild/reinstall, not an automatic per-job change.
+Set `SARAH_MODEL_BACKEND_TOKEN` to a 32-256 character cryptographically random URL-safe value containing only letters, digits, `_`, and `-`. Keep the same repository value for a complete event build. Each run creates a unique Worker endpoint; rotating the repository secret or deploying a new Worker does **not** revoke the token already stored on an older Worker. Retire each rejected or superseded exact Worker explicitly.
+
+Every candidate manifest records an append-only Worker name, URL, deployment
+ID, source/config hashes, and exact retirement command. A failed run deletes
+only its own newly created Worker when no candidate artifact was preserved.
+It never deletes an endpoint referenced by a preserved artifact. The owner
+retirement form is:
+
+```text
+cd services/sarah-model-proxy
+npx wrangler delete --config wrangler.jsonc --name <exact-manifest-worker-name> --force
+```
 
 For backward-compatible migration, the judge workflow accepts the older
 `SARAH_ELEVENLABS_BACKEND_TOKEN` repository secret only when
@@ -68,20 +120,22 @@ absent, the workflow uses Sarah's existing approved Voice Design ID
 
 Do not put provider credentials in source, a pull-request comment, issue, screenshot, APK, EXE, or team chat. `SARAH_MODEL_BACKEND_TOKEN` is different: the event clients must possess it to authenticate, so CI intentionally bundles that one owner-revocable app token after keeping it out of source, logs, and manifests.
 
-## Build the judge APK
+## Build the owner-acceptance candidates
 
 1. Open PR #21's branch `agent/sarah-2.5-event-ready` in GitHub.
 2. Open **Actions → Sarah 2.5 online judge build → Run workflow**.
 3. Select `workers-ai`.
 4. Keep `@cf/google/gemma-4-26b-a4b-it`, or enter another current Workers AI model ID deliberately.
 5. Run the workflow and wait for both `deploy-smoke-test-and-build` and `build-tested-windows-event-installer`.
-6. Download `Sarah-2.5-ONLINE-JUDGE-APK` only after the job passes.
+6. Download `Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-APK` only after the job passes.
 7. Keep the included manifest and SHA-256 with the APK.
-8. Download `Sarah-2.5-ONLINE-JUDGE-Windows-EXE` for the event laptop and keep its manifest and SHA-256 with it.
+8. Download `Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-Windows-EXE` for the event laptop and keep its manifest and SHA-256 with it.
+9. Run the manifest's pending physical gates before calling either artifact
+   judge-ready, replacing the preserved installation, or distributing it.
 
 A push that changes `.github/ONLINE_JUDGE_BUILD_REQUEST.json` also triggers the workflow. Its current default is the no-credit Workers AI route.
 
-The repository `SARAH_MODEL_BACKEND_TOKEN` is intentionally embedded as an app-to-Worker credential in both event binaries. It is not a Cloudflare, OpenAI, or ElevenLabs account credential, but a determined person can extract it from an APK or EXE. Treat it as event-only and revocable. Rotate the repository secret, redeploy the Worker, and rebuild/reinstall both clients after the event, or immediately whenever either binary leaves the intended team.
+The repository `SARAH_MODEL_BACKEND_TOKEN` is intentionally embedded as an app-to-Worker credential in both event binaries. It is not a Cloudflare, OpenAI, or ElevenLabs account credential, but a determined person can extract it from an APK or EXE. Treat it as event-only and revocable. The model/search/voice rate-limit bindings are per Cloudflare location and reduce ordinary abuse; they are not a hard global/day spending cap. Rotate the repository secret, redeploy the Worker, and rebuild/reinstall both clients after the event, or immediately whenever either binary leaves the intended team, and use provider/account budget controls where available.
 
 The separate online-diagnostic workflow deploys `sarah-model-proxy-diagnostic`. It must not deploy over the judge/production `sarah-model-proxy`; diagnostic work cannot invalidate the shared event token and tested judge clients.
 
@@ -97,22 +151,52 @@ The same Worker exposes authenticated `POST /voice`.
 
 Do not replace the approved voice with a generic voice merely to make a demo pass. Local device speech is an explicitly labeled offline/error fallback.
 
+The current Android source uses a Media3 progressive, one-shot POST and no
+longer waits for a complete ElevenLabs MP3 or cache file before feeding the
+approved response to the player. It blocks synthesis retries/range reopens and
+requires the protected route receipt before that route can be recorded as
+actual. Voice receipts contain `requested_at`, `synthesis_start`,
+`first_network_byte`, `player_ready`, `response_complete`, the compatibility
+alias `synthesis_end`, `playback_start`, and `playback_end`. Android CI
+compilation and physical Galaxy A17 hearing/latency acceptance remain pending;
+the source change and protected `/voice` byte/header smoke do not prove an
+audible latency improvement.
+
+## Protected current-source route
+
+`TAVILY_API_KEY` exists only as a Worker secret. Android's corresponding
+BuildConfig field is deliberately blank, and Android/Windows call the
+authenticated Worker `/search` route. A connected model reply without an
+applied search receipt and exact HTTPS URLs is not current research. The
+candidate workflow also exercises the normal chat endpoint with
+`web_search=true` and an Android-style contextual `search_query` so `/search`
+cannot pass independently while chat ignores it.
+
 ## Windows event provisioning and owner override
 
 The online-judge Windows installer contains no provider key. CI creates a non-source `sarah-event-config.json` and bundles the tested Worker URL, provider/model selection, approved voice ID, and the same revocable event app token inside the application EXE. The workflow never uploads the plain config or writes the token to logs or manifests.
 
-1. Install the `SarahMorganTravelOS-Setup.exe` from `Sarah-2.5-ONLINE-JUDGE-Windows-EXE`.
+1. Install `SarahMorganTravelOS-R2-Candidate-Setup.exe` from the Windows
+   owner-acceptance candidate artifact. Its executable, shortcuts, uninstall
+   entry, and data root remain side-by-side with the preserved R1 Windows build.
 2. Start Sarah; the tested event route works without manually transcribing the token.
-3. Use **Online setup** only to override the event defaults or remove a per-user override.
-4. Leave the direct ElevenLabs-key prompt blank; the protected Worker supplies voice.
+3. Use **Connection** only to override the event defaults or remove a per-user override.
+4. The protected Worker supplies voice; ordinary owner setup never asks for an ElevenLabs provider key.
 
 Settings are stored for the current user in:
 
 ```text
-%APPDATA%\SarahMorgan\runtime-config.json
+%APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json
 ```
 
-That local file is outside the EXE and repository. Do not distribute it. Resolution order is environment variable, then per-user runtime config, then bundled event config. The event token remains extractable from the installed binary despite being absent from source and manifests, so post-event rotation is mandatory.
+That local file is outside the EXE and repository. Do not distribute it.
+Resolution order is environment variable, then R2 per-user runtime config,
+then bundled event config. The event token remains extractable from the
+installed binary despite being absent from source and manifests, so post-event
+rotation is mandatory. The side-by-side Windows candidate does not silently
+inherit R1's private database. Network device sync is disabled in the R2
+candidate pending an accepted TLS or authenticated key-agreement transport;
+only an owner-selected verified backup/restore path may move private data.
 
 ## Online, offline, and automatic-reconnection acceptance
 
@@ -190,7 +274,14 @@ Confirm the repository key and approved voice ID, then inspect the `/health` `vo
 
 ### Android refuses an update
 
-The judge APK preserves the existing debug-signing cache when available. If Android reports a signature conflict, preserve Sarah's data first, record the installed package/version/signature, and only then decide whether uninstalling the older private test package is acceptable.
+The R2 APK deliberately retains application ID `com.kiraworld.sarahtravel` so
+its migration runs against Robert's populated R1 app sandbox. The candidate has
+a distinct filename/version and the R1 APK/hash remains preserved, but it is an
+in-place Android update rather than a side-by-side app. CI now requires an
+exact signing-cache hit, compares the built R2 certificate SHA-256 with the
+recorded installed R1 signer, records both signer hashes plus the R1 APK hash,
+and stops before upload on any mismatch. If Android reports a signature
+conflict, preserve Sarah's data and do not uninstall the populated app.
 
 ### Windows blocks an unsigned local build
 

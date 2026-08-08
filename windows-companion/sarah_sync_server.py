@@ -14,17 +14,29 @@ from sarah_core import SarahDatabase, sync_decrypt, sync_encrypt, sync_signature
 
 
 class SarahSyncServer:
-    """Private-LAN discovery, approval-gated pairing, and encrypted sync."""
+    """Loopback-only sync harness retained until authenticated transport exists.
+
+    The former LAN mode returned the same bearer secret used to authenticate
+    and encrypt later sync requests over plain HTTP. Payload encryption could
+    not protect a key exposed during pairing. R2 therefore keeps this server
+    on loopback for bounded self-tests only; owner-facing apps do not start it.
+    """
 
     DISCOVERY_PORT = 8770
 
     def __init__(
         self,
         database: SarahDatabase,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int = 8769,
         device_name: str | None = None,
     ):
+        normalized_host = str(host).strip().lower()
+        if normalized_host not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError(
+                "Sarah R2 trusted-device sync is unavailable until pairing "
+                "uses TLS or an authenticated key agreement."
+            )
         self.database = database
         self.host = host
         self.port = port
@@ -206,12 +218,8 @@ class SarahSyncServer:
             daemon=True,
         )
         self.thread.start()
-        self.discovery_thread = threading.Thread(
-            target=self._discovery_loop,
-            name="SarahDeviceDiscovery",
-            daemon=True,
-        )
-        self.discovery_thread.start()
+        # Do not advertise a loopback-only diagnostic service on the LAN.
+        self.discovery_thread = None
 
     def create_pair_request(
         self,

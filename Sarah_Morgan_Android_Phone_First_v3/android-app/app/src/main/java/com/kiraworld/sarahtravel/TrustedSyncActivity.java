@@ -61,14 +61,14 @@ public final class TrustedSyncActivity extends Activity {
         root.addView(header, fullWidth(dp(6)));
 
         TextView note = new TextView(this);
-        note.setText("Sarah can notice another Sarah installation on the same private Wi-Fi, but Wi-Fi alone never grants access. The already-running device must show the same code and explicitly approve the named new device before encrypted two-way synchronization begins.");
+        note.setText("Device continuity is preserved as future work, but network sync is disabled in this R2 candidate. The earlier LAN prototype did not yet provide an accepted secure transport. Existing saved data stays on this device.");
         note.setTextSize(15);
         note.setTextColor(Color.rgb(35, 52, 65));
         note.setPadding(dp(4), dp(14), dp(4), dp(12));
         root.addView(note);
 
         status = new TextView(this);
-        status.setText("Ready to look for your other Sarah devices.");
+        status.setText("Device sync setup required. No pairing or transfer will run in this build.");
         status.setTextSize(15);
         status.setTextColor(Color.rgb(15, 72, 88));
         status.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -87,9 +87,11 @@ public final class TrustedSyncActivity extends Activity {
         LinearLayout discoveryButtons = new LinearLayout(this);
         discoveryButtons.setOrientation(LinearLayout.HORIZONTAL);
         Button scan = button("Scan again");
+        scan.setEnabled(false);
         scan.setOnClickListener(v -> scanDevices());
         discoveryButtons.addView(scan, weighted());
         Button request = button("Verify & transfer");
+        request.setEnabled(false);
         request.setOnClickListener(v -> requestSelected());
         discoveryButtons.addView(request, weighted());
         root.addView(discoveryButtons, fullWidth(dp(8)));
@@ -103,13 +105,16 @@ public final class TrustedSyncActivity extends Activity {
 
         addSection(root, "Manual fallback");
         manualHost = new EditText(this);
+        manualHost.setEnabled(false);
         manualHost.setHint("Computer address, for example 192.168.1.25");
         root.addView(manualHost, fullWidth(dp(2)));
         manualCode = new EditText(this);
+        manualCode.setEnabled(false);
         manualCode.setHint("Six-digit code shown by Sarah on Windows");
         manualCode.setInputType(InputType.TYPE_CLASS_NUMBER);
         root.addView(manualCode, fullWidth(dp(3)));
         Button manualPair = button("Pair manually and synchronize");
+        manualPair.setEnabled(false);
         manualPair.setOnClickListener(v -> manualPair());
         root.addView(manualPair, fullWidth(dp(10)));
 
@@ -119,9 +124,11 @@ public final class TrustedSyncActivity extends Activity {
         saved.setAdapter(savedAdapter);
         root.addView(saved, fullWidth(dp(3)));
         Button selected = button("Sync selected device now");
+        selected.setEnabled(false);
         selected.setOnClickListener(v -> syncSelected());
         root.addView(selected, fullWidth(dp(3)));
         Button all = button("Sync every trusted Sarah device");
+        all.setEnabled(false);
         all.setOnClickListener(v -> runWork(() -> TrustedSyncClient.syncAll(this).optString("message", "Sync completed.")));
         root.addView(all, fullWidth(dp(3)));
         Button revoke = button("Revoke selected device");
@@ -130,15 +137,17 @@ public final class TrustedSyncActivity extends Activity {
 
         refreshSaved();
         setContentView(scroll);
+        SafeAreaInsets.apply(this, scroll, null, scroll);
 
         String peerHost = getIntent().getStringExtra("peer_host");
-        if (peerHost != null && !peerHost.trim().isEmpty()) {
+        if (TrustedSyncClient.isTransportAccepted()
+                && peerHost != null && !peerHost.trim().isEmpty()) {
             String peerName = getIntent().getStringExtra("peer_name");
             int peerPort = getIntent().getIntExtra("peer_port", 8769);
             setDiscoveredPeers(java.util.Collections.singletonList(
                     new SarahDeviceDiscovery.Peer(peerHost.trim(), peerName, "", peerPort)));
             root.postDelayed(this::requestSelected, 350L);
-        } else {
+        } else if (TrustedSyncClient.isTransportAccepted()) {
             root.postDelayed(this::scanDevices, 250L);
         }
     }

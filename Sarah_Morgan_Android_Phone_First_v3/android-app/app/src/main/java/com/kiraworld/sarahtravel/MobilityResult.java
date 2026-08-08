@@ -30,7 +30,7 @@ public final class MobilityResult {
     }
 
     public static MobilityResult unconfigured() {
-        return new MobilityResult(false, false, false, "", "", "No multimodal backend configured", "");
+        return new MobilityResult(false, false, false, "", "", "Live transport comparison is not connected yet", "");
     }
 
     public static MobilityResult fromJson(JSONObject json) {

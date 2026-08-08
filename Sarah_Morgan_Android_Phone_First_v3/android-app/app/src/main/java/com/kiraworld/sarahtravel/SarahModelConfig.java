@@ -60,7 +60,7 @@ public final class SarahModelConfig {
     public static String providerLabel() {
         if ("workers-ai".equals(PROVIDER_ID)) return "Cloudflare Workers AI";
         if ("openai".equals(PROVIDER_ID)) return "OpenAI";
-        return "Team online mind";
+        return "Connected online mind";
     }
 
     public static String modelLabel() {

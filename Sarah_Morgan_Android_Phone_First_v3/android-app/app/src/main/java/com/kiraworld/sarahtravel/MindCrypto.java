@@ -25,7 +25,7 @@ public final class MindCrypto {
             return Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP) + "."
                     + Base64.encodeToString(encrypted, Base64.NO_WRAP);
         } catch (Exception e) {
-            return "";
+            throw new IllegalStateException("Private mind encryption failed; no audit row may be persisted", e);
         }
     }
 

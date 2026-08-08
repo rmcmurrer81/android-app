@@ -1,6 +1,18 @@
 # Sarah synchronization, backup and privacy
 
-Same-Wi-Fi discovery is not automatic trust. A Windows companion displays a temporary six-digit pairing code; the Android owner enters that code and explicitly approves the device. A per-device token is then used to encrypt and sign every sync payload. Pair only on a trusted private network. The prototype uses local HTTP because the payload itself is AES-GCM encrypted; a public release should add certificate pinning or a protected relay.
+## R2 current boundary
+
+Phone-to-Windows network synchronization is **not connected in the R2 owner-
+acceptance candidate**. Android refuses the preserved cleartext transport,
+Windows does not start or advertise the legacy LAN listener, and both owner
+surfaces report `Setup required`. Encryption of a payload does not authenticate
+the HTTP endpoint or protect pairing metadata, so R2 does not treat same-Wi-Fi
+discovery, a six-digit code, or local HTTP as an accepted trust boundary.
+
+The earlier same-Wi-Fi pairing/listener implementation remains in source only
+as inactive legacy/prototype evidence. It must not be described as active or
+re-enabled until a separately reviewed authenticated TLS, protected relay, or
+key-agreement design and physical two-device acceptance pass.
 
 Sync uses append-only event IDs so desktop, laptop and phone can merge rather than overwrite one another. SPOKEN may appear in history. PRIVATE MIND and FACTUAL TRUTH remain encrypted records; private mind is never rendered as ordinary chat or sent to TTS.
 
@@ -10,6 +22,9 @@ The owner can revoke any paired device. Passwords, payment-card details, booking
 
 ## Desktop + laptop + phone
 
-Android stores several separately approved Windows peers. After a reply, best-effort automatic sync can contact the desktop and laptop independently; an unavailable computer does not block the other one. Each Windows companion has its own revocable token. The phone can also run **Sync desktop and laptop now** manually.
+R2 does not perform automatic or manual network sync with a desktop or laptop.
+No inactive peer record, old token, or same-network discovery result authorizes
+a connection. The legacy multi-peer and **Sync desktop and laptop now** flows
+are preserved but disconnected pending an accepted secure transport.
 
 The encrypted Windows archive contains both the SQLite snapshot and Sarah's device encryption key. Without that key, restored private-mind and factual records would be unreadable. Google Drive receives only the already password-encrypted `.sarahmind` archive. A clean Windows installation can download the newest archive, decrypt it locally with the owner's password, restart Sarah, and then pair a replacement phone.

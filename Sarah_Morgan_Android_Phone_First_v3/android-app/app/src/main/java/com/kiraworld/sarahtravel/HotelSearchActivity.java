@@ -65,7 +65,7 @@ public final class HotelSearchActivity extends Activity {
             live.addView(TravelUi.cardTitle(this, "⚡", "Live in-app hotel comparison"));
             live.addView(TravelUi.body(this,
                     liveStatus.isEmpty()
-                            ? "Ask the team travel backend for normalized current offers using the active dates, rooms, loyalty programs and accessibility preferences."
+                            ? "Search connected current offers using the active dates, rooms, loyalty programs, and accessibility preferences."
                             : liveStatus));
             live.addView(TravelUi.primaryButton(this, "Find live hotel prices", v -> loadLiveOffers()));
             root.addView(live);
@@ -141,8 +141,8 @@ public final class HotelSearchActivity extends Activity {
         integration.addView(TravelUi.cardTitle(this, "🔌", "Live price integration status"));
         integration.addView(TravelUi.body(this,
                 TravelCommerceConfig.isConfigured()
-                        ? "A team travel-commerce backend is configured. Provider credentials stay off the phone. The separately labeled Stay22 keyless demo remains an optional traveler-initiated comparison."
-                        : "Provider links and the traveler-initiated Stay22 keyless demo work without embedding a provider secret. Dated Stay22 results may include a temporary supplier total; undated discovery never claims price or availability. Always verify the final provider checkout before paying."));
+                        ? "Live hotel comparison is available. The separately labeled Stay22 keyless demo remains an optional traveler-initiated comparison."
+                        : "Hotel-site links and the traveler-initiated Stay22 keyless demo are available. Dated Stay22 results may include a temporary supplier total; undated discovery never claims price or availability. Always verify the final checkout before paying."));
         root.addView(integration);
     }
 
@@ -211,7 +211,7 @@ public final class HotelSearchActivity extends Activity {
                 runOnUiThread(() -> {
                     liveOffers = offers;
                     liveStatus = offers.isEmpty()
-                            ? "The backend returned no matching offers. Try different dates or use the provider links below."
+                            ? "The live search returned no matching offers. Try different dates or use the hotel-site links below."
                             : "Found " + offers.size() + " current offer" + (offers.size() == 1 ? "" : "s")
                                     + ". Verify the final provider checkout before paying.";
                     render();

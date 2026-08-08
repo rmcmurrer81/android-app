@@ -1,4 +1,5 @@
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const TAVILY_SEARCH_URL = "https://api.tavily.com/search";
 const WORKERS_AI_DEFAULT_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const OPENAI_DEFAULT_MODEL = "gpt-5.1";
 const WORKER_CONTRACT_VERSION = "sarah-model-proxy-v2-workers-ai-voice";
@@ -23,7 +24,13 @@ export default {
         config_sha256: deployment.configSha256 || null,
         provider,
         model_override: configuredModel(provider, env) || null,
+        current_source_ready: provider === "openai"
+          ? Boolean(env.OPENAI_API_KEY)
+          : Boolean(env.TAVILY_API_KEY),
         voice_ready: Boolean(env.ELEVENLABS_API_KEY && cleanVoiceId(env.SARAH_ELEVENLABS_VOICE_ID)),
+        route_rate_limits_ready: Boolean(
+          env.MODEL_RATE_LIMITER && env.SEARCH_RATE_LIMITER && env.VOICE_RATE_LIMITER
+        ),
         online: true,
       }, 200);
     }
@@ -72,11 +79,20 @@ export default {
     }
 
     if (url.pathname === "/voice") {
+      const limited = await routeRateLimit(env, "VOICE_RATE_LIMITER", "voice");
+      if (limited) return limited;
       return runElevenLabs(env, body);
+    }
+    if (url.pathname === "/search") {
+      const limited = await routeRateLimit(env, "SEARCH_RATE_LIMITER", "search");
+      if (limited) return limited;
+      return runProtectedSearch(env, body);
     }
     if (url.pathname !== "/") {
       return json({ error: "not_found" }, 404);
     }
+    const limited = await routeRateLimit(env, "MODEL_RATE_LIMITER", "conversation");
+    if (limited) return limited;
 
     const requestedProvider = cleanProvider(body.provider);
     const selectedProvider = cleanProvider(env.SARAH_MODEL_PROVIDER)
@@ -88,6 +104,7 @@ export default {
 
     const message = boundedText(body.message, MAX_TEXT_CHARS);
     if (!message) return json({ error: "message_required" }, 400);
+    const searchQuery = boundedText(body.search_query, 2_000) || message;
 
     const requestedModel = cleanModel(body.model);
     const model = configuredModel(selectedProvider, env)
@@ -101,6 +118,9 @@ export default {
     }
 
     if (selectedProvider === "workers-ai") {
+      const webEvidence = body.web_search === true && env.TAVILY_API_KEY
+        ? await runTavilySearch(env, searchQuery)
+        : emptyWebEvidence();
       return runWorkersAi(env, {
         model,
         instructions,
@@ -108,6 +128,8 @@ export default {
         message,
         imageBase64,
         webSearchRequested: body.web_search === true,
+        searchQuery,
+        webEvidence,
       });
     }
     if (selectedProvider === "openai") {
@@ -118,11 +140,32 @@ export default {
         message,
         imageBase64,
         webSearchRequested: body.web_search === true,
+        searchQuery,
       });
     }
     return json({ error: "unsupported_provider", provider: selectedProvider }, 400);
   },
 };
+
+async function routeRateLimit(env, bindingName, route) {
+  const binding = env[bindingName];
+  // Source-only unit fixtures have no deployment identity. Every exact
+  // accepted candidate is identity-bound and therefore fails closed if a
+  // declared limiter is absent at runtime.
+  if (!binding || typeof binding.limit !== "function") {
+    if (deploymentIdentity(env).ready) {
+      return json({ error: "rate_limiter_unavailable", route }, 503);
+    }
+    return null;
+  }
+  try {
+    const result = await binding.limit({ key: `sarah-r2-candidate:${route}` });
+    if (result && result.success) return null;
+    return json({ error: "rate_limited", route }, 429, { "Retry-After": "60" });
+  } catch {
+    return json({ error: "rate_limiter_unavailable", route }, 503);
+  }
+}
 
 async function runElevenLabs(env, body) {
   const configuredVoice = cleanVoiceId(env.SARAH_ELEVENLABS_VOICE_ID);
@@ -195,10 +238,31 @@ async function runElevenLabs(env, body) {
   });
 }
 
+async function runProtectedSearch(env, body) {
+  if (!env.TAVILY_API_KEY) {
+    return json({ error: "current_source_not_configured" }, 503);
+  }
+  const query = boundedText(body.query, 2_000);
+  if (!query) return json({ error: "query_required" }, 400);
+  const limit = Math.max(1, Math.min(8, Number(body.max_results) || 5));
+  const evidence = await runTavilySearch(env, query, limit);
+  if (!evidence.applied) {
+    return json({ error: "current_source_unavailable" }, 502);
+  }
+  return json({
+    provider: "tavily",
+    web_search_applied: true,
+    web_search_request_id: evidence.requestId || undefined,
+    results: evidence.results,
+  }, 200);
+}
+
 async function runWorkersAi(env, request) {
   const messages = [];
   let instructions = request.instructions;
-  if (request.webSearchRequested) {
+  if (request.webSearchRequested && request.webEvidence.applied) {
+    instructions = `${instructions}\nCURRENT SOURCE EVIDENCE (Tavily basic search; use only these snippets and preserve uncertainty):\n${request.webEvidence.context}`.trim();
+  } else if (request.webSearchRequested) {
     instructions = `${instructions}\nNo live web-search result is attached to this model request. Do not claim current research, prices, availability, or a completed booking.`.trim();
   }
   if (instructions) messages.push({ role: "system", content: instructions });
@@ -236,8 +300,61 @@ async function runWorkersAi(env, request) {
     provider: "workers-ai",
     model: request.model,
     online: true,
-    web_search_applied: false,
+    web_search_requested: request.webSearchRequested,
+    web_search_applied: request.webEvidence.applied,
+    source_urls: request.webEvidence.sourceUrls,
+    web_search_provider: request.webEvidence.applied ? "tavily" : null,
+    web_search_request_id: request.webEvidence.requestId || undefined,
   }, 200);
+}
+
+async function runTavilySearch(env, query, requestedLimit = 5) {
+  try {
+    const upstream = await fetch(TAVILY_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.TAVILY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        search_depth: "basic",
+        max_results: Math.max(1, Math.min(8, Number(requestedLimit) || 5)),
+        include_answer: false,
+        include_raw_content: false,
+        include_images: false,
+      }),
+    });
+    if (!upstream.ok) return emptyWebEvidence();
+    const data = await upstream.json();
+    const results = Array.isArray(data && data.results) ? data.results : [];
+    const sourceUrls = [];
+    const evidenceRows = [];
+    const safeResults = [];
+    for (const result of results.slice(0, Math.max(1, Math.min(8, Number(requestedLimit) || 5)))) {
+      const url = boundedText(result && result.url, 2_000);
+      const title = boundedText(result && result.title, 240);
+      const content = boundedText(result && result.content, 1_200);
+      if (!url.startsWith("https://") || !content) continue;
+      if (!sourceUrls.includes(url)) sourceUrls.push(url);
+      evidenceRows.push(`[${evidenceRows.length + 1}] ${title || "Source"}\nURL: ${url}\nSnippet: ${content}`);
+      safeResults.push({ title: title || "Possible travel match", url, summary: content });
+    }
+    if (sourceUrls.length === 0 || evidenceRows.length === 0) return emptyWebEvidence();
+    return {
+      applied: true,
+      sourceUrls,
+      context: evidenceRows.join("\n\n"),
+      requestId: boundedText(data && data.request_id, 160),
+      results: safeResults,
+    };
+  } catch {
+    return emptyWebEvidence();
+  }
+}
+
+function emptyWebEvidence() {
+  return { applied: false, sourceUrls: [], context: "", requestId: "", results: [] };
 }
 
 async function runOpenAi(env, request) {
@@ -254,10 +371,13 @@ async function runOpenAi(env, request) {
   }
   input.push({ role: "user", content: currentContent });
 
+  const sourceContext = request.webSearchRequested && request.searchQuery
+    ? `\nCURRENT SOURCE SEARCH CONTEXT: ${request.searchQuery}`
+    : "";
   const payload = {
     model: request.model,
     store: false,
-    instructions: request.instructions,
+    instructions: `${request.instructions || ""}${sourceContext}`.trim(),
     input,
     max_output_tokens: maxOutputTokens(env.SARAH_MAX_OUTPUT_TOKENS),
   };
@@ -299,13 +419,55 @@ async function runOpenAi(env, request) {
 
   const reply = extractOpenAiReply(upstreamJson);
   if (!reply) return json({ error: "empty_model_reply" }, 502);
+  const webEvidence = extractOpenAiWebEvidence(upstreamJson, request.webSearchRequested);
   return json({
     reply,
     provider: "openai",
     model: request.model,
     online: true,
+    web_search_requested: request.webSearchRequested,
+    web_search_applied: webEvidence.applied,
+    source_urls: webEvidence.sourceUrls,
     request_id: upstream.headers.get("x-request-id") || undefined,
   }, 200);
+}
+
+function extractOpenAiWebEvidence(response, requested) {
+  if (!requested || !response || !Array.isArray(response.output)) {
+    return { applied: false, sourceUrls: [] };
+  }
+  const completedCalls = response.output.filter((item) => item
+    && item.type === "web_search_call"
+    && item.status === "completed");
+  if (completedCalls.length === 0) {
+    return { applied: false, sourceUrls: [] };
+  }
+  const urls = [];
+  for (const item of response.output) {
+    if (!item || item.type !== "message" || !Array.isArray(item.content)) continue;
+    for (const content of item.content) {
+      if (!content || !Array.isArray(content.annotations)) continue;
+      for (const annotation of content.annotations) {
+        if (annotation && annotation.type === "url_citation") {
+          addHttpsUrl(annotation.url, urls);
+        }
+      }
+    }
+  }
+  // Some Responses API web-search calls expose the actual tool sources directly.
+  // Inspect only that explicit evidence field, never arbitrary URL-looking model output.
+  for (const call of completedCalls) {
+    const sources = call.action && Array.isArray(call.action.sources)
+      ? call.action.sources
+      : [];
+    for (const source of sources) addHttpsUrl(source && source.url, urls);
+  }
+  return { applied: completedCalls.length > 0 && urls.length > 0, sourceUrls: urls.slice(0, 20) };
+}
+
+function addHttpsUrl(value, output) {
+  if (typeof value !== "string" || !value.startsWith("https://") || output.length >= 20) return;
+  if (!output.includes(value)) output.push(value);
 }
 
 function normalizeHistory(value, currentMessage) {

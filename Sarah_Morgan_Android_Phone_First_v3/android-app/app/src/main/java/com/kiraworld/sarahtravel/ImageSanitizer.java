@@ -40,4 +40,46 @@ public final class ImageSanitizer {
         try (FileOutputStream out = new FileOutputStream(file)) { out.write(bytes); }
         return new Result(bytes, file);
     }
+
+    /** Re-decodes pixels and re-encodes a bounded JPEG; EXIF and location metadata are not copied. */
+    public static byte[] syncDerivative(File source) throws Exception {
+        if (source == null || !source.isFile()) {
+            throw new IllegalArgumentException("Sync photo source is unavailable");
+        }
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(source.getAbsolutePath(), bounds);
+        if (bounds.outWidth < 1 || bounds.outHeight < 1) {
+            throw new IllegalArgumentException("Sync photo pixels could not be decoded");
+        }
+        int sample = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / sample
+                > SyncPhotoPolicy.MAX_DIMENSION * 2) sample *= 2;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        Bitmap decoded = BitmapFactory.decodeFile(source.getAbsolutePath(), options);
+        if (decoded == null) throw new IllegalArgumentException("Sync photo pixels could not be decoded");
+        Bitmap output = decoded;
+        int max = Math.max(decoded.getWidth(), decoded.getHeight());
+        if (max > SyncPhotoPolicy.MAX_DIMENSION) {
+            float scale = SyncPhotoPolicy.MAX_DIMENSION / (float) max;
+            output = Bitmap.createScaledBitmap(
+                    decoded,
+                    Math.max(1, Math.round(decoded.getWidth() * scale)),
+                    Math.max(1, Math.round(decoded.getHeight() * scale)),
+                    true);
+        }
+        try {
+            for (int quality : new int[]{82, 72, 62, 52}) {
+                ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+                if (!output.compress(Bitmap.CompressFormat.JPEG, quality, encoded)) continue;
+                byte[] bytes = encoded.toByteArray();
+                if (bytes.length <= SyncPhotoPolicy.MAX_DERIVATIVE_BYTES) return bytes;
+            }
+            throw new IllegalArgumentException("Sanitized sync derivative exceeded the size limit");
+        } finally {
+            if (output != decoded) output.recycle();
+            decoded.recycle();
+        }
+    }
 }

@@ -12,19 +12,27 @@ public final class ConversationModePolicyTest {
                 ConversationModePolicy.route(ConversationModePolicy.MODE_LOCAL_ONLY, true, true));
 
         String publicOnline = ConversationModePolicy.statusLabel(
-                ConversationModePolicy.MODE_AUTO, true, false, false);
-        require(publicOnline.contains("Public web online"),
-                "internet without the team model must advertise public web access instead of implying total offline mode");
-        require(publicOnline.contains("online mind not included in this build"),
-                "status must explain that the team build, not the app user, controls online-mind availability");
+                ConversationModePolicy.MODE_AUTO, true, false, false, false);
+        require(publicOnline.contains("Online unavailable"),
+                "validated internet without a configured conversation route must not claim online readiness");
+
+        String configuredOnly = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, true, false, false);
+        require(configuredOnly.contains("configured") && configuredOnly.contains("verifying"),
+                "network plus configuration must not be mistaken for a proven backend route");
 
         String smartOnline = ConversationModePolicy.statusLabel(
-                ConversationModePolicy.MODE_AUTO, true, true, false);
-        require(smartOnline.contains("Online mind connected"),
-                "a team-connected build must identify the protected online mind as active");
+                ConversationModePolicy.MODE_AUTO, true, true, false, true);
+        require(smartOnline.contains("verified by a recent connected reply"),
+                "online readiness requires a real successful connected reply");
+
+        String failedOnline = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, true, true, false);
+        require(failedOnline.contains("next turn will retry"),
+                "a validated network callback must not erase a recorded backend failure");
 
         String offline = ConversationModePolicy.statusLabel(
-                ConversationModePolicy.MODE_AUTO, false, false, false);
+                ConversationModePolicy.MODE_AUTO, false, false, false, false);
         require(offline.contains("offline"), "no internet must remain clearly offline");
 
         System.out.println("ConversationModePolicyTest passed");

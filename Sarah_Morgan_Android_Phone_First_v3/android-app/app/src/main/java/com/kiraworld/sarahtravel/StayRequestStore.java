@@ -86,6 +86,16 @@ public final class StayRequestStore extends SQLiteOpenHelper {
         getWritableDatabase().delete("stay_requests", "id=?", new String[]{String.valueOf(id)});
     }
 
+    public void moveProfile(String oldPersonId, String newPersonId, String confirmedName) {
+        String oldId = clean(oldPersonId);
+        String newId = clean(newPersonId);
+        if (oldId.isEmpty() || newId.isEmpty() || oldId.equals(newId)) return;
+        ContentValues values = new ContentValues();
+        values.put("person_id", newId);
+        if (!clean(confirmedName).isEmpty()) values.put("person_name", clean(confirmedName));
+        getWritableDatabase().update("stay_requests", values, "person_id=?", new String[]{oldId});
+    }
+
     private List<Map<String, String>> rows(String where, String[] args, int limit) {
         List<Map<String, String>> rows = new ArrayList<>();
         String sql = "SELECT id,person_id,person_name,trip_key,hotel_name,category,title,detail,priority,status,created_at,updated_at "

@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -15,7 +16,8 @@ public final class DemoSarah {
 
     public static String reply(String message, Map<String, String> profile, boolean photoIncluded) {
         return reply(message, profile, photoIncluded,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
     }
 
     public static String reply(
@@ -27,7 +29,8 @@ public final class DemoSarah {
             List<Map<String, String>> trips,
             List<Map<String, String>> wishes) {
         return reply(message, profile, photoIncluded,
-                history, memories, trips, wishes, List.of(), List.of());
+                history, memories, trips, wishes,
+                Collections.emptyList(), Collections.emptyList());
     }
 
     public static String reply(
@@ -40,20 +43,34 @@ public final class DemoSarah {
             List<Map<String, String>> wishes,
             List<Map<String, String>> knowledgePacks,
             List<Map<String, String>> dealWatches) {
+        return reply(
+                message, profile, photoIncluded, history, memories, trips, wishes,
+                knowledgePacks, dealWatches, TurnRoute.OFFLINE_LOCAL);
+    }
+
+    public static String reply(
+            String message,
+            Map<String, String> profile,
+            boolean photoIncluded,
+            List<Map<String, String>> history,
+            List<Map<String, String>> memories,
+            List<Map<String, String>> trips,
+            List<Map<String, String>> wishes,
+            List<Map<String, String>> knowledgePacks,
+            List<Map<String, String>> dealWatches,
+            String authoritativeTurnRoute) {
 
         String safe = message == null ? "" : message.trim();
         String lower = safe.toLowerCase(Locale.US);
         String name = firstName(profile.getOrDefault("name", profile.getOrDefault("active_speaker", "there")));
 
-        if (photoIncluded) {
-            return "I saved a privacy-cleaned copy of the photo. If the team online mind is included, I can inspect the image itself. Otherwise I can still keep its caption with the trip and show public media for the place.";
-        }
+        String exactTuringAnswer = OfflineTuringPolicy.answer(
+                safe, profile, authoritativeTurnRoute);
+        if (!exactTuringAnswer.isEmpty()) return exactTuringAnswer;
 
-        String publicAnswer = PublicOnlineFallback.answer(
-                SarahApplication.appContext(),
-                safe,
-                history);
-        if (publicAnswer != null && !publicAnswer.trim().isEmpty()) return publicAnswer.trim();
+        if (photoIncluded) {
+            return "I saved a privacy-cleaned copy of the photo. This offline reply has not visually inspected it; I can keep its caption with the trip without pretending I saw details.";
+        }
 
         String timedTrip = TimedTripCoordinator.handle(
                 SarahApplication.appContext(), safe, profile, memories);
@@ -99,7 +116,14 @@ public final class DemoSarah {
         }
 
         if (asksAboutMode(lower)) {
-            return "Automatic mode uses the team-selected protected online mind when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key. The airplane icon opens a separate flight companion that is fully local.";
+            if (TurnRoute.ONLINE_FAILED_FELL_BACK_OFFLINE.equals(authoritativeTurnRoute)) {
+                return "The online mind was attempted for this message but did not answer, so this reply is from my offline mind. I can use saved conversation and destination knowledge, but I cannot claim current web research for this turn. I’ll retry online automatically on your next message.";
+            }
+            if (TurnRoute.OFFLINE_LOCAL.equals(authoritativeTurnRoute)) {
+                return "This reply is from my offline mind. I can continue the conversation, use saved knowledge, and run the installed calming and trivia tools, but I cannot verify current prices, events, schedules, or web information in this mode.";
+            }
+            return "The application recorded this reply route as " + TurnRoute.sourceLabel(authoritativeTurnRoute)
+                    + ". I only describe the route the application actually used for this message.";
         }
 
         if (isFrustratedOrHostile(lower)) {
@@ -125,8 +149,14 @@ public final class DemoSarah {
             return "I’m good—curious, present, and ready to follow the conversation wherever you take it.";
         }
 
-        if (lower.contains("tell me about yourself") || lower.contains("who are you")) {
+        if (lower.contains("tell me about yourself") || lower.contains("who are you")
+                || lower.contains("what is your name") || lower.contains("what's your name")) {
             return "I’m Sarah Morgan, a travel companion and general conversational companion. I can keep separate profiles on a shared phone, remember approved details for the right person, organize unfamiliar trips, use public sources while online, show maps and media, support someone during travel anxiety, and keep talking when the connection disappears.";
+        }
+
+        if (lower.matches(".*\\bwho am i\\b.*")) {
+            return "You are " + profile.getOrDefault("name", name)
+                    + ", the person whose separate profile is active for this conversation. I will not mix it with another person’s profile.";
         }
 
         if (lower.contains("what do you know about me") || lower.contains("what do you remember") || lower.contains("remember about me")) {
@@ -167,14 +197,14 @@ public final class DemoSarah {
         }
 
         if (safe.endsWith("?")) {
-            return "I do not have enough reliable local knowledge to answer that accurately. I can use selected public sources while online, and the team online mind can handle broader questions when its connection is present. I won’t invent an answer.";
+            return "I do not have enough reliable saved knowledge to answer that accurately. I can use supported public sources while online, and broader questions can use my connected mind when it is available. I won’t invent an answer.";
         }
 
         if (!safe.isEmpty()) {
             return pick(safe,
-                    "Okay. I’m listening—go on.",
-                    "I’m with you. We can stay with this subject.",
-                    "Understood. I’ll follow your lead.");
+                    "I have that. I won’t turn it into a trip, watch, or saved fact unless you ask me to.",
+                    "I understand the detail you gave me. Continue whenever you’re ready.",
+                    "I’m following this conversation without starting background work.");
         }
         return "I’m here, " + name + ".";
     }
@@ -215,7 +245,10 @@ public final class DemoSarah {
     }
 
     private static boolean asksAboutMode(String lower) {
-        return containsAny(lower, "offline mode", "online mode", "smart mode", "local mode", "automatic mode", "switch mode", "change mode", "openai");
+        return containsAny(lower,
+                "offline mode", "online mode", "smart mode", "local mode", "automatic mode",
+                "switch mode", "change mode", "online or offline", "offline or online",
+                "are you online", "are you offline", "what mode are you", "which mode", "openai");
     }
 
     private static boolean asksForGeneralTravelHelp(String lower) {

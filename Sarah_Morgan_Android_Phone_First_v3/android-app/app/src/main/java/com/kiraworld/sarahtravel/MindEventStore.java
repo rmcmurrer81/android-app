@@ -5,6 +5,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -14,6 +15,7 @@ import java.util.UUID;
 /** Append-only three-channel event ledger. Private and factual fields are encrypted. */
 public final class MindEventStore extends SQLiteOpenHelper {
     private static final String DB = "sarah_mind_events.db";
+    private static final String TAG = "SarahMindEventStore";
     public MindEventStore(Context context) { super(context, DB, null, 1); }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -36,6 +38,10 @@ public final class MindEventStore extends SQLiteOpenHelper {
             values.put("device_id", TrustedDeviceStore.localDeviceId(context));
             values.put("created_at", System.currentTimeMillis());
             store.getWritableDatabase().insertOrThrow("mind_events", null, values);
+        } catch (RuntimeException failure) {
+            // MindCrypto throws before insertion. Preserve fail-closed storage
+            // without crashing the owner-visible conversation.
+            Log.e(TAG, "Private mind event was not persisted", failure);
         } finally { store.close(); }
     }
 
@@ -62,6 +68,17 @@ public final class MindEventStore extends SQLiteOpenHelper {
             }
         }
         return result;
+    }
+
+    public void relabelPlaceholderSpeakers(String confirmedName) {
+        if (!ProfileMigrationPolicy.isConfirmedDisplayName(confirmedName)) return;
+        ContentValues values = new ContentValues();
+        values.put("speaker", confirmedName);
+        getWritableDatabase().update(
+                "mind_events",
+                values,
+                "lower(replace(trim(speaker),' ','')) IN ('phoneowner','thephoneowner')",
+                null);
     }
 
     private static String safe(String value) { return value == null ? "" : value; }

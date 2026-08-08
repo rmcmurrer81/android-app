@@ -3,6 +3,9 @@ package com.kiraworld.sarahtravel;
 import android.content.Context;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
+
+import java.security.MessageDigest;
 
 /** Small encrypted vehicle profile used for estimates and stop pacing. */
 public final class RoadTripProfileStore {
@@ -72,6 +75,59 @@ public final class RoadTripProfileStore {
             json.put("notes", vehicle.notes);
         } catch (Exception ignored) { }
         SecureProfileVault.put(context, NAMESPACE, personId, json.toString());
+    }
+
+    public static boolean moveProfile(Context context, String oldPersonId, String newPersonId) {
+        String prior = SecureProfileVault.get(context, NAMESPACE, oldPersonId);
+        if (prior.isEmpty() || oldPersonId.equals(newPersonId)) return true;
+        String confirmed = SecureProfileVault.get(context, NAMESPACE, newPersonId);
+        if (confirmed.isEmpty()) {
+            return SecureProfileVault.moveIfTargetEmpty(
+                    context, NAMESPACE, oldPersonId, newPersonId);
+        }
+        if (confirmed.equals(prior)) {
+            SecureProfileVault.remove(context, NAMESPACE, oldPersonId);
+            return SecureProfileVault.get(context, NAMESPACE, oldPersonId).isEmpty();
+        }
+        try {
+            JSONObject merged = new JSONObject(confirmed);
+            JSONArray conflicts = merged.optJSONArray("migrated_profile_conflicts");
+            if (conflicts == null) conflicts = new JSONArray();
+            String fingerprint = sha256(prior);
+            boolean exists = false;
+            for (int index = 0; index < conflicts.length(); index++) {
+                if (fingerprint.equals(conflicts.optJSONObject(index) == null ? ""
+                        : conflicts.optJSONObject(index).optString("sha256", ""))) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                JSONObject conflict = new JSONObject();
+                conflict.put("sha256", fingerprint);
+                conflict.put("source_person_id", oldPersonId);
+                try { conflict.put("record", new JSONObject(prior)); }
+                catch (Exception malformed) { conflict.put("raw_record", prior); }
+                conflicts.put(conflict);
+            }
+            merged.put("migrated_profile_conflicts", conflicts);
+            String output = merged.toString();
+            if (SecureProfileVault.putVerified(context, NAMESPACE, newPersonId, output)) {
+                SecureProfileVault.remove(context, NAMESPACE, oldPersonId);
+                return SecureProfileVault.get(context, NAMESPACE, oldPersonId).isEmpty();
+            }
+        } catch (Exception ignored) {
+            // Preserve both records; a failed merge must never erase the placeholder record.
+        }
+        return false;
+    }
+
+    private static String sha256(String value) throws Exception {
+        byte[] bytes = MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        StringBuilder out = new StringBuilder();
+        for (byte item : bytes) out.append(String.format("%02x", item));
+        return out.toString();
     }
 
     private static String trim(double value) {

@@ -13,6 +13,12 @@ import java.util.Map;
 public final class ConnectedModelGateway {
     private ConnectedModelGateway() { }
 
+    /** Cancels only the exact worker thread that owns the timed-out attempt. */
+    public static void cancel(Thread worker) {
+        SarahBackendClient.cancel(worker);
+        OpenAIClient.cancel(worker);
+    }
+
     public static String respond(
             String providerId,
             String apiKey,
@@ -22,12 +28,41 @@ public final class ConnectedModelGateway {
             String message,
             boolean webSearch,
             byte[] imageJpeg) throws Exception {
+        return respondDetailed(
+                providerId, apiKey, model, systemPrompt, history,
+                message, webSearch, imageJpeg).reply;
+    }
+
+    public static ConnectedModelResponse respondDetailed(
+            String providerId,
+            String apiKey,
+            String model,
+            String systemPrompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean webSearch,
+            byte[] imageJpeg) throws Exception {
+        return respondDetailed(
+                providerId, apiKey, model, systemPrompt, history, message,
+                webSearch, message, imageJpeg);
+    }
+
+    public static ConnectedModelResponse respondDetailed(
+            String providerId,
+            String apiKey,
+            String model,
+            String systemPrompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean webSearch,
+            String searchQuery,
+            byte[] imageJpeg) throws Exception {
         String normalized = providerId == null ? SarahModelConfig.PROVIDER_ID : providerId.trim().toLowerCase(Locale.US);
-        boolean effectiveWebSearch = webSearch || LiveTravelIntent.needsCurrentSources(message);
+        boolean effectiveWebSearch = webSearch;
 
         String backend = SarahModelConfig.backendUrl();
         if (!backend.isEmpty()) {
-            return SarahBackendClient.respond(
+            return SarahBackendClient.respondDetailed(
                     backend,
                     normalized,
                     model,
@@ -35,6 +70,7 @@ public final class ConnectedModelGateway {
                     history,
                     message,
                     effectiveWebSearch,
+                    searchQuery,
                     imageJpeg);
         }
 
@@ -44,12 +80,14 @@ public final class ConnectedModelGateway {
                     : apiKey.trim();
             if (effectiveKey.isEmpty()) {
                 throw new IllegalStateException(
-                        "The team OpenAI connection is not present in this build. Public lookup and Local mode remain available.");
+                        "The connected mind is not available in this build. Supported public lookups and offline conversation remain available.");
             }
-            return OpenAIClient.respond(
+            return OpenAIClient.respondDetailed(
                     effectiveKey,
                     model == null || model.trim().isEmpty() ? SarahModelConfig.MODEL_ID : model.trim(),
-                    systemPrompt,
+                    effectiveWebSearch && searchQuery != null && !searchQuery.trim().isEmpty()
+                            ? systemPrompt + "\nCURRENT SOURCE SEARCH CONTEXT: " + searchQuery.trim()
+                            : systemPrompt,
                     history,
                     message,
                     effectiveWebSearch,
@@ -60,10 +98,9 @@ public final class ConnectedModelGateway {
                 || "cloudflare".equals(normalized)
                 || "cloudflare-workers-ai".equals(normalized)) {
             throw new IllegalStateException(
-                    "Cloudflare Workers AI requires Sarah's protected team backend. Public lookup and Local mode remain available.");
+                    "Sarah’s connected mind is unavailable. Supported public lookups and offline conversation remain available.");
         }
 
-        throw new IllegalArgumentException(
-                "Connected provider '" + normalized + "' is not installed. See README.md for the exact adapter files to change.");
+        throw new IllegalArgumentException("The selected connected conversation is unavailable.");
     }
 }

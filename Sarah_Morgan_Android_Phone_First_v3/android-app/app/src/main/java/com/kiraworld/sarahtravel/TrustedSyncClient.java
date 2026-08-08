@@ -13,10 +13,24 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public final class TrustedSyncClient {
+    private static final int MAX_RESPONSE_BYTES = 8_000_000;
     private TrustedSyncClient() {}
+
+    /**
+     * R2 deliberately ships trusted-device transport disabled. The preserved
+     * HTTP prototype reused its bearer token as payload key material and did
+     * not yet provide TLS or an authenticated key agreement.
+     */
+    public static boolean isTransportAccepted() { return false; }
+
+    private static void requireAcceptedTransport() {
+        throw new SecurityException(
+                "Trusted device sync is disabled until a TLS or authenticated key-agreement transport is accepted.");
+    }
 
     /** Manual six-digit fallback retained for networks where UDP discovery is blocked. */
     public static String pair(Context context, String host, String code) throws Exception {
+        requireAcceptedTransport();
         host = cleanHost(host);
         JSONObject body = identity(context);
         body.put("code", code == null ? "" : code.trim());
@@ -35,8 +49,12 @@ public final class TrustedSyncClient {
             String host,
             int port,
             String verificationCode) throws Exception {
+        requireAcceptedTransport();
         String peer = cleanHost(host);
-        if (port > 0 && port != 8769 && !peer.contains(":")) peer = peer + ":" + port;
+        if (port > 0 && port != TrustedLanEndpointPolicy.PORT) {
+            throw new IllegalArgumentException(
+                    "Trusted Sarah sync uses only LAN port " + TrustedLanEndpointPolicy.PORT + ".");
+        }
         JSONObject body = identity(context);
         body.put("verification_code", verificationCode);
         JSONObject requested = post(baseUrl(peer) + "/pair/request", body.toString(), "");
@@ -70,6 +88,7 @@ public final class TrustedSyncClient {
     }
 
     public static JSONObject syncHost(Context context, String host) throws Exception {
+        requireAcceptedTransport();
         host = cleanHost(host);
         String token = TrustedDeviceStore.tokenFor(context, host);
         if (host.isEmpty() || token.isEmpty()) throw new IllegalStateException("Approve and pair this Sarah device first.");
@@ -98,6 +117,15 @@ public final class TrustedSyncClient {
     public static JSONObject syncAll(Context context) {
         JSONArray successes = new JSONArray();
         JSONArray failures = new JSONArray();
+        if (!isTransportAccepted()) {
+            JSONObject disabled = new JSONObject();
+            try {
+                disabled.put("successes", successes);
+                disabled.put("failures", failures);
+                disabled.put("message", "Device sync is disabled in this R2 candidate; secure transport setup is required.");
+            } catch (Exception ignored) { }
+            return disabled;
+        }
         for (String host : TrustedDeviceStore.hosts(context)) {
             try {
                 JSONObject result = syncHost(context, host);
@@ -124,7 +152,8 @@ public final class TrustedSyncClient {
     }
 
     public static void syncAllAsync(Context context) {
-        if (!TrustedDeviceStore.hasPeers(context)
+        if (!isTransportAccepted()
+                || !TrustedDeviceStore.hasPeers(context)
                 || !context.getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE)
                 .getBoolean("auto_device_sync", true)) return;
         Context app = context.getApplicationContext();
@@ -142,16 +171,12 @@ public final class TrustedSyncClient {
     }
 
     private static String cleanHost(String host) {
-        String value = host == null ? "" : host.trim();
-        value = value.replaceFirst("^https?://", "");
-        while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
-        return value;
+        return TrustedLanEndpointPolicy.requireLocalHost(host);
     }
 
     private static String baseUrl(String host) {
-        host = cleanHost(host);
-        if (host.isEmpty()) throw new IllegalArgumentException("A Sarah device address is required.");
-        return "http://" + (host.contains(":") ? host : host + ":8769");
+        requireAcceptedTransport();
+        return "";
     }
 
     private static JSONObject post(String endpoint, String body, String token) throws Exception {
@@ -166,18 +191,31 @@ public final class TrustedSyncClient {
             output.write(body.getBytes(StandardCharsets.UTF_8));
         }
         int status = connection.getResponseCode();
+        if (connection.getContentLengthLong() > MAX_RESPONSE_BYTES) {
+            connection.disconnect();
+            throw new IllegalStateException("Trusted device response exceeded the bounded response limit.");
+        }
         InputStream stream = status >= 200 && status < 300
                 ? connection.getInputStream() : connection.getErrorStream();
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        if (stream != null) {
-            try (InputStream input = stream) {
-                byte[] buffer = new byte[8192];
-                int count;
-                while ((count = input.read(buffer)) >= 0) bytes.write(buffer, 0, count);
+        try {
+            if (stream != null) {
+                try (InputStream input = stream) {
+                    byte[] buffer = new byte[8192];
+                    int count;
+                    while ((count = input.read(buffer)) >= 0) {
+                        if (bytes.size() + count > MAX_RESPONSE_BYTES) {
+                            throw new IllegalStateException(
+                                    "Trusted device response exceeded the bounded response limit.");
+                        }
+                        bytes.write(buffer, 0, count);
+                    }
+                }
             }
+        } finally {
+            connection.disconnect();
         }
-        connection.disconnect();
-        String response = bytes.toString(StandardCharsets.UTF_8);
+        String response = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
         if (status < 200 || status >= 300) {
             String detail = response;
             try { detail = new JSONObject(response).optString("error", response); }

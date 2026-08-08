@@ -1,5 +1,8 @@
 package com.kiraworld.sarahtravel;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -9,14 +12,14 @@ import java.util.regex.Pattern;
 public final class IdentityIntent {
     private static final Pattern CORRECTED_NAME = Pattern.compile(
             "(?i)^(?:(?:no|actually|sorry|wait)[,! ]+)?(?:I['’]?m|I am|this is|my name is)\\s+([A-Za-z][A-Za-z'’-]{1,30})(?:\\b.*)?$");
-    private static final Set<String> STATES = Set.of(
+    private static final Set<String> STATES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "tired", "hungry", "scared", "worried", "nervous", "fine", "good",
             "great", "okay", "ok", "sad", "happy", "sick", "cold", "hot",
             "bored", "lost", "confused", "ready", "here", "back", "going",
             "thinking", "planning", "trying", "working", "watching", "looking",
             "visiting", "traveling", "travelling", "stressed", "stressing",
             "stress", "anxious", "afraid", "panicking", "panicked", "overwhelmed",
-            "upset", "uncomfortable", "shaking", "terrified", "uneasy");
+            "upset", "uncomfortable", "shaking", "terrified", "uneasy")));
 
     private IdentityIntent() { }
 

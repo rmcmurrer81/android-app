@@ -7,14 +7,22 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class SarahTts implements TextToSpeech.OnInitListener {
     public interface Listener {
         void onReady(String voiceName);
         void onUnavailable();
+    }
+    public interface SpeechListener {
+        void onStart(long startedAt);
+        void onDone(long completedAt);
+        void onError(long failedAt, String reason);
     }
 
     private final TextToSpeech tts;
@@ -24,9 +32,11 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
     private boolean ready;
     private float rate = 0.95f;
     private String pendingText = "";
+    private SpeechListener pendingSpeechListener;
+    private final Map<String, SpeechListener> speechListeners = new ConcurrentHashMap<>();
     private OfflineSongCatalog.Song pendingSong;
     private Runnable pendingSongComplete;
-    private List<OfflineSongCatalog.Line> songLines = List.of();
+    private List<OfflineSongCatalog.Line> songLines = Collections.emptyList();
     private int songIndex;
     private long songGeneration;
     private String activeSongPrefix = "";
@@ -58,19 +68,36 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
         tts.setSpeechRate(rate);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override
-            public void onStart(String utteranceId) { }
+            public void onStart(String utteranceId) {
+                SpeechListener progress = speechListeners.get(utteranceId);
+                if (progress != null) progress.onStart(System.currentTimeMillis());
+            }
 
             @Override
             public void onDone(String utteranceId) {
                 if (utteranceId != null && utteranceId.startsWith(activeSongPrefix)) {
                     mainHandler.post(SarahTts.this::speakNextSongLine);
                 }
+                SpeechListener progress = speechListeners.remove(utteranceId);
+                if (progress != null) progress.onDone(System.currentTimeMillis());
             }
 
             @Override
             public void onError(String utteranceId) {
                 if (utteranceId != null && utteranceId.startsWith(activeSongPrefix)) {
                     mainHandler.post(SarahTts.this::finishSong);
+                }
+                SpeechListener progress = speechListeners.remove(utteranceId);
+                if (progress != null) progress.onError(System.currentTimeMillis(), "android_tts_error");
+            }
+
+            @Override
+            public void onStop(String utteranceId, boolean interrupted) {
+                SpeechListener progress = speechListeners.remove(utteranceId);
+                if (progress != null) {
+                    progress.onError(
+                            System.currentTimeMillis(),
+                            interrupted ? "android_tts_interrupted" : "android_tts_stopped");
                 }
             }
         });
@@ -100,8 +127,10 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
             sing(queuedSong, queuedComplete);
         } else if (!pendingText.isEmpty()) {
             String queued = pendingText;
+            SpeechListener queuedListener = pendingSpeechListener;
             pendingText = "";
-            speak(queued);
+            pendingSpeechListener = null;
+            speak(queued, queuedListener);
         }
     }
 
@@ -111,14 +140,25 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
     }
 
     public void speak(String text) {
+        speak(text, null);
+    }
+
+    public void speak(String text, SpeechListener progress) {
         if (text == null || text.trim().isEmpty()) return;
         cancelSong(false);
         if (!ready) {
             pendingText = text.trim();
+            pendingSpeechListener = progress;
             return;
         }
         restoreNormalVoice();
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "sarah_reply_" + System.currentTimeMillis());
+        String utteranceId = "sarah_reply_" + System.currentTimeMillis();
+        if (progress != null) speechListeners.put(utteranceId, progress);
+        int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
+        if (result == TextToSpeech.ERROR) {
+            SpeechListener failed = speechListeners.remove(utteranceId);
+            if (failed != null) failed.onError(System.currentTimeMillis(), "android_tts_rejected");
+        }
     }
 
     /**
@@ -176,7 +216,7 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
         synchronized (songLock) {
             if (!singing) return;
             singing = false;
-            songLines = List.of();
+            songLines = Collections.emptyList();
             songIndex = 0;
             activeSongPrefix = "";
             complete = songComplete;
@@ -191,7 +231,7 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
         synchronized (songLock) {
             if (singing && runComplete) complete = songComplete;
             singing = false;
-            songLines = List.of();
+            songLines = Collections.emptyList();
             songIndex = 0;
             activeSongPrefix = "";
             songComplete = null;
@@ -221,12 +261,14 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
 
     public void stop() {
         pendingText = "";
+        pendingSpeechListener = null;
         cancelSong(false);
         if (ready) tts.stop();
     }
 
     public void shutdown() {
         pendingText = "";
+        pendingSpeechListener = null;
         pendingSong = null;
         pendingSongComplete = null;
         cancelSong(false);

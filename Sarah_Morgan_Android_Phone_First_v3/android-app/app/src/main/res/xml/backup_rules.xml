@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="secure_preferences.xml" />
+    <exclude domain="sharedpref" path="sarah_profile_vault.xml" />
+    <exclude domain="sharedpref" path="sarah_voice_receipts.xml" />
+    <exclude domain="sharedpref" path="sarah_approximate_locations.xml" />
     <exclude domain="database" path="sarah.db" />
+    <exclude domain="database" path="sarah_event_trips.db" />
+    <exclude domain="file" path="booking_imports/" />
 </full-backup-content>

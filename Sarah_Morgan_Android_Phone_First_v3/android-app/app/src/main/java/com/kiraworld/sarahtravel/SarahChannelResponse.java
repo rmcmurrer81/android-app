@@ -54,6 +54,33 @@ public final class SarahChannelResponse {
         return new SarahChannelResponse(spoken, "", factualTruth, "TRUTHFUL_STATEMENT", false);
     }
 
+    public SarahChannelResponse withGroundingCorrection(String correctedSpoken, String correction) {
+        String facts = factualTruth;
+        if (correction != null && !correction.trim().isEmpty()) {
+            facts = (facts + " " + correction.trim()).trim();
+        }
+        return new SarahChannelResponse(
+                correctedSpoken,
+                privateMind,
+                facts,
+                "HALLUCINATION_OR_GROUNDING_ERROR",
+                true);
+    }
+
+    public SarahChannelResponse withFactualAudit(String audit) {
+        String exact = clean(audit);
+        if (exact.isEmpty()) return this;
+        String facts = factualTruth;
+        if (!facts.isEmpty()) facts += " ";
+        facts += exact;
+        return new SarahChannelResponse(
+                spoken,
+                privateMind,
+                facts,
+                classification,
+                structured);
+    }
+
     public static String promptContract() {
         return "Return exactly four XML-style fields and nothing outside them: "
                 + "<SPOKEN>the public reply</SPOKEN> "

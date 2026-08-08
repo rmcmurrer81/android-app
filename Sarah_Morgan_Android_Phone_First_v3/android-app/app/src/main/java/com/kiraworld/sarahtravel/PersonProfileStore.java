@@ -22,7 +22,7 @@ import java.util.Map;
  */
 public final class PersonProfileStore extends SQLiteOpenHelper {
     private static final String DB_NAME = "sarah_people.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
 
     public PersonProfileStore(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -58,28 +58,183 @@ public final class PersonProfileStore extends SQLiteOpenHelper {
                 + "created_at INTEGER NOT NULL,"
                 + "updated_at INTEGER NOT NULL,"
                 + "UNIQUE(person_id,destination))");
+        createMemoryProvenanceTable(db);
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        if (oldVersion < 2) createMemoryProvenanceTable(db);
+    }
+
+    /** Returns one durable, non-placeholder phone-owner profile, or none if ambiguous. */
+    public Map<String, String> uniqueConfirmedOwnerCandidate() {
+        Map<String, String> candidate = new LinkedHashMap<>();
+        int count = 0;
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id,name,age,age_known,hometown,relationship,memory_consent,is_owner,active "
+                        + "FROM people WHERE is_owner=1 OR lower(replace(relationship,' ','_')) IN ('phone_owner','phone_owner_candidate') "
+                        + "ORDER BY is_owner DESC,updated_at DESC,id ASC",
+                null)) {
+            while (c.moveToNext()) {
+                if (!ProfileMigrationPolicy.isConfirmedDisplayName(c.getString(1))) continue;
+                candidate = profileRow(c);
+                count++;
+                if (count > 1) return new LinkedHashMap<>();
+            }
+        }
+        return count == 1 ? candidate : new LinkedHashMap<>();
+    }
+
+    /** Exact placeholder-owner rows eligible for the explicit owner repair. */
+    public List<String> placeholderProfileIds() {
+        List<String> ids = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id,name FROM people WHERE "
+                        + "lower(replace(trim(name),' ','')) IN ('phoneowner','thephoneowner') "
+                        + "OR (lower(replace(trim(name),' ',''))='traveler' AND "
+                        + "(is_owner=1 OR lower(replace(relationship,' ','_')) "
+                        + "IN ('phone_owner','phone_owner_candidate'))) ORDER BY id ASC",
+                null)) {
+            while (c.moveToNext()) {
+                if (ProfileMigrationPolicy.isPlaceholderName(c.getString(1))) {
+                    ids.add(String.valueOf(c.getLong(0)));
+                }
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Save a trusted-device owner identity only as a correction candidate.
+     * This deliberately does not activate it, mark it as owner, or merge the
+     * old placeholder rows; OwnerIdentityCorrectionActivity performs those
+     * mutations only after the phone user confirms the displayed name.
+     */
+    public Map<String, String> stageOwnerCandidate(Map<String, String> ownerProfile) {
+        String name = clean(ownerProfile == null ? "" : ownerProfile.get("name"));
+        if (!ProfileMigrationPolicy.isConfirmedDisplayName(name)) return new LinkedHashMap<>();
+        boolean ageKnown = ProfileMigrationPolicy.ownerAgeKnown(ownerProfile);
+        long now = System.currentTimeMillis();
+        Map<String, String> existing = findByName(name);
+
+        if (existing.isEmpty()) {
+            ContentValues insert = new ContentValues();
+            insert.put("name", name);
+            insert.put("age", ageKnown ? ProfileMigrationPolicy.ownerAge(ownerProfile) : 0);
+            insert.put("age_known", ageKnown ? 1 : 0);
+            insert.put("hometown", clean(ownerProfile.getOrDefault("hometown", "")));
+            insert.put("relationship", "phone_owner_candidate");
+            insert.put("memory_consent", consentValue(ownerProfile.get("memory_consent"), -1));
+            insert.put("is_owner", 0);
+            insert.put("active", 0);
+            insert.put("created_at", now);
+            insert.put("updated_at", now);
+            getWritableDatabase().insertWithOnConflict(
+                    "people", null, insert, SQLiteDatabase.CONFLICT_IGNORE);
+        } else {
+            ContentValues update = new ContentValues();
+            if (ageKnown && !"yes".equals(existing.get("age_known"))) {
+                update.put("age", ProfileMigrationPolicy.ownerAge(ownerProfile));
+                update.put("age_known", 1);
+            }
+            String hometown = clean(ownerProfile.getOrDefault("hometown", ""));
+            if (!hometown.isEmpty() && clean(existing.get("hometown")).isEmpty()) {
+                update.put("hometown", hometown);
+            }
+            int consent = consentValue(ownerProfile.get("memory_consent"), -1);
+            if (consent >= 0 && "unknown".equals(existing.get("memory_consent"))) {
+                update.put("memory_consent", consent);
+            }
+            if (!"yes".equals(existing.get("is_owner"))) {
+                update.put("relationship", "phone_owner_candidate");
+            }
+            update.put("updated_at", now);
+            getWritableDatabase().update(
+                    "people", update, "lower(name)=lower(?)", new String[]{name});
+        }
+        return findByName(name);
+    }
 
     public Map<String, String> ensureOwner(Map<String, String> ownerProfile) {
         String name = clean(ownerProfile.getOrDefault("name", "Phone owner"));
+        if (name.isEmpty()) name = "Phone owner";
+        if (ProfileMigrationPolicy.isPlaceholderName(name)) {
+            Map<String, String> confirmed = uniqueConfirmedOwnerCandidate();
+            if (!confirmed.isEmpty()) return confirmed;
+        }
+        boolean ageKnown = ProfileMigrationPolicy.ownerAgeKnown(ownerProfile);
         long now = System.currentTimeMillis();
-        ContentValues values = new ContentValues();
-        values.put("name", name);
-        values.put("age", parseInt(ownerProfile.get("age"), 18));
-        values.put("age_known", 1);
-        values.put("hometown", clean(ownerProfile.getOrDefault("hometown", "")));
-        values.put("relationship", "phone_owner");
-        values.put("memory_consent", "yes".equalsIgnoreCase(ownerProfile.getOrDefault("memory_consent", "yes")) ? 1 : 0);
-        values.put("is_owner", 1);
-        values.put("updated_at", now);
-        values.put("created_at", now);
-        getWritableDatabase().insertWithOnConflict("people", null, values, SQLiteDatabase.CONFLICT_IGNORE);
-        getWritableDatabase().update("people", values, "lower(name)=lower(?)", new String[]{name});
+        ContentValues insert = new ContentValues();
+        insert.put("name", name);
+        insert.put("age", ageKnown ? ProfileMigrationPolicy.ownerAge(ownerProfile) : 0);
+        insert.put("age_known", ageKnown ? 1 : 0);
+        insert.put("hometown", clean(ownerProfile.getOrDefault("hometown", "")));
+        insert.put("relationship", "phone_owner");
+        insert.put("memory_consent", "yes".equalsIgnoreCase(ownerProfile.getOrDefault("memory_consent", "yes")) ? 1 : 0);
+        insert.put("is_owner", 1);
+        insert.put("updated_at", now);
+        insert.put("created_at", now);
 
-        if (!hasActive()) setActiveByName(name);
+        ContentValues update = new ContentValues(insert);
+        update.remove("created_at");
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.insertWithOnConflict("people", null, insert, SQLiteDatabase.CONFLICT_IGNORE);
+            db.update("people", update, "lower(name)=lower(?)", new String[]{name});
+            long ownerId = personId(db, name);
+
+            boolean placeholderWasActive = false;
+            List<Long> placeholderIds = new ArrayList<>();
+            try (Cursor c = db.rawQuery(
+                    "SELECT id,name,active FROM people WHERE lower(replace(trim(name),' ','')) "
+                            + "IN ('phoneowner','thephoneowner') "
+                            + "OR (lower(replace(trim(name),' ',''))='traveler' AND "
+                            + "(is_owner=1 OR lower(replace(relationship,' ','_')) "
+                            + "IN ('phone_owner','phone_owner_candidate'))) "
+                            + "AND lower(name)<>lower(?) ORDER BY active DESC,id ASC",
+                    new String[]{name})) {
+                while (c.moveToNext()) {
+                    if (ProfileMigrationPolicy.shouldMergePlaceholder(c.getString(1), name)) {
+                        placeholderIds.add(c.getLong(0));
+                        placeholderWasActive |= c.getInt(2) == 1;
+                    }
+                }
+            }
+
+            if (ownerId > 0) {
+                for (long placeholderId : placeholderIds) {
+                    preserveMemoryProvenance(db, ownerId, placeholderId, now);
+                    db.execSQL(
+                            "INSERT OR IGNORE INTO person_memories(person_id,category,summary,source_text,created_at) "
+                                    + "SELECT ?,category,summary,source_text,created_at FROM person_memories WHERE person_id=?",
+                            new Object[]{ownerId, placeholderId});
+                    mergeTripParticipation(db, ownerId, placeholderId);
+                    db.delete("person_memories", "person_id=?", new String[]{String.valueOf(placeholderId)});
+                    db.delete("trip_participation", "person_id=?", new String[]{String.valueOf(placeholderId)});
+                    db.delete("people", "id=?", new String[]{String.valueOf(placeholderId)});
+                }
+            }
+
+            if (ownerId > 0) {
+                ContentValues notOwner = new ContentValues();
+                notOwner.put("is_owner", 0);
+                db.update("people", notOwner, "id<>?", new String[]{String.valueOf(ownerId)});
+                if (placeholderWasActive || !hasActive(db)) {
+                    ContentValues off = new ContentValues();
+                    off.put("active", 0);
+                    db.update("people", off, null, null);
+                    ContentValues on = new ContentValues();
+                    on.put("active", 1);
+                    on.put("updated_at", now);
+                    db.update("people", on, "id=?", new String[]{String.valueOf(ownerId)});
+                }
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+
         String interests = clean(ownerProfile.getOrDefault("interests", ""));
         if (!interests.isEmpty()) addMemory(name, "profile_interest", "Enjoys " + interests, "Initial owner profile");
         return findByName(name);
@@ -214,6 +369,26 @@ public final class PersonProfileStore extends SQLiteOpenHelper {
         return out.toString();
     }
 
+    /** Returns only interest memories belonging to the exact named profile. */
+    public String interestSummary(String name, int limit) {
+        Map<String, String> person = findByName(name);
+        if (person.isEmpty() || !"yes".equals(person.getOrDefault("memory_consent", "no"))) return "";
+        StringBuilder out = new StringBuilder();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT summary FROM person_memories WHERE person_id=? "
+                        + "AND lower(category) IN ('interest','profile_interest') "
+                        + "ORDER BY id DESC LIMIT ?",
+                new String[]{person.get("person_id"), String.valueOf(Math.max(1, limit))})) {
+            while (c.moveToNext()) {
+                String summary = clean(c.getString(0));
+                if (summary.isEmpty()) continue;
+                if (out.length() > 0) out.append("; ");
+                out.append(summary);
+            }
+        }
+        return out.toString();
+    }
+
     public void setTripParticipation(String name, String destination, String status) {
         Map<String, String> person = findByName(name);
         String cleanDestination = clean(destination);
@@ -245,6 +420,111 @@ public final class PersonProfileStore extends SQLiteOpenHelper {
         }
     }
 
+    private static boolean hasActive(SQLiteDatabase db) {
+        try (Cursor c = db.rawQuery("SELECT 1 FROM people WHERE active=1 LIMIT 1", null)) {
+            return c.moveToFirst();
+        }
+    }
+
+    private static long personId(SQLiteDatabase db, String name) {
+        try (Cursor c = db.rawQuery(
+                "SELECT id FROM people WHERE lower(name)=lower(?) LIMIT 1",
+                new String[]{name})) {
+            return c.moveToFirst() ? c.getLong(0) : 0;
+        }
+    }
+
+    private static void createMemoryProvenanceTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS person_memory_provenance ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + "target_person_id INTEGER NOT NULL,"
+                + "source_person_id INTEGER NOT NULL,"
+                + "category TEXT NOT NULL,"
+                + "summary TEXT NOT NULL,"
+                + "source_text TEXT NOT NULL DEFAULT '',"
+                + "original_created_at INTEGER NOT NULL,"
+                + "migration TEXT NOT NULL,"
+                + "recorded_at INTEGER NOT NULL,"
+                + "UNIQUE(target_person_id,source_person_id,category,summary,source_text,"
+                + "original_created_at,migration))");
+    }
+
+    /** Preserve exact source text/time before an owner-memory UNIQUE collision can ignore it. */
+    private static void preserveMemoryProvenance(
+            SQLiteDatabase db,
+            long ownerId,
+            long placeholderId,
+            long recordedAt) {
+        db.execSQL(
+                "INSERT OR IGNORE INTO person_memory_provenance("
+                        + "target_person_id,source_person_id,category,summary,source_text,"
+                        + "original_created_at,migration,recorded_at) "
+                        + "SELECT ?,?,category,summary,source_text,created_at,"
+                        + "'placeholder_owner_merge',? FROM person_memories WHERE person_id=?",
+                new Object[]{ownerId, placeholderId, recordedAt, placeholderId});
+    }
+
+    /** Merge exact destinations by newest explicit state and preserve a conflict audit memory. */
+    private static void mergeTripParticipation(
+            SQLiteDatabase db,
+            long ownerId,
+            long placeholderId) {
+        try (Cursor placeholder = db.rawQuery(
+                "SELECT destination,status,created_at,updated_at FROM trip_participation WHERE person_id=?",
+                new String[]{String.valueOf(placeholderId)})) {
+            while (placeholder.moveToNext()) {
+                String destination = placeholder.getString(0);
+                String placeholderStatus = placeholder.getString(1);
+                long placeholderCreated = placeholder.getLong(2);
+                long placeholderUpdated = placeholder.getLong(3);
+                try (Cursor confirmed = db.rawQuery(
+                        "SELECT status,created_at,updated_at FROM trip_participation "
+                                + "WHERE person_id=? AND lower(destination)=lower(?) LIMIT 1",
+                        new String[]{String.valueOf(ownerId), destination})) {
+                    if (!confirmed.moveToFirst()) {
+                        ContentValues inserted = new ContentValues();
+                        inserted.put("person_id", ownerId);
+                        inserted.put("destination", destination);
+                        inserted.put("status", placeholderStatus);
+                        inserted.put("created_at", placeholderCreated);
+                        inserted.put("updated_at", placeholderUpdated);
+                        db.insertWithOnConflict(
+                                "trip_participation", null, inserted, SQLiteDatabase.CONFLICT_IGNORE);
+                        continue;
+                    }
+
+                    String confirmedStatus = confirmed.getString(0);
+                    long confirmedUpdated = confirmed.getLong(2);
+                    if (!clean(confirmedStatus).equals(clean(placeholderStatus))) {
+                        ContentValues audit = new ContentValues();
+                        audit.put("person_id", ownerId);
+                        audit.put("category", "profile_merge_conflict");
+                        audit.put(
+                                "summary",
+                                "Trip participation for " + clean(destination)
+                                        + " had confirmed status " + clean(confirmedStatus)
+                                        + " and prior placeholder status " + clean(placeholderStatus)
+                                        + "; the newest timestamp was retained.");
+                        audit.put("source_text", "Automatic placeholder-owner repair");
+                        audit.put("created_at", System.currentTimeMillis());
+                        db.insertWithOnConflict(
+                                "person_memories", null, audit, SQLiteDatabase.CONFLICT_IGNORE);
+                    }
+                    if (placeholderUpdated > confirmedUpdated) {
+                        ContentValues newer = new ContentValues();
+                        newer.put("status", placeholderStatus);
+                        newer.put("updated_at", placeholderUpdated);
+                        db.update(
+                                "trip_participation",
+                                newer,
+                                "person_id=? AND lower(destination)=lower(?)",
+                                new String[]{String.valueOf(ownerId), destination});
+                    }
+                }
+            }
+        }
+    }
+
     private static Map<String, String> profileRow(Cursor c) {
         Map<String, String> row = new LinkedHashMap<>();
         row.put("person_id", String.valueOf(c.getLong(0)));
@@ -271,7 +551,7 @@ public final class PersonProfileStore extends SQLiteOpenHelper {
     }
 
     private static String cleanName(String value) {
-        String clean = clean(value).replaceAll("[^A-Za-z'’ -]", "").replaceAll("\\s+", " ").trim();
+        String clean = clean(value).replaceAll("[^\\p{L}\\p{M}'’ -]", "").replaceAll("\\s+", " ").trim();
         if (clean.isEmpty()) return "";
         String[] parts = clean.split(" ");
         StringBuilder out = new StringBuilder();
@@ -296,5 +576,12 @@ public final class PersonProfileStore extends SQLiteOpenHelper {
     private static long parseLong(String value, long fallback) {
         try { return Long.parseLong(clean(value)); }
         catch (Exception ignored) { return fallback; }
+    }
+
+    private static int consentValue(String value, int fallback) {
+        String normalized = clean(value).toLowerCase(Locale.US);
+        if (normalized.equals("yes") || normalized.equals("true") || normalized.equals("1")) return 1;
+        if (normalized.equals("no") || normalized.equals("false") || normalized.equals("0")) return 0;
+        return fallback;
     }
 }

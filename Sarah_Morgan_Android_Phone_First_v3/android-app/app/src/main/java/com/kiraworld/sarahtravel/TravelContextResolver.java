@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,7 +19,7 @@ public final class TravelContextResolver {
         String safe = message == null ? "" : message.trim();
         String lower = safe.toLowerCase(Locale.US);
 
-        if (clearsTravelContext(lower)) return List.of();
+        if (clearsTravelContext(lower)) return Collections.emptyList();
 
         List<String> current = DestinationParser.extractDestinations(safe);
         if (!current.isEmpty()) return unique(current);
@@ -35,7 +36,7 @@ public final class TravelContextResolver {
             List<String> found = DestinationParser.extractDestinations(content);
             if (!found.isEmpty()) return unique(found);
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     public static String primaryDestination(

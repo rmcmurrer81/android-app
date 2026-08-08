@@ -14,10 +14,10 @@ import webbrowser
 
 from sarah_core import (
     SarahDatabase, bundled_event_config_path, load_bundled_event_config,
-    sync_decrypt, sync_encrypt, sync_signature,
+    runtime_setting, sync_decrypt, sync_encrypt, sync_signature,
 )
 from sarah_sync_server import SarahSyncServer
-from sarah_windows import SarahApp
+from sarah_windows import SarahApp, portrait_packaged_self_test
 
 
 class SarahEventReadyApp(SarahApp):
@@ -28,7 +28,6 @@ class SarahEventReadyApp(SarahApp):
         self._pending_rows: list[dict] = []
         super().__init__()
         self.root.title("Sarah Travel OS")
-        self.root.after(700, self._poll_pair_requests)
 
     def _build_ui(self):
         self.root.configure(bg="#07131f")
@@ -50,7 +49,12 @@ class SarahEventReadyApp(SarahApp):
         logo.pack(side="left", padx=(12, 4), pady=4)
         self._draw_orbit_logo(logo)
 
-        self.status = tk.StringVar(value="Local mind ready • private-Wi-Fi discovery on")
+        configured = bool(runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root))
+        initial_route = (
+            "Connected route configured • verifying with the next message"
+            if configured else "Offline mind ready • no connected route configured"
+        )
+        self.status = tk.StringVar(value=initial_route + " • device sync setup required")
         status_label = tk.Label(
             header,
             textvariable=self.status,
@@ -72,7 +76,7 @@ class SarahEventReadyApp(SarahApp):
         self._quick_button(tools, "MAP & MEDIA", lambda: self.tabs.select(self.discovery_tab))
         self._quick_button(tools, "TRIP PHOTOS", lambda: self.tabs.select(self.photo_tab))
         self._quick_button(tools, "ROUTES & TRIPS", lambda: self.tabs.select(self.trip_tab))
-        self._quick_button(tools, "DEVICES & SYNC", lambda: self.tabs.select(self.device_tab))
+        self._quick_button(tools, "DEVICES & BACKUP", lambda: self.tabs.select(self.device_tab))
 
         self.tabs = ttk.Notebook(self.root)
         self.tabs.pack(fill="both", expand=True, padx=9, pady=(7, 9))
@@ -160,12 +164,16 @@ class SarahEventReadyApp(SarahApp):
         self.entry = ttk.Entry(row, font=("Segoe UI", 12))
         self.entry.pack(side="left", fill="x", expand=True)
         self.entry.bind("<Return>", lambda _event: self.send())
-        ttk.Button(row, text="Send", command=self.send, style="Accent.TButton").pack(side="left", padx=5)
-        ttk.Button(
+        self.send_button = ttk.Button(row, text="Send", command=self.send, style="Accent.TButton")
+        self.send_button.pack(side="left", padx=5)
+        self.calm_button = ttk.Button(
             row,
             text="Calm choices",
             command=lambda: self._submit_text("I am stressed and I need calm choices"),
-        ).pack(side="left")
+        )
+        self.calm_button.pack(side="left")
+        self.stop_voice_button = ttk.Button(row, text="Stop voice", command=self.stop_voice)
+        self.stop_voice_button.pack(side="left", padx=(5, 0))
         self._append(
             "Sarah",
             "I’m here. We can plan a real trip, compare places to stay, organize your photos, continue from your phone, or talk about absolutely nothing travel-related.",
@@ -175,40 +183,17 @@ class SarahEventReadyApp(SarahApp):
         frame = ttk.Frame(self.device_tab, padding=14)
         frame.pack(fill="both", expand=True)
 
-        tk.Label(
-            frame,
-            text="Automatic private-Wi-Fi discovery",
-            font=("Segoe UI", 17, "bold"),
-            fg="#15394c",
-        ).pack(anchor="w")
+        tk.Label(frame, text="Trusted device sync", font=("Segoe UI", 17, "bold"), fg="#15394c").pack(anchor="w")
         tk.Label(
             frame,
             text=(
-                "A new Sarah installation may notice this computer, but nothing is copied merely because it is nearby. "
-                "This computer must show the same code and you must approve the named device before encrypted two-way sync begins."
+                "Setup required. R2 does not expose a pairing or encryption key over plain local-network HTTP. "
+                "Phone/Windows sync remains off until an authenticated TLS or key-agreement path is accepted."
             ),
             font=("Segoe UI", 10),
             wraplength=860,
             justify="left",
         ).pack(anchor="w", pady=(5, 12))
-
-        self.pending_list = tk.Listbox(frame, height=5, font=("Segoe UI", 10))
-        self.pending_list.pack(fill="x", pady=(0, 8))
-        pending_buttons = ttk.Frame(frame)
-        pending_buttons.pack(fill="x", pady=(0, 12))
-        ttk.Button(pending_buttons, text="Approve selected", command=self._approve_selected_request).pack(side="left")
-        ttk.Button(pending_buttons, text="Deny selected", command=self._deny_selected_request).pack(side="left", padx=6)
-
-        separator = ttk.Separator(frame, orient="horizontal")
-        separator.pack(fill="x", pady=7)
-        self.pair_var = tk.StringVar(value=self.sync_server.pairing_code)
-        ttk.Label(frame, text="Manual fallback pairing code", font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        ttk.Label(frame, textvariable=self.pair_var, font=("Consolas", 25, "bold")).pack(anchor="w")
-        ttk.Label(
-            frame,
-            text=f"Windows address: {self.local_ip()}:8769\nUse this only when the Wi-Fi blocks automatic discovery.",
-        ).pack(anchor="w", pady=5)
-        ttk.Button(frame, text="Rotate manual code", command=self.rotate_code).pack(anchor="w")
 
         separator = ttk.Separator(frame, orient="horizontal")
         separator.pack(fill="x", pady=12)
@@ -281,6 +266,7 @@ class SarahEventReadyApp(SarahApp):
 
 
 def self_test() -> int:
+    portrait_packaged_self_test()
     bundled_path = bundled_event_config_path()
     if bundled_path.is_file():
         bundled = load_bundled_event_config(bundled_path)

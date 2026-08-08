@@ -5,6 +5,7 @@ import android.content.Context;
 import java.time.LocalDate;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,7 +68,7 @@ public final class SpeakerContext implements AutoCloseable {
     private final Map<String, String> ownerProfile;
     private final PersonProfileStore people;
     private final String ownerName;
-    private Map<String, String> activeProfile;
+    private volatile Map<String, String> activeProfile;
     private Pending pending = Pending.NONE;
     private String pendingTripDestination = "";
     private String pendingMemoryText = "";
@@ -356,7 +357,7 @@ public final class SpeakerContext implements AutoCloseable {
     }
 
     public List<Map<String, String>> savedProfiles() {
-        return people == null ? List.of(activeProfile) : people.listProfiles();
+        return people == null ? Collections.singletonList(activeProfile) : people.listProfiles();
     }
 
     public Map<String, String> profileFor(Map<String, String> ignoredOwnerProfile) {
@@ -372,6 +373,8 @@ public final class SpeakerContext implements AutoCloseable {
         if (people != null) {
             String memories = people.memorySummary(activeName(), 8);
             if (!memories.isEmpty()) result.put("speaker_memories", memories);
+            String learnedInterests = people.interestSummary(activeName(), 12);
+            if (!learnedInterests.isEmpty()) result.put("learned_interests", learnedInterests);
             String trip = currentPlannedTrip();
             if (!trip.isEmpty()) {
                 String participation = people.getTripParticipation(activeName(), trip);
@@ -387,6 +390,10 @@ public final class SpeakerContext implements AutoCloseable {
 
     public String activeName() {
         return activeProfile.getOrDefault("name", ownerName);
+    }
+
+    public String activePersonId() {
+        return activeProfile.getOrDefault("person_id", activeName());
     }
 
     public boolean isGuest() {

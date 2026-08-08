@@ -18,9 +18,12 @@ import java.util.Map;
 public final class MobilityGateway {
     private MobilityGateway() { }
 
+    public static boolean isConfigured(Context context) {
+        return endpoint(context).startsWith("https://");
+    }
+
     public static MobilityResult check(Context context, Map<String, String> watch) throws Exception {
-        SharedPreferences prefs = context.getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE);
-        String endpoint = prefs.getString("deal_backend_url", "").trim();
+        String endpoint = endpoint(context);
         if (endpoint.isEmpty()) return MobilityResult.unconfigured();
 
         JSONObject request = new JSONObject();
@@ -45,6 +48,7 @@ public final class MobilityGateway {
         connection.setDoOutput(true);
         connection.setRequestProperty("Content-Type", "application/json");
         String token = SecureStore.loadDealBackendToken(context);
+        if (token.isEmpty()) token = TravelCommerceConfig.token();
         if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
         byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
         try (OutputStream out = connection.getOutputStream()) {
@@ -78,5 +82,11 @@ public final class MobilityGateway {
     private static String abbreviate(String value) {
         if (value == null) return "";
         return value.length() <= 500 ? value : value.substring(0, 500);
+    }
+
+    private static String endpoint(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE);
+        String configured = prefs.getString("deal_backend_url", "").trim();
+        return configured.isEmpty() ? TravelCommerceConfig.endpoint() : configured;
     }
 }

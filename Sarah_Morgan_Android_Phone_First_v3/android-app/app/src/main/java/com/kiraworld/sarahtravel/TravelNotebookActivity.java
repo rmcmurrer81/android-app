@@ -29,6 +29,11 @@ public final class TravelNotebookActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_notebook);
+        SafeAreaInsets.apply(
+                this,
+                findViewById(R.id.notebookRoot),
+                null,
+                findViewById(R.id.notebookScroll));
         db = new SarahDatabase(this);
         eventStore = new EventTripStore(this);
         mobilityStore = new MobilityWatchStore(this);
@@ -150,7 +155,7 @@ public final class TravelNotebookActivity extends Activity {
                         label("Methods", watch.getOrDefault("modes", "mixed").replace(',', '/')),
                         label("Purpose", watch.getOrDefault("purpose", "options")),
                         label("Event", watch.getOrDefault("event_name", "")),
-                        label("Status", watch.getOrDefault("backend_status", "queued")),
+                        label("Status", humanMonitoringStatus(watch.getOrDefault("backend_status", "queued"))),
                         label("Last checked", date(watch.get("last_checked_at"))),
                         label("Latest result", watch.getOrDefault("last_summary", "")),
                         label("Source note", watch.getOrDefault("last_source_note", "")));
@@ -167,7 +172,7 @@ public final class TravelNotebookActivity extends Activity {
                 String title = event.getOrDefault("event_name", "Event") + " — "
                         + event.getOrDefault("destination", "Destination");
                 String detail = joinSections(
-                        label("Status", event.getOrDefault("monitor_status", "queued")),
+                        label("Status", humanMonitoringStatus(event.getOrDefault("monitor_status", "queued"))),
                         label("Venue", event.getOrDefault("venue", "")),
                         dateRange(event.get("start_date"), event.get("end_date")),
                         label("Latest monitored details", event.getOrDefault("updates_summary", "")),
@@ -203,13 +208,24 @@ public final class TravelNotebookActivity extends Activity {
         addHeader("Destination knowledge packs");
         List<Map<String, String>> packs = db.listKnowledgePacks(100);
         if (packs.isEmpty()) {
-            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations require the team online mind or supported public sources.");
+            addRow("No packs yet", "Mention a possible destination and Sarah can prepare one when a verified current-source connection is available.");
         } else {
             for (Map<String, String> pack : packs) {
                 String destination = pack.getOrDefault("destination", "Destination");
-                String status = pack.getOrDefault("status", "pending");
-                if (!"ready".equals(status)) {
-                    addRow(destination + " — research queued", "Sarah will retry when internet and the team research connection are available. Known and discovered events may be filled separately from public official pages.");
+                String status = pack.getOrDefault(
+                        "status", SarahDatabase.KNOWLEDGE_PENDING_NOT_SCHEDULED);
+                if (!SarahDatabase.KNOWLEDGE_READY.equalsIgnoreCase(status)) {
+                    String label = SarahDatabase.KNOWLEDGE_PENDING_NOT_SCHEDULED.equalsIgnoreCase(status)
+                            ? "saved request — not scheduled"
+                            : SarahDatabase.KNOWLEDGE_PENDING_SCHEDULED.equalsIgnoreCase(status)
+                                ? "scheduled"
+                                : SarahDatabase.KNOWLEDGE_RUNNING.equalsIgnoreCase(status)
+                                    ? "running"
+                                    : SarahDatabase.KNOWLEDGE_FAILED.equalsIgnoreCase(status)
+                                        ? "last attempt failed"
+                                        : status.toLowerCase();
+                    addRow(destination + " — " + label,
+                            "A request is not called running until Android accepted a real job. Failures remain recorded and no result is claimed.");
                     continue;
                 }
                 String detail = joinSections(
@@ -232,7 +248,7 @@ public final class TravelNotebookActivity extends Activity {
             for (Map<String, String> watch : watches) {
                 String title = watch.getOrDefault("origin", "Home area") + " → "
                         + watch.getOrDefault("destination", "Destination");
-                String detail = "Status: " + watch.getOrDefault("backend_status", "queued")
+                String detail = "Status: " + humanMonitoringStatus(watch.getOrDefault("backend_status", "queued"))
                         + "\nRound trip, " + watch.getOrDefault("travelers", "1") + " traveler"
                         + "\nFlexible dates: " + yesNo(watch.get("flexible_dates"))
                         + "; nearby airports: " + yesNo(watch.get("nearby_airports"))
@@ -456,6 +472,16 @@ public final class TravelNotebookActivity extends Activity {
     private static double number(String value) {
         try { return Double.parseDouble(value == null ? "0" : value); }
         catch (Exception ignored) { return 0; }
+    }
+
+    private static String humanMonitoringStatus(String value) {
+        String status = value == null ? "" : value.trim();
+        if (status.equals("backend_not_configured") || status.equals("setup_required")) {
+            return BackgroundResearchPolicy.unavailableStatus();
+        }
+        if (status.equals("temporary_error")) return "Temporary connection error · will retry only while enabled";
+        if (status.equals("queued")) return "Saved request · waiting for its live connection";
+        return status.replace('_', ' ');
     }
 
     @Override

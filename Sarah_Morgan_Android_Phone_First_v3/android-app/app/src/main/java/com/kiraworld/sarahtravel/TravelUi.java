@@ -40,6 +40,7 @@ public final class TravelUi {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
         activity.setContentView(scroll);
+        SafeAreaInsets.apply(activity, scroll, null, scroll);
         return root;
     }
 
@@ -70,11 +71,44 @@ public final class TravelUi {
     public static TextView section(Context context, String text) {
         TextView view = new TextView(context);
         view.setText(text);
+        view.setTag(text);
         view.setTextColor(NAVY);
         view.setTextSize(19f);
         view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         view.setPadding(dp(context, 2), dp(context, 18), dp(context, 2), dp(context, 8));
         return view;
+    }
+
+    /** Collapses direct-child section contents so a travel page is not one enormous tool list. */
+    public static void makeSectionsCollapsible(LinearLayout root) {
+        if (root == null) return;
+        for (int index = 0; index < root.getChildCount(); index++) {
+            View candidate = root.getChildAt(index);
+            if (!(candidate instanceof TextView) || candidate.getTag() == null) continue;
+            TextView header = (TextView) candidate;
+            String title = String.valueOf(header.getTag());
+            int next = index + 1;
+            while (next < root.getChildCount()) {
+                View following = root.getChildAt(next);
+                if (following instanceof TextView && following.getTag() != null) break;
+                following.setVisibility(View.GONE);
+                next++;
+            }
+            final int from = index + 1;
+            final int to = next;
+            header.setText(title + "  ▸");
+            header.setContentDescription(title + ", collapsed");
+            header.setClickable(true);
+            header.setFocusable(true);
+            header.setOnClickListener(v -> {
+                boolean open = from < to && root.getChildAt(from).getVisibility() != View.VISIBLE;
+                for (int child = from; child < to; child++) {
+                    root.getChildAt(child).setVisibility(open ? View.VISIBLE : View.GONE);
+                }
+                header.setText(title + (open ? "  ▾" : "  ▸"));
+                header.setContentDescription(title + (open ? ", expanded" : ", collapsed"));
+            });
+        }
     }
 
     public static LinearLayout card(Context context, int backgroundColor) {

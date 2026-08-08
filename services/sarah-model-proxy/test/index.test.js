@@ -5,8 +5,8 @@ import worker from "../src/index.js";
 
 const TOKEN = "test-only-sarah-token";
 
-function request(body, token = TOKEN) {
-  return new Request("https://sarah.example/", {
+function request(body, token = TOKEN, path = "/") {
+  return new Request(`https://sarah.example${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -22,6 +22,9 @@ test("Workers AI health reports the configured provider without exposing secrets
   const configSha256 = "c".repeat(64);
   const env = {
     AI: { run: async () => ({ response: "unused" }) },
+    MODEL_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    SEARCH_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    VOICE_RATE_LIMITER: { limit: async () => ({ success: true }) },
     SARAH_BACKEND_TOKEN: TOKEN,
     SARAH_MODEL_PROVIDER: "workers-ai",
     SARAH_MODEL_ID: "@cf/google/gemma-4-26b-a4b-it",
@@ -39,7 +42,53 @@ test("Workers AI health reports the configured provider without exposing secrets
   assert.equal(data.source_sha256, sourceSha256);
   assert.equal(data.config_sha256, configSha256);
   assert.equal(data.provider, "workers-ai");
+  assert.equal(data.route_rate_limits_ready, true);
   assert.equal(JSON.stringify(data).includes(TOKEN), false);
+});
+
+test("route rate limit rejection is explicit and prevents provider work", async () => {
+  let providerRuns = 0;
+  const env = {
+    AI: { run: async () => { providerRuns += 1; return { response: "should not run" }; } },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    MODEL_RATE_LIMITER: { limit: async () => ({ success: false }) },
+  };
+  const response = await worker.fetch(request({ message: "Hello" }), env);
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("Retry-After"), "60");
+  assert.deepEqual(await response.json(), { error: "rate_limited", route: "conversation" });
+  assert.equal(providerRuns, 0);
+});
+
+test("route rate limiter failure fails closed before provider work", async () => {
+  let providerRuns = 0;
+  const env = {
+    AI: { run: async () => { providerRuns += 1; return { response: "should not run" }; } },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    MODEL_RATE_LIMITER: { limit: async () => { throw new Error("limiter unavailable"); } },
+  };
+  const response = await worker.fetch(request({ message: "Hello" }), env);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "rate_limiter_unavailable", route: "conversation" });
+  assert.equal(providerRuns, 0);
+});
+
+test("identity-bound candidate fails closed when a route limiter binding is absent", async () => {
+  let providerRuns = 0;
+  const env = {
+    AI: { run: async () => { providerRuns += 1; return { response: "should not run" }; } },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_DEPLOYMENT_ID: "d".repeat(40),
+    SARAH_SOURCE_SHA256: "e".repeat(64),
+    SARAH_CONFIG_SHA256: "f".repeat(64),
+  };
+  const response = await worker.fetch(request({ message: "Hello" }), env);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "rate_limiter_unavailable", route: "conversation" });
+  assert.equal(providerRuns, 0);
 });
 
 test("health exposes absent deployment identity to the fail-closed verifier", async () => {
@@ -156,8 +205,200 @@ test("a web-search request cannot be misreported as Workers AI research", async 
     web_search: true,
   }), env);
   const data = await response.json();
+  assert.equal(data.web_search_requested, true);
   assert.equal(data.web_search_applied, false);
+  assert.deepEqual(data.source_urls, []);
   assert.match(systemMessage, /No live web-search result is attached/);
+});
+
+test("Workers AI uses only proxy-owned Tavily evidence when the protected search secret exists", async () => {
+  const originalFetch = globalThis.fetch;
+  let systemMessage = "";
+  let tavilyRequest = null;
+  globalThis.fetch = async (url, options) => {
+    tavilyRequest = { url, options };
+    return new Response(JSON.stringify({
+      request_id: "tavily-test-request",
+      results: [
+        {
+          title: "Official current source",
+          url: "https://example.test/current",
+          content: "A current, source-bound fixture result.",
+        },
+        {
+          title: "Unsafe source",
+          url: "http://example.test/not-accepted",
+          content: "This must not be included.",
+        },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const env = {
+      AI: {
+        run: async (_model, payload) => {
+          systemMessage = payload.messages[0].content;
+          return { response: "Source-grounded current answer." };
+        },
+      },
+      TAVILY_API_KEY: "server-only-tavily-test-key",
+      SARAH_BACKEND_TOKEN: TOKEN,
+      SARAH_MODEL_PROVIDER: "workers-ai",
+    };
+    const response = await worker.fetch(request({
+      message: "What is happening nearby this week?",
+      search_query: "Current request: What is happening nearby this week? Verified approximate current area: Newark, New Jersey",
+      web_search: true,
+    }), env);
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(tavilyRequest.url, "https://api.tavily.com/search");
+    assert.equal(tavilyRequest.options.headers.Authorization, "Bearer server-only-tavily-test-key");
+    const body = JSON.parse(tavilyRequest.options.body);
+    assert.equal(body.search_depth, "basic");
+    assert.equal(body.max_results, 5);
+    assert.match(body.query, /Newark, New Jersey/);
+    assert.equal(data.web_search_applied, true);
+    assert.equal(data.web_search_provider, "tavily");
+    assert.deepEqual(data.source_urls, ["https://example.test/current"]);
+    assert.match(systemMessage, /CURRENT SOURCE EVIDENCE/);
+    assert.match(systemMessage, /https:\/\/example\.test\/current/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("protected search returns bounded HTTPS results without exposing the provider key", async () => {
+  const originalFetch = globalThis.fetch;
+  let upstreamBody = null;
+  globalThis.fetch = async (_url, options) => {
+    upstreamBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      request_id: "search-route-fixture",
+      results: [
+        { title: "Official source", url: "https://example.test/nz", content: "Verified fixture." },
+        { title: "Rejected source", url: "http://example.test/plain", content: "Not HTTPS." },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const env = { SARAH_BACKEND_TOKEN: TOKEN, TAVILY_API_KEY: "server-only-search-key" };
+    const response = await worker.fetch(request(
+      { query: "New Zealand visitor information", max_results: 2 }, TOKEN, "/search"), env);
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(upstreamBody.max_results, 2);
+    assert.equal(data.provider, "tavily");
+    assert.equal(data.web_search_applied, true);
+    assert.deepEqual(data.results, [{
+      title: "Official source",
+      url: "https://example.test/nz",
+      summary: "Verified fixture.",
+    }]);
+    assert.equal(JSON.stringify(data).includes("server-only-search-key"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("protected search is authenticated and fails closed without its server secret", async () => {
+  const configured = { SARAH_BACKEND_TOKEN: TOKEN, TAVILY_API_KEY: "server-only" };
+  const unauthorized = await worker.fetch(request({ query: "nearby" }, "wrong", "/search"), configured);
+  assert.equal(unauthorized.status, 401);
+  const unavailable = await worker.fetch(request(
+    { query: "nearby" }, TOKEN, "/search"), { SARAH_BACKEND_TOKEN: TOKEN });
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(await unavailable.json(), { error: "current_source_not_configured" });
+});
+
+test("OpenAI web evidence requires a completed tool call and HTTPS source URL", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    output: [
+      { type: "web_search_call", status: "completed" },
+      {
+        type: "message",
+        content: [{
+          type: "output_text",
+          text: "Verified current result.",
+          annotations: [{ type: "url_citation", url: "https://example.test/source" }],
+        }],
+      },
+    ],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  try {
+    const env = {
+      OPENAI_API_KEY: "server-only-test-key",
+      SARAH_BACKEND_TOKEN: TOKEN,
+      SARAH_MODEL_PROVIDER: "openai",
+      SARAH_MODEL_ID: "gpt-test",
+    };
+    const response = await worker.fetch(request({
+      provider: "openai",
+      message: "Find a current sourced fact",
+      web_search: true,
+    }), env);
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.web_search_requested, true);
+    assert.equal(data.web_search_applied, true);
+    assert.deepEqual(data.source_urls, ["https://example.test/source"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("OpenAI web evidence rejects arbitrary response URLs and incomplete calls", async () => {
+  const originalFetch = globalThis.fetch;
+  const cases = [
+    {
+      output: [
+        { type: "web_search_call", status: "completed" },
+        {
+          type: "message",
+          metadata: { url: "https://invented.example/not-a-citation" },
+          content: [{ type: "output_text", text: "Unsourced response.", annotations: [] }],
+        },
+      ],
+    },
+    {
+      output: [
+        { type: "web_search_call", status: "incomplete" },
+        {
+          type: "message",
+          content: [{
+            type: "output_text",
+            text: "Unfinished search.",
+            annotations: [{ type: "url_citation", url: "https://example.test/source" }],
+          }],
+        },
+      ],
+    },
+  ];
+  try {
+    for (const upstream of cases) {
+      globalThis.fetch = async () => new Response(JSON.stringify(upstream), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+      const env = {
+        OPENAI_API_KEY: "server-only-test-key",
+        SARAH_BACKEND_TOKEN: TOKEN,
+        SARAH_MODEL_PROVIDER: "openai",
+        SARAH_MODEL_ID: "gpt-test",
+      };
+      const response = await worker.fetch(request({
+        provider: "openai",
+        message: "Find a current sourced fact",
+        web_search: true,
+      }), env);
+      const data = await response.json();
+      assert.equal(data.web_search_applied, false);
+      assert.deepEqual(data.source_urls, []);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("protected voice route keeps the ElevenLabs key server-side", async () => {

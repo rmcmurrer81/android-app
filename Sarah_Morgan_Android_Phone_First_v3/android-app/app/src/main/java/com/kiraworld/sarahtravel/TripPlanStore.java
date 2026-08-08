@@ -153,6 +153,24 @@ public final class TripPlanStore extends SQLiteOpenHelper {
         getWritableDatabase().delete(table, "id=?", new String[]{String.valueOf(id)});
     }
 
+    public void moveProfile(String oldPersonId, String newPersonId) {
+        String oldId = clean(oldPersonId);
+        String newId = clean(newPersonId);
+        if (oldId.isEmpty() || newId.isEmpty() || oldId.equals(newId)) return;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("person_id", newId);
+            for (String table : new String[]{"itinerary_items", "budget_items", "packing_items"}) {
+                db.update(table, values, "person_id=?", new String[]{oldId});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     private List<Map<String, String>> rows(String sql, String[] args, String[] keys) {
         List<Map<String, String>> result = new ArrayList<>();
         try (Cursor c = getReadableDatabase().rawQuery(sql, args)) {

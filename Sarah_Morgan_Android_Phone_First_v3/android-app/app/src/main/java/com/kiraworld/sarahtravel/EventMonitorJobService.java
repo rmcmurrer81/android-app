@@ -16,8 +16,8 @@ public final class EventMonitorJobService extends JobService {
                 SharedPreferences preferences = getSharedPreferences(
                         SettingsActivity.PREFS,
                         MODE_PRIVATE);
-                String providerId = preferences.getString("connected_provider", "openai");
-                String model = preferences.getString("model", "gpt-5-mini");
+                String providerId = preferences.getString("connected_provider", SarahModelConfig.PROVIDER_ID);
+                String model = preferences.getString("model", SarahModelConfig.MODEL_ID);
                 String apiKey = SecureStore.loadApiKey(this);
                 EventResearchCoordinator.refreshDue(
                         getApplicationContext(),
