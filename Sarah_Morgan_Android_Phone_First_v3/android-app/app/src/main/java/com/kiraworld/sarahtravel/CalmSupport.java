@@ -151,6 +151,7 @@ public final class CalmSupport {
 
         q.add(new Question("What should you generally do during turbulence?", new String[]{"Keep the seat belt fastened and follow crew instructions", "Stand in the aisle", "Open the overhead bin"}, 0, "Remain seated, keep the belt fastened, and follow the crew."));
         q.add(new Question("Which item is useful to keep easy to reach during a flight?", new String[]{"A small comfort item or headphones", "A checked suitcase", "A hotel television"}, 0, "A familiar comfort item or approved headphones can help with distraction."));
+        q.add(new Question("Who should you ask if you need help while you are on the airplane?", new String[]{"A member of the flight crew", "A movie character", "A hotel clerk"}, 0, "The flight crew can help with needs and questions on board."));
         return q;
     }
 

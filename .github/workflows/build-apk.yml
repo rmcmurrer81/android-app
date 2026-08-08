@@ -89,6 +89,7 @@ jobs:
           mkdir -p build/offline-flight-test
           javac -encoding UTF-8 -d build/offline-flight-test \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileLearningContext.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OfflineSongCatalog.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/OfflineFlightCompanionTest.java
           java -cp build/offline-flight-test OfflineFlightCompanionTest
@@ -109,6 +110,7 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelKnowledgeBase.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelBrainCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/TravelBrainCoreTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/TravelContextResolverTest.java \
