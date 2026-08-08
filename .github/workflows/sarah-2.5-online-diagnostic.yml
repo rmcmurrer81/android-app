@@ -1,0 +1,149 @@
+name: Sarah 2.5 online mind diagnostic
+
+on:
+  push:
+    branches:
+      - agent/sarah-2.5-event-ready
+    paths:
+      - .github/ONLINE_DIAGNOSTIC_REQUEST.json
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Require private configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository Actions secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Install proxy deployment tools
+        working-directory: services/sarah-model-proxy
+        run: npm install --no-audit --no-fund
+
+      - name: Deploy with one diagnostic token
+        id: deploy
+        working-directory: services/sarah-model-proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN=$(python - <<'PY'
+          import secrets
+          print(secrets.token_urlsafe(36))
+          PY
+          )
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+          OPENAI_API_KEY="$OPENAI_API_KEY" SARAH_BACKEND_TOKEN="$TOKEN" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('/tmp/sarah-diagnostic-secrets.json')
+          path.write_text(json.dumps({
+              'OPENAI_API_KEY': os.environ['OPENAI_API_KEY'],
+              'SARAH_BACKEND_TOKEN': os.environ['SARAH_BACKEND_TOKEN'],
+          }), encoding='utf-8')
+          path.chmod(0o600)
+          PY
+
+          npx wrangler deploy --secrets-file /tmp/sarah-diagnostic-secrets.json --keep-vars 2>&1 | tee /tmp/deploy.log
+          rm -f /tmp/sarah-diagnostic-secrets.json
+          URL=$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('/tmp/deploy.log').read_text(encoding='utf-8', errors='replace')
+          matches = re.findall(r'https://[A-Za-z0-9.-]+\.workers\.dev', text)
+          if not matches:
+              raise SystemExit('No workers.dev URL found after deployment.')
+          print(matches[-1])
+          PY
+          )
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Sarah proxy deployed. Waiting briefly for edge propagation."
+          sleep 20
+
+      - name: Distinguish Worker authentication from OpenAI authentication or billing
+        shell: bash
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.url }}
+          SARAH_BACKEND_TOKEN: ${{ steps.deploy.outputs.token }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --retry 20 --retry-all-errors --retry-delay 3 \
+            "$BACKEND_URL/health" > /tmp/health.json
+
+          python - <<'PY'
+          import json
+          health = json.load(open('/tmp/health.json', encoding='utf-8'))
+          if health.get('ok') is not True:
+              raise SystemExit(f"Proxy health failed: {health}")
+          print('Proxy health passed.')
+          PY
+
+          cat > /tmp/request.json <<'JSON'
+          {
+            "provider": "openai",
+            "model": "gpt-5.1",
+            "system_prompt": "Reply with exactly ONLINE_READY and nothing else.",
+            "history": [],
+            "message": "Reply with exactly ONLINE_READY.",
+            "web_search": false
+          }
+          JSON
+
+          STATUS=$(curl --silent --show-error \
+            -o /tmp/response.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/request.json \
+            "$BACKEND_URL/")
+          echo "Sarah proxy HTTP status: $STATUS"
+
+          HTTP_STATUS="$STATUS" python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          status = int(os.environ['HTTP_STATUS'])
+          try:
+              data = json.loads(Path('/tmp/response.json').read_text(encoding='utf-8'))
+          except Exception:
+              data = {'error': 'non_json_response'}
+          error = str(data.get('error') or '')
+          upstream = data.get('upstream_status')
+          message = str(data.get('message') or '')
+          message = re.sub(r'sk-[A-Za-z0-9_-]+', '[redacted-key]', message)
+          message = message[:300]
+          if status == 200:
+              reply = str(data.get('reply') or '').strip()
+              if reply != 'ONLINE_READY':
+                  raise SystemExit(f"Online model authenticated but returned an unexpected test reply: {reply!r}")
+              print('ONLINE_READY: Worker token and OpenAI connection both passed.')
+          else:
+              print(f"DIAGNOSTIC_ERROR error={error!r} upstream_status={upstream!r} message={message!r}")
+              if error == 'unauthorized':
+                  raise SystemExit('The temporary Sarah-to-Worker token was rejected.')
+              if error == 'openai_error' and upstream == 401:
+                  raise SystemExit('OpenAI rejected the saved API key. Replace OPENAI_API_KEY with only the complete key value.')
+              if error == 'openai_error' and upstream == 429:
+                  raise SystemExit('OpenAI authenticated the key but the API account has no available credit or reached a limit.')
+              raise SystemExit(f"Online model diagnostic failed with HTTP {status}.")
+          PY
