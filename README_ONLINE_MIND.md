@@ -40,7 +40,6 @@ Repository **Settings → Secrets and variables → Actions** needs:
 CLOUDFLARE_ACCOUNT_ID
 CLOUDFLARE_API_TOKEN
 SARAH_ELEVENLABS_API_KEY
-SARAH_ELEVENLABS_VOICE_ID
 SARAH_MODEL_BACKEND_TOKEN
 ```
 
@@ -48,12 +47,24 @@ SARAH_MODEL_BACKEND_TOKEN
 
 Set `SARAH_MODEL_BACKEND_TOKEN` to a 32-256 character cryptographically random URL-safe value containing only letters, digits, `_`, and `-`. Keep the same repository value for a complete event build; rotation is a deliberate Worker redeploy plus client rebuild/reinstall, not an automatic per-job change.
 
+For backward-compatible migration, the judge workflow accepts the older
+`SARAH_ELEVENLABS_BACKEND_TOKEN` repository secret only when
+`SARAH_MODEL_BACKEND_TOKEN` is absent. The legacy name represented the same
+revocable client-to-protected-backend credential; it is not an ElevenLabs API
+key. Prefer creating `SARAH_MODEL_BACKEND_TOKEN`, verify a complete judge run,
+then retire the legacy secret after all event clients have been rebuilt.
+
 The following are optional:
 
 ```text
 SARAH_ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+SARAH_ELEVENLABS_VOICE_ID=WcGvc9xxaOYbKswm3NBx
 OPENAI_API_KEY=<only for an explicitly selected openai rollback run>
 ```
+
+The voice ID is a non-secret public identifier. If its repository secret is
+absent, the workflow uses Sarah's existing approved Voice Design ID
+`WcGvc9xxaOYbKswm3NBx`; it never substitutes a generic voice.
 
 Do not put provider credentials in source, a pull-request comment, issue, screenshot, APK, EXE, or team chat. `SARAH_MODEL_BACKEND_TOKEN` is different: the event clients must possess it to authenticate, so CI intentionally bundles that one owner-revocable app token after keeping it out of source, logs, and manifests.
 
