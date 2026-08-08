@@ -33,7 +33,8 @@ public final class ConversationModePolicyTest {
 
         String offline = ConversationModePolicy.statusLabel(
                 ConversationModePolicy.MODE_AUTO, false, false, false, false);
-        require(offline.contains("offline"), "no internet must remain clearly offline");
+        require(offline.startsWith("Offline mind ready"),
+                "no internet must remain clearly offline");
 
         System.out.println("ConversationModePolicyTest passed");
     }

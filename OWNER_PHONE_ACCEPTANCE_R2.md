@@ -112,12 +112,13 @@ production Stay22 backend is claimed.
 - Workflow YAML parse: passed.
 - `git diff --check`: passed; only line-ending notices were emitted.
 
-Android compilation and pure-Java execution remain pending because this
-computer has no Java/JDK or Gradle wrapper. The GitHub workflow supplies Java
-17 and Gradle 8.13, but R2 has not been pushed or run there. The workflow now
-labels any future output as an owner-acceptance candidate and records the 16
-physical gates as pending; it no longer calls an APK judge-ready from service
-smokes alone.
+This computer has no Java/JDK or Gradle wrapper. The first hosted run for
+commit `29b655b584cf10acce60af5cab0f0a55a17724e4` supplied Java 17 and Gradle
+8.13 and exposed two Android blockers: the pure-Java test compared lowercase
+`offline` to the human label beginning `Offline`, and the app used AndroidX
+Media3 while `android.useAndroidX` was still false. The next source revision
+changes only that test to require the exact `Offline mind ready` prefix,
+enables AndroidX, and adds the AndroidX requirement to static validation.
 
 Still pending are a populated-install migration fixture with collision cases,
 fresh-user run, physical Galaxy A17 online/offline/reconnect sequence, complete
@@ -127,8 +128,27 @@ live Stay22 path, ten-message keyboard/inset/font-size run, owner hearing, and
 Windows operation on the 8 GB no-GPU laptop. Android's
 approved cloud voice now uses progressive one-shot playback and lifecycle
 cancellation, but first-audio latency remains pending physical A17 measurement.
-The preserved R1 APK/EXE remain the only built artifacts and must not be
-mislabeled as R2.
+The preserved R1 APK/EXE remain the only physically owner-tested artifacts.
+The first hosted R2 run built and self-tested a separate Windows installer,
+but it is not owner accepted. No R2 APK was produced.
+
+## First hosted R2 evidence
+
+- Source extraction run `31263116561`: passed. Artifact digest:
+  `sha256:3752b98b08f164cde65f00b67aeccda66a016dbfec12dc8aa83c421ed348900d`.
+- Observable validation run `31263116577`: Windows passed and uploaded
+  artifact `9023364837`, digest
+  `sha256:0e0304bb3be93bcdd15b3429d6ea3aad964e4b36eb31ebf1e0004a94e10815be`;
+  Android stopped before its APK build on the two exact blockers above.
+- Online-judge run `31263114954`: the unique Worker deployed and the live
+  Workers AI reply passed using `@cf/google/gemma-4-26b-a4b-it`. The run then
+  failed closed because `SARAH_TAVILY_API_KEY` was absent. No current-source
+  result was invented, no candidate APK or event Windows installer was
+  uploaded, and the failed run's unique Worker was retired.
+
+The missing protected current-source credential is a deployment/setup blocker,
+not a Workers AI conversational failure. Do not weaken the current-source gate
+or claim live research merely to produce an artifact.
 
 The Android candidate is an in-place upgrade only: it retains
 `com.kiraworld.sarahtravel`. CI must have an exact R1 signing-cache hit, require

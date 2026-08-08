@@ -6,6 +6,7 @@ REPO=ROOT.parent
 
 required=[
     APP/'app/src/main/AndroidManifest.xml',
+    APP/'gradle.properties',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahTts.java',
@@ -47,6 +48,10 @@ required=[
 ]
 for p in required:
     assert p.is_file(), p
+
+gradle_properties=(APP/'gradle.properties').read_text(encoding='utf-8')
+assert re.search(r'^android\.useAndroidX\s*=\s*true\s*$', gradle_properties, re.MULTILINE), \
+       'AndroidX dependencies require android.useAndroidX=true'
 
 for p in (APP/'app/src/main/res').rglob('*.xml'):
     root=ET.parse(p).getroot()
