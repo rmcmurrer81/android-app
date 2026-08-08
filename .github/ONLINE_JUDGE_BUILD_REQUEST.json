@@ -1,4 +1,5 @@
 {
-  "model": "gpt-5.1",
-  "reason": "Initial Sunday judge build: prove online conversation, airplane-mode fallback, and automatic reconnection"
+  "provider": "workers-ai",
+  "model": "@cf/google/gemma-4-26b-a4b-it",
+  "reason": "No-credit judge build: prove Cloudflare Workers AI conversation, airplane-mode fallback, and automatic reconnection"
 }

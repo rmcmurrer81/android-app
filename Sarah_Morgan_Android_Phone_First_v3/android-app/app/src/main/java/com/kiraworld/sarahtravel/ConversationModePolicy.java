@@ -27,10 +27,10 @@ public final class ConversationModePolicy {
             boolean lastConnectedCallFailed) {
         if (mode == MODE_LOCAL_ONLY) return validatedInternet ? "Local only" : "Local only • offline";
 
-        String prefix = mode == MODE_AUTO ? "Automatic" : "OpenAI preferred";
+        String prefix = mode == MODE_AUTO ? "Automatic" : "Online mind preferred";
         if (!validatedInternet) return prefix + " • Local • offline";
-        if (!teamModelAvailable) return prefix + " • Public web online • OpenAI not included in this build";
+        if (!teamModelAvailable) return prefix + " • Public web online • online mind not included in this build";
         if (lastConnectedCallFailed) return prefix + " • Public/local fallback";
-        return prefix + " • OpenAI online";
+        return prefix + " • Online mind connected";
     }
 }

@@ -46,7 +46,7 @@ public final class DemoSarah {
         String name = firstName(profile.getOrDefault("name", profile.getOrDefault("active_speaker", "there")));
 
         if (photoIncluded) {
-            return "I saved a privacy-cleaned copy of the photo. If the team OpenAI connection is included, I can inspect the image itself. Otherwise I can still keep its caption with the trip and show public media for the place.";
+            return "I saved a privacy-cleaned copy of the photo. If the team online mind is included, I can inspect the image itself. Otherwise I can still keep its caption with the trip and show public media for the place.";
         }
 
         String publicAnswer = PublicOnlineFallback.answer(
@@ -99,7 +99,7 @@ public final class DemoSarah {
         }
 
         if (asksAboutMode(lower)) {
-            return "Automatic mode uses the team-selected OpenAI connection when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key. The airplane icon opens a separate flight companion that is fully local.";
+            return "Automatic mode uses the team-selected protected online mind when that connection is included in the APK. If it is not included, I can still use selected public event pages, maps, photos, videos, routes, and public reference sources while online, then continue locally without internet. People who install me are not asked for a model key. The airplane icon opens a separate flight companion that is fully local.";
         }
 
         if (isFrustratedOrHostile(lower)) {
@@ -167,7 +167,7 @@ public final class DemoSarah {
         }
 
         if (safe.endsWith("?")) {
-            return "I do not have enough reliable local knowledge to answer that accurately. I can use selected public sources while online, and the team OpenAI build can handle broader questions when its connection is present. I won’t invent an answer.";
+            return "I do not have enough reliable local knowledge to answer that accurately. I can use selected public sources while online, and the team online mind can handle broader questions when its connection is present. I won’t invent an answer.";
         }
 
         if (!safe.isEmpty()) {

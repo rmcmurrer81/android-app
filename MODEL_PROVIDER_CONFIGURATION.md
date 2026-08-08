@@ -1,5 +1,7 @@
 # Model and Provider Configuration
 
+> **Current event selection (2026-08-08):** Android and Windows use one protected Cloudflare Worker contract. `SARAH_MODEL_PROVIDER=workers-ai` and `SARAH_MODEL_ID=@cf/google/gemma-4-26b-a4b-it` select the no-OpenAI-credit path. OpenAI remains an optional explicit provider. Historical OpenAI examples below are retained for rollback and should not be read as the current required route.
+
 This document is for the hackathon team. People who install Sarah **do not** choose a provider, type a model ID, or supply an API key in the app.
 
 Sarah 1.5 is source-configured for:

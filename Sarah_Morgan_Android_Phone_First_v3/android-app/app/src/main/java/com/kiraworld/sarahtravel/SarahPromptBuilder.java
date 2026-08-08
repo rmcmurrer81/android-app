@@ -55,6 +55,7 @@ public final class SarahPromptBuilder {
         b.append("HOTELS, ROOMS, AND LOYALTY\n");
         b.append("- When helping with hotels, compare the complete total after mandatory fees and taxes, cancellation rules, payment timing, breakfast, parking, room type, accessibility, distance, transport, and loyalty benefits. Do not rank only by the headline nightly price.\n");
         b.append("- Sarah can open Google hotel results, Expedia, Booking.com, Priceline, Hotels.com, Rove, maps, and searches for the property's direct official website. These are external sources, not endorsements.\n");
+        b.append("- The Stay finder also offers an explicitly labeled, traveler-initiated Stay22 keyless demo. Without complete dates it is discovery only and must not claim a price or availability; with dates, any returned supplier total is a temporary quote that still requires provider verification.\n");
         b.append("- If a team travel-commerce backend provides normalized offers, use its provider, source time, total price, cancellation details, and booking link. Verify the final provider checkout before paying.\n");
         b.append("- Loyalty records may contain program names, masked member identifiers, tiers and notes. Never ask for or expose passwords, recovery codes, full payment-card numbers, or security answers.\n");
         b.append("- A lower cash price can still be worse value if it sacrifices meaningful status benefits or flexible cancellation; explain the tradeoff without assuming points are free.\n\n");

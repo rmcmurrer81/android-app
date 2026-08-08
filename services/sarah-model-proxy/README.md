@@ -1,48 +1,63 @@
 # Sarah model proxy
 
-This Cloudflare Worker gives Sarah a protected online conversation route without placing the OpenAI API key inside the Android APK.
+This Cloudflare Worker gives Sarah a protected online conversation route without placing a model-provider credential in the Android APK or Windows EXE.
 
-The Android app sends Sarah's system prompt, recent conversation, current message, optional image, requested model, and whether current web research is needed. The Worker verifies Sarah's build token, calls the OpenAI Responses API with the server-side key, and returns only a JSON `reply` to the app.
+The hackathon default is Cloudflare Workers AI using the `AI` binding and `@cf/google/gemma-4-26b-a4b-it`. Cloudflare's free Workers AI allocation is bounded rather than unlimited; when it is unavailable or exhausted, Sarah's clients must label the connected failure and continue through their local/offline path. OpenAI remains an explicit optional provider, but it is not required by the default build.
 
-## Required Worker secrets
+## Required deployment secret
 
 ```text
-OPENAI_API_KEY
 SARAH_BACKEND_TOKEN
 ```
 
-Never place either value in `wrangler.jsonc`, source code, an issue, a pull-request comment, or a committed `.env` file.
+The online-judge workflow requires one owner-revocable repository Actions secret named `SARAH_MODEL_BACKEND_TOKEN` and deploys that exact value as `SARAH_BACKEND_TOKEN`. Do not put it in `wrangler.jsonc`, source, an issue, or a pull-request comment. `OPENAI_API_KEY` is needed only when `SARAH_MODEL_PROVIDER=openai` is deliberately selected.
 
-## Local setup
+## Worker configuration
+
+`wrangler.jsonc` binds Workers AI as `AI` and supplies non-secret defaults:
+
+```text
+SARAH_MODEL_PROVIDER=workers-ai
+SARAH_MODEL_ID=@cf/google/gemma-4-26b-a4b-it
+```
+
+The team may change those ordinary Worker variables without rebuilding Sarah. Provider IDs accepted by the Worker are `workers-ai` and `openai`.
+
+## Routes and shared contract
+
+- `GET /health` reports provider readiness without exposing a credential.
+- `POST /` requires `Authorization: Bearer <SARAH_BACKEND_TOKEN>`.
+- `POST /voice` uses the same Sarah token and streams the server-approved ElevenLabs voice; the ElevenLabs key never enters either client.
+
+Android and Windows send the same provider-neutral JSON fields:
+
+```json
+{
+  "provider": "workers-ai",
+  "model": "@cf/google/gemma-4-26b-a4b-it",
+  "system_prompt": "Sarah's prompt",
+  "history": [],
+  "message": "Hello",
+  "web_search": false
+}
+```
+
+The Worker returns `{ "reply": "...", "provider": "workers-ai", "model": "..." }`.
+
+The protected voice route additionally requires the Worker secret `ELEVENLABS_API_KEY` and ordinary variables `SARAH_ELEVENLABS_VOICE_ID` and `SARAH_ELEVENLABS_MODEL_ID`. A client cannot substitute another voice ID. The judge workflow smoke-tests a short WAV/MP3 response before building the APK, while text remains independent and clients retain their local voice fallback.
+
+Workers AI itself is not represented as a live-web-search tool. If `web_search` is requested on that route, the Worker explicitly tells the model that no live search result was attached and returns `web_search_applied: false`. Sarah's source-backed travel tools remain separate.
+
+## Verification
 
 ```bash
 cd services/sarah-model-proxy
 npm install
-npx wrangler login
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put SARAH_BACKEND_TOKEN
-npm run deploy
+npm run check
 ```
 
-The repository's **Sarah 2.5 online judge build** workflow is the easier event path: after the three GitHub deployment secrets are configured, it generates and rotates `SARAH_BACKEND_TOKEN`, deploys this Worker, live-tests a real model reply, and builds the APK with the same URL and token.
-
-## Routes
-
-- `GET /health` — reports whether the Worker has its required bindings and whether a server-side model override exists. It never reveals secret values.
-- `POST /` — authenticated Sarah conversation request. It expects the contract used by `SarahBackendClient.java` and returns `{ "reply": "..." }`.
-
-## Change the model without rebuilding the APK
-
-In Cloudflare, open this Worker, then **Settings → Variables and Secrets**. Add or change the ordinary text variable:
-
-```text
-SARAH_OPENAI_MODEL=gpt-5.1
-```
-
-Deploy the variable change. When present, this server-side value overrides the model requested by the installed APK. Delete the variable to let the APK select its build-time model again.
-
-`SARAH_OPENAI_MODEL` is not a secret. The OpenAI key and Sarah backend token are secrets.
+The tests use a mocked Workers AI binding. They do not spend quota or call a live model.
 
 ## Security boundary
 
-The APK contains a short-lived Sarah backend token, not the OpenAI API key. A determined person can still extract that token from an APK, so rotate it after a public demonstration or whenever the APK leaves the team. Re-running the online-judge workflow automatically generates a new token and replaces the Worker's old token.
+The event APK and Windows EXE contain the same revocable Sarah backend token, not a Cloudflare, OpenAI, or ElevenLabs account credential. A determined person can still extract the app token, so rotate the repository secret, redeploy the Worker, and rebuild/reinstall both clients after a public demonstration or whenever a binary leaves the intended team. CI keeps the token out of source, logs, and artifact manifests; Windows environment or per-user configuration can override the bundled event value.

@@ -203,7 +203,7 @@ public final class TravelNotebookActivity extends Activity {
         addHeader("Destination knowledge packs");
         List<Map<String, String>> packs = db.listKnowledgePacks(100);
         if (packs.isEmpty()) {
-            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations require the team OpenAI connection or supported public sources.");
+            addRow("No packs yet", "Mention a possible destination and Sarah will queue one automatically. Current recommendations require the team online mind or supported public sources.");
         } else {
             for (Map<String, String> pack : packs) {
                 String destination = pack.getOrDefault("destination", "Destination");

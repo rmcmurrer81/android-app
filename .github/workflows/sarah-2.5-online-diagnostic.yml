@@ -10,14 +10,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sarah-2-5-online-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v5
@@ -28,9 +28,12 @@ jobs:
 
       - name: Require private configuration
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID OPENAI_API_KEY; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing repository Actions secret: $name"
               exit 1
@@ -41,9 +44,14 @@ jobs:
         working-directory: services/sarah-model-proxy
         run: npm install --no-audit --no-fund
 
-      - name: Deploy and distinguish Worker authentication from OpenAI authentication or billing
+      - name: Deploy and distinguish Worker authentication from Workers AI availability or quota
         working-directory: services/sarah-model-proxy
         shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SARAH_MODEL_PROVIDER: workers-ai
+          SARAH_MODEL_ID: '@cf/google/gemma-4-26b-a4b-it'
         run: |
           set -euo pipefail
           TOKEN=$(python - <<'PY'
@@ -56,10 +64,14 @@ jobs:
           # Wrangler's --secrets-file consumes dotenv syntax. Keeping deployment
           # and verification in one shell also guarantees the exact same token.
           umask 077
-          printf 'OPENAI_API_KEY=%s\nSARAH_BACKEND_TOKEN=%s\n' \
-            "$OPENAI_API_KEY" "$TOKEN" > /tmp/sarah-diagnostic-secrets.env
+          printf 'SARAH_BACKEND_TOKEN=%s\n' "$TOKEN" > /tmp/sarah-diagnostic-secrets.env
 
-          npx wrangler deploy --secrets-file /tmp/sarah-diagnostic-secrets.env --keep-vars 2>&1 | tee /tmp/deploy.log
+          npx wrangler deploy \
+            --name sarah-model-proxy-diagnostic \
+            --secrets-file /tmp/sarah-diagnostic-secrets.env \
+            --var "SARAH_MODEL_PROVIDER:$SARAH_MODEL_PROVIDER" \
+            --var "SARAH_MODEL_ID:$SARAH_MODEL_ID" \
+            --keep-vars 2>&1 | tee /tmp/deploy.log
           rm -f /tmp/sarah-diagnostic-secrets.env
 
           BACKEND_URL=$(python - <<'PY'
@@ -88,8 +100,8 @@ jobs:
 
           cat > /tmp/request.json <<'JSON'
           {
-            "provider": "openai",
-            "model": "gpt-5.1",
+            "provider": "workers-ai",
+            "model": "@cf/google/gemma-4-26b-a4b-it",
             "system_prompt": "Reply with exactly ONLINE_READY and nothing else.",
             "history": [],
             "message": "Reply with exactly ONLINE_READY.",
@@ -121,14 +133,14 @@ jobs:
               reply = str(data.get('reply') or '').strip()
               if reply != 'ONLINE_READY':
                   raise SystemExit(f"Online model authenticated but returned an unexpected test reply: {reply!r}")
-              print('ONLINE_READY: Worker token and OpenAI connection both passed.')
+              if data.get('provider') != 'workers-ai':
+                  raise SystemExit(f"Unexpected provider: {data.get('provider')!r}")
+              print('ONLINE_READY: Worker token and Cloudflare Workers AI both passed.')
           else:
               print(f"DIAGNOSTIC_ERROR error={error!r} upstream_status={upstream!r} message={message!r}")
               if error == 'unauthorized':
                   raise SystemExit('The Sarah-to-Worker token was rejected after a same-shell deployment.')
-              if error == 'openai_error' and upstream == 401:
-                  raise SystemExit('OpenAI rejected the saved API key. Replace OPENAI_API_KEY with only the complete key value.')
-              if error == 'openai_error' and upstream == 429:
-                  raise SystemExit('OpenAI authenticated the key but the API account has no available credit or reached a limit.')
+              if error == 'workers_ai_error':
+                  raise SystemExit('Cloudflare Workers AI rejected the request; inspect quota/model availability without exposing credentials.')
               raise SystemExit(f"Online model diagnostic failed with HTTP {status}.")
           PY

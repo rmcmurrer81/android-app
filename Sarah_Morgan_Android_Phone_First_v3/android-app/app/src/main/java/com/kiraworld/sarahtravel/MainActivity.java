@@ -82,8 +82,8 @@ public final class MainActivity extends Activity {
                 if (changed) {
                     String message = connected
                             ? (SarahModelConfig.fullConversationAvailable()
-                                ? "Internet is back. Sarah will return to OpenAI automatically."
-                                : "Internet is back. Sarah can use public lookup, maps, and media; the team OpenAI connection is not included in this build.")
+                                ? "Internet is back. Sarah will return to " + SarahModelConfig.providerLabel() + " automatically."
+                                : "Internet is back. Sarah can use public lookup, maps, and media; the team online mind is not included in this build.")
                             : "Connection lost. Sarah is continuing locally.";
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                 }
@@ -150,8 +150,8 @@ public final class MainActivity extends Activity {
     private void showConversationModeMenu() {
         int mode = SettingsActivity.getConversationMode(this);
         String[] choices = {
-                "Automatic — OpenAI when included, public/local fallback otherwise",
-                "OpenAI preferred — retry the team connection whenever possible",
+                "Automatic — online mind when included, public/local fallback otherwise",
+                "Online mind preferred — retry the team connection whenever possible",
                 "Local only — never use the team model or public lookup",
                 "Open detailed settings"
         };
@@ -164,7 +164,7 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Choose how Sarah connects")
                 .setMessage("Current: " + current
-                        + "\n\nOpenAI is selected by the app team in the source code. People who install Sarah are not asked to choose a provider, model, or API key. Automatic mode uses the team OpenAI connection when it is included in the APK, public lookup while online when it is not, and the Local Travel Brain without internet.")
+                        + "\n\n" + SarahModelConfig.providerLabel() + " is selected by the app team. People who install Sarah are not asked to choose a provider, model, or API key. Automatic mode uses the protected team connection when it is included in the APK, public lookup while online when it is not, and the Local Travel Brain without internet.")
                 .setItems(choices, (dialog, which) -> {
                     if (which == 3) {
                         startActivity(new Intent(this, SettingsActivity.class));
@@ -176,8 +176,8 @@ public final class MainActivity extends Activity {
                     if (which != ConversationModePolicy.MODE_LOCAL_ONLY
                             && !SarahModelConfig.fullConversationAvailable()) {
                         new AlertDialog.Builder(this)
-                                .setTitle("OpenAI is controlled by the app build")
-                                .setMessage("This APK does not contain the team OpenAI connection. Public lookup, maps, media, and Local mode remain available. A team member must configure the GitHub build secret or protected backend and build a new APK; there is nothing for the person installing Sarah to enter.")
+                                .setTitle("The online mind is controlled by the app build")
+                                .setMessage("This APK does not contain the protected team connection. Public lookup, maps, media, and Local mode remain available. A team member must configure the protected backend and build a new APK; there is nothing for the person installing Sarah to enter.")
                                 .setPositiveButton("OK", null)
                                 .show();
                     }
@@ -400,7 +400,7 @@ public final class MainActivity extends Activity {
                 if (finalSmartFallback) {
                     Toast.makeText(
                             this,
-                            "The team OpenAI connection did not answer, so Sarah continued with public or Local tools. Automatic mode will try OpenAI again on the next message.",
+                            "The team online mind did not answer, so Sarah continued with public or Local tools. Automatic mode will try the protected connection again on the next message.",
                             Toast.LENGTH_LONG).show();
                 }
                 if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);

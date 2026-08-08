@@ -33,7 +33,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/mode_status_background"
             android:padding="12dp"
-            android:text="Conversation AI: OpenAI, selected by the app team. Premium online voice: Sarah Morgan on ElevenLabs when the team includes her connection. People installing Sarah are not asked for provider keys or model names."
+            android:text="Conversation AI: a protected team-selected online mind, with Cloudflare Workers AI in the no-credit judge build. Premium online voice: Sarah Morgan on ElevenLabs when the team includes her connection. People installing Sarah are not asked for provider keys or model names."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -116,7 +116,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Without the team OpenAI connection, Sarah still uses public-source tools for recognized and unfamiliar events, maps, public media, routes, and selected factual questions. Without ElevenLabs or internet, she automatically speaks with Android's local voice."
+            android:text="Without the protected team online mind, Sarah still uses public-source tools for recognized and unfamiliar events, maps, public media, routes, and selected factual questions. Without ElevenLabs or internet, she automatically speaks with Android's local voice."
             android:textSize="13sp" />
 
         <TextView
@@ -234,7 +234,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Hackathon prototype: public releases should keep shared OpenAI, ElevenLabs, hotel, travel-commerce, and voice-agent credentials on protected authenticated backends rather than inside an APK. See the repository setup documents for exact team configuration steps."
+            android:text="Hackathon prototype: public releases should keep shared model-provider, ElevenLabs, hotel, travel-commerce, and voice-agent credentials on protected authenticated backends rather than inside an APK. See the repository setup documents for exact team configuration steps."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>

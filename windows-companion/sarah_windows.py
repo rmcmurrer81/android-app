@@ -17,7 +17,8 @@ from PIL import Image, ImageDraw, ImageTk
 
 from sarah_core import (
     ChannelResponse, ElevenLabsVoice, ModelClient, SarahDatabase, TavilyResearch,
-    app_home, corrected_name, discovery_queries, is_stress_or_fear, safe_text,
+    app_home, corrected_name, discovery_queries, is_stress_or_fear,
+    load_runtime_config, safe_text, save_runtime_config,
 )
 from sarah_sync_server import SarahSyncServer
 
@@ -99,6 +100,7 @@ class SarahApp:
         tk.Label(header, text="Sarah Morgan", fg="white", bg="#183448", font=("Segoe UI", 24, "bold")).pack(side="left", padx=20, pady=15)
         self.status = tk.StringVar(value="Ready • phone pairing code " + self.sync_server.pairing_code)
         tk.Label(header, textvariable=self.status, fg="#d9edf7", bg="#183448", font=("Segoe UI", 10)).pack(side="right", padx=20)
+        ttk.Button(header, text="Online setup", command=self.configure_online_services).pack(side="right", padx=6, pady=15)
         self.tabs = ttk.Notebook(self.root); self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
         self.chat_tab = ttk.Frame(self.tabs); self.discovery_tab = ttk.Frame(self.tabs); self.trip_tab = ttk.Frame(self.tabs); self.photo_tab = ttk.Frame(self.tabs); self.device_tab = ttk.Frame(self.tabs); self.activity_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.chat_tab, text="Talk with Sarah"); self.tabs.add(self.discovery_tab, text="Discoveries"); self.tabs.add(self.trip_tab, text="Trips"); self.tabs.add(self.photo_tab, text="Photos"); self.tabs.add(self.device_tab, text="Devices & backup"); self.tabs.add(self.activity_tab, text="Factual activity")
@@ -115,6 +117,64 @@ class SarahApp:
 
     def _append(self, who: str, text: str):
         self.chat.configure(state="normal"); self.chat.insert("end", f"{who}\n{text}\n\n"); self.chat.see("end"); self.chat.configure(state="disabled")
+
+    def configure_online_services(self):
+        """Save team deployment settings per user, never inside the EXE or repository."""
+        current = load_runtime_config(self.db.root)
+        backend = simpledialog.askstring(
+            "Sarah online setup",
+            "Protected Sarah backend HTTPS URL (blank removes the per-user override; event builds then use their bundled route):",
+            initialvalue=current.get("SARAH_MODEL_BACKEND_URL", ""),
+            parent=self.root,
+        )
+        if backend is None:
+            return
+        token = simpledialog.askstring(
+            "Sarah online setup",
+            "Backend token. Leave blank to keep the saved token; type CLEAR to remove it:",
+            show="*",
+            parent=self.root,
+        )
+        voice_key = simpledialog.askstring(
+            "Sarah voice setup",
+            "Optional direct-test ElevenLabs key. The protected Sarah backend does not need this. Leave blank to keep it; type CLEAR to remove it:",
+            show="*",
+            parent=self.root,
+        )
+        voice_id = simpledialog.askstring(
+            "Sarah voice setup",
+            "Optional approved Sarah ElevenLabs voice ID (blank keeps the saved value):",
+            initialvalue=current.get("SARAH_ELEVENLABS_VOICE_ID", ""),
+            parent=self.root,
+        )
+
+        updated = dict(current)
+        if safe_text(backend):
+            updated["SARAH_MODEL_BACKEND_URL"] = safe_text(backend)
+            updated.setdefault("SARAH_MODEL_PROVIDER", "workers-ai")
+            updated.setdefault("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it")
+        else:
+            updated.pop("SARAH_MODEL_BACKEND_URL", None)
+        self._update_secret(updated, "SARAH_MODEL_BACKEND_TOKEN", token)
+        self._update_secret(updated, "SARAH_ELEVENLABS_API_KEY", voice_key)
+        if voice_id is not None and safe_text(voice_id):
+            updated["SARAH_ELEVENLABS_VOICE_ID"] = safe_text(voice_id)
+        try:
+            save_runtime_config(updated, self.db.root)
+        except ValueError as error:
+            messagebox.showerror("Sarah online setup", str(error), parent=self.root)
+            return
+        self.voice = ElevenLabsVoice(self.db.root)
+        self.research = TavilyResearch()
+        self.status.set("Online settings saved per user • no provider key was embedded in Sarah")
+
+    @staticmethod
+    def _update_secret(settings: dict[str, str], name: str, value: str | None) -> None:
+        normalized = safe_text(value)
+        if normalized.upper() == "CLEAR":
+            settings.pop(name, None)
+        elif normalized:
+            settings[name] = normalized
 
     def send(self):
         text = self.entry.get().strip()

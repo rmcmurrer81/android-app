@@ -8,23 +8,27 @@ permissions:
   contents: read
 
 env:
-  SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
-  SARAH_OPENAI_MODEL: gpt-5.1
-  SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
-  SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
-  SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
-  SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
-  SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
-  SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
-  SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
-  SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
-  SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
-  SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
-  SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
-  SARAH_TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
-  SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
-  SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
-  SARAH_STAY22_BACKEND_TOKEN: ${{ secrets.SARAH_STAY22_BACKEND_TOKEN }}
+  SARAH_OPENAI_API_KEY: ''
+  SARAH_MODEL_PROVIDER: workers-ai
+  SARAH_MODEL_ID: '@cf/google/gemma-4-26b-a4b-it'
+  # Pull-request validation must never expose or package repository secrets.
+  # The separately gated online-judge workflow deploys the protected Worker,
+  # smoke-tests it, and embeds only its rotating Sarah app token.
+  SARAH_MODEL_BACKEND_URL: ''
+  SARAH_MODEL_BACKEND_TOKEN: ''
+  SARAH_TRAVEL_COMMERCE_URL: ''
+  SARAH_TRAVEL_COMMERCE_TOKEN: ''
+  SARAH_VOICE_CONCIERGE_URL: ''
+  SARAH_VOICE_CONCIERGE_TOKEN: ''
+  SARAH_ELEVENLABS_API_KEY: ''
+  SARAH_ELEVENLABS_VOICE_ID: ''
+  SARAH_ELEVENLABS_MODEL_ID: eleven_flash_v2_5
+  SARAH_ELEVENLABS_BACKEND_URL: ''
+  SARAH_ELEVENLABS_BACKEND_TOKEN: ''
+  SARAH_TAVILY_API_KEY: ''
+  SARAH_STAY22_AID: ''
+  SARAH_STAY22_BACKEND_URL: ''
+  SARAH_STAY22_BACKEND_TOKEN: ''
 
 jobs:
   android-validation:
@@ -44,18 +48,25 @@ jobs:
           java-version: '17'
       - name: Protected online-mind source contract
         run: |
-          node --check services/sarah-model-proxy/src/index.js
-          grep -Fq "SARAH_OPENAI_MODEL" Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
-          grep -Fq "BuildConfig.SARAH_OPENAI_MODEL" Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahModelConfig.java
-          grep -Fq "OPENAI_API_KEY" services/sarah-model-proxy/wrangler.jsonc
-          grep -Fq "SARAH_BACKEND_TOKEN" services/sarah-model-proxy/wrangler.jsonc
+          cd services/sarah-model-proxy
+          npm install --no-audit --no-fund
+          npm run check
+          cd ../..
+          grep -Fq "SARAH_MODEL_PROVIDER" Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
+          grep -Fq "BuildConfig.SARAH_MODEL_ID" Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahModelConfig.java
+          grep -Fq '"binding": "AI"' services/sarah-model-proxy/wrangler.jsonc
+          grep -Fq "SARAH_BACKEND_TOKEN" services/sarah-model-proxy/src/index.js
       - name: Windows core and approval-gate tests
         working-directory: windows-companion
         run: |
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
           python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows dependencies failed to install.' }
           python -m pytest -q tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source tests failed.' }
           python -m compileall -q .
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source compilation failed.' }
           python sarah_event_ready.py --self-test
       - name: Android pure-Java contracts
         run: |
@@ -69,10 +80,16 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22SearchPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah25ConversationContextTest.java
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah25ConversationContextTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Stay22SearchPolicyTest.java
           java -cp build/sarah25-core Sarah22CoreTest
           java -cp build/sarah25-core Sarah25ConversationContextTest
+          java -cp build/sarah25-core ConversationModePolicyTest
+          java -cp build/sarah25-core Stay22SearchPolicyTest
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
@@ -121,7 +138,9 @@ jobs:
         working-directory: windows-companion
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow sarah_event_ready.py
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorganTravelOS-Setup --add-binary 'dist\SarahTravelOS.exe;payload' sarah_installer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
           if (!(Test-Path 'dist\SarahMorganTravelOS-Setup.exe')) { throw 'Installer was not created.' }
       - name: Self-test the exact public EXE
         shell: pwsh

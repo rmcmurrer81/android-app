@@ -1,0 +1,2 @@
+# Workflow-generated event credentials must never be committed as plain files.
+windows-companion/**/sarah-event-config.json

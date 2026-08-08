@@ -17,8 +17,8 @@ import java.util.Map;
 
 /**
  * Provider-neutral HTTPS client for a team-controlled Sarah backend.
- * The backend may use OpenAI today and another provider later without asking
- * every app user to supply credentials.
+ * The backend may use Workers AI or another provider without asking every app
+ * user to supply provider credentials.
  */
 public final class SarahBackendClient {
     private SarahBackendClient() { }

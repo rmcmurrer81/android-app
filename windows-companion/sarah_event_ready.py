@@ -12,7 +12,10 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 import webbrowser
 
-from sarah_core import SarahDatabase, sync_decrypt, sync_encrypt, sync_signature
+from sarah_core import (
+    SarahDatabase, bundled_event_config_path, load_bundled_event_config,
+    sync_decrypt, sync_encrypt, sync_signature,
+)
 from sarah_sync_server import SarahSyncServer
 from sarah_windows import SarahApp
 
@@ -61,6 +64,7 @@ class SarahEventReadyApp(SarahApp):
         status_label.pack(side="left", fill="x", expand=True, padx=8, pady=14)
 
         ttk.Button(header, text="Hide", command=self.hide_to_tray, style="Accent.TButton").pack(side="right", padx=(4, 12), pady=14)
+        ttk.Button(header, text="Online setup", command=self.configure_online_services, style="Accent.TButton").pack(side="right", padx=4, pady=14)
 
         tools = tk.Frame(self.root, bg="#102b3d", height=52)
         tools.pack(fill="x")
@@ -277,6 +281,15 @@ class SarahEventReadyApp(SarahApp):
 
 
 def self_test() -> int:
+    bundled_path = bundled_event_config_path()
+    if bundled_path.is_file():
+        bundled = load_bundled_event_config(bundled_path)
+        if not bundled.get("SARAH_MODEL_BACKEND_URL", "").startswith("https://"):
+            raise RuntimeError("Bundled event model backend URL is absent or is not HTTPS")
+        if not bundled.get("SARAH_MODEL_BACKEND_TOKEN"):
+            raise RuntimeError("Bundled event model backend token is absent")
+        if not bundled.get("SARAH_MODEL_PROVIDER") or not bundled.get("SARAH_MODEL_ID"):
+            raise RuntimeError("Bundled event model provider configuration is incomplete")
     with tempfile.TemporaryDirectory(prefix="sarah-event-ready-", ignore_cleanup_errors=True) as folder:
         database = SarahDatabase(Path(folder))
         token = secrets.token_urlsafe(32)

@@ -7,9 +7,8 @@ import java.util.Map;
 /**
  * Single routing point for connected conversation providers.
  *
- * OpenAI is the included provider for the hackathon build. End users do not
- * choose a provider or enter a model key in Settings. The team changes the
- * provider in SarahModelConfig and this gateway.
+ * A team-owned protected backend is the normal hackathon path. End users do
+ * not choose a provider or enter a model key in Settings.
  */
 public final class ConnectedModelGateway {
     private ConnectedModelGateway() { }
@@ -23,7 +22,7 @@ public final class ConnectedModelGateway {
             String message,
             boolean webSearch,
             byte[] imageJpeg) throws Exception {
-        String normalized = providerId == null ? "openai" : providerId.trim().toLowerCase(Locale.US);
+        String normalized = providerId == null ? SarahModelConfig.PROVIDER_ID : providerId.trim().toLowerCase(Locale.US);
         boolean effectiveWebSearch = webSearch || LiveTravelIntent.needsCurrentSources(message);
 
         String backend = SarahModelConfig.backendUrl();
@@ -55,6 +54,13 @@ public final class ConnectedModelGateway {
                     message,
                     effectiveWebSearch,
                     imageJpeg);
+        }
+
+        if ("workers-ai".equals(normalized)
+                || "cloudflare".equals(normalized)
+                || "cloudflare-workers-ai".equals(normalized)) {
+            throw new IllegalStateException(
+                    "Cloudflare Workers AI requires Sarah's protected team backend. Public lookup and Local mode remain available.");
         }
 
         throw new IllegalArgumentException(

@@ -12,6 +12,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
@@ -35,6 +36,19 @@ CLASSIFICATIONS = {
     "UNCERTAIN_BELIEF", "SINCERE_MISTAKE", "HALLUCINATION_OR_GROUNDING_ERROR",
     "IDENTITY_ATTRIBUTION_ERROR", "RUNTIME_STATE_ERROR",
 }
+RUNTIME_CONFIG_KEYS = {
+    "SARAH_MODEL_BACKEND_URL",
+    "SARAH_MODEL_BACKEND_TOKEN",
+    "SARAH_MODEL_PROVIDER",
+    "SARAH_MODEL_ID",
+    "SARAH_ELEVENLABS_API_KEY",
+    "SARAH_ELEVENLABS_VOICE_ID",
+    "SARAH_ELEVENLABS_MODEL_ID",
+    "SARAH_ELEVENLABS_BACKEND_URL",
+    "SARAH_ELEVENLABS_BACKEND_TOKEN",
+    "SARAH_TAVILY_API_KEY",
+}
+BUNDLED_EVENT_CONFIG_NAME = "sarah-event-config.json"
 
 
 def app_home() -> Path:
@@ -48,6 +62,97 @@ def app_home() -> Path:
     (root / "voice_cache").mkdir(exist_ok=True)
     (root / "backups").mkdir(exist_ok=True)
     return root
+
+
+def runtime_config_path(root: Path | None = None) -> Path:
+    """Per-user deployment configuration; this file is never bundled into an EXE."""
+    return (root or app_home()) / "runtime-config.json"
+
+
+def load_runtime_config(root: Path | None = None) -> dict[str, str]:
+    path = runtime_config_path(root)
+    try:
+        if not path.is_file() or path.stat().st_size > 64_000:
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: safe_text(raw.get(key))
+        for key in RUNTIME_CONFIG_KEYS
+        if safe_text(raw.get(key))
+    }
+
+
+def bundled_event_config_path() -> Path:
+    """Read-only CI event defaults bundled as PyInstaller application data."""
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return bundle_root / BUNDLED_EVENT_CONFIG_NAME
+
+
+def load_bundled_event_config(path: Path | None = None) -> dict[str, str]:
+    """Load only known keys from the optional event build configuration."""
+    candidate = path or bundled_event_config_path()
+    try:
+        if not candidate.is_file() or candidate.stat().st_size > 64_000:
+            return {}
+        raw = json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: safe_text(raw.get(key))
+        for key in RUNTIME_CONFIG_KEYS
+        if safe_text(raw.get(key))
+    }
+
+
+def runtime_setting(
+    name: str,
+    default: str = "",
+    root: Path | None = None,
+    bundled_path: Path | None = None,
+) -> str:
+    """Resolve environment, then per-user config, then event-build defaults."""
+    environment = safe_text(os.environ.get(name))
+    if environment:
+        return environment
+    user_value = safe_text(load_runtime_config(root).get(name))
+    if user_value:
+        return user_value
+    return safe_text(load_bundled_event_config(bundled_path).get(name)) or default
+
+
+def save_runtime_config(values: dict[str, Any], root: Path | None = None) -> Path:
+    """Atomically save only known settings outside source and built artifacts."""
+    cleaned = {
+        key: safe_text(value)
+        for key, value in values.items()
+        if key in RUNTIME_CONFIG_KEYS and safe_text(value)
+    }
+    endpoint = cleaned.get("SARAH_MODEL_BACKEND_URL", "")
+    if endpoint and not endpoint.startswith("https://"):
+        raise ValueError("Sarah's protected model backend must use HTTPS")
+    if len(cleaned.get("SARAH_MODEL_BACKEND_TOKEN", "")) > 4096:
+        raise ValueError("Sarah backend token is unexpectedly long")
+
+    path = runtime_config_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
+    try:
+        temporary.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+        try:
+            temporary.chmod(0o600)
+        except OSError:
+            pass
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return path
 
 
 def now_ms() -> int:
@@ -567,7 +672,7 @@ def sync_signature(token: str, encrypted: str) -> str:
 
 class TavilyResearch:
     def __init__(self, api_key: str | None = None):
-        self.api_key = safe_text(api_key or os.environ.get("SARAH_TAVILY_API_KEY"))
+        self.api_key = safe_text(api_key or runtime_setting("SARAH_TAVILY_API_KEY"))
 
     @property
     def configured(self) -> bool:
@@ -607,13 +712,26 @@ def discovery_queries(profile: dict[str, Any], trips: list[dict[str, Any]], near
 class ElevenLabsVoice:
     def __init__(self, root: Path | None = None):
         self.root = root or app_home()
-        self.api_key = safe_text(os.environ.get("SARAH_ELEVENLABS_API_KEY"))
-        self.voice_id = safe_text(os.environ.get("SARAH_ELEVENLABS_VOICE_ID"))
-        self.model = safe_text(os.environ.get("SARAH_ELEVENLABS_MODEL_ID")) or "eleven_multilingual_v2"
+        self.api_key = runtime_setting("SARAH_ELEVENLABS_API_KEY", root=self.root)
+        self.voice_id = runtime_setting("SARAH_ELEVENLABS_VOICE_ID", "WcGvc9xxaOYbKswm3NBx", self.root)
+        self.model = runtime_setting("SARAH_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5", self.root)
+        model_backend = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.root)
+        self.backend_url = runtime_setting(
+            "SARAH_ELEVENLABS_BACKEND_URL",
+            model_backend.rstrip("/") + "/voice" if model_backend else "",
+            self.root,
+        )
+        self.backend_token = runtime_setting(
+            "SARAH_ELEVENLABS_BACKEND_TOKEN",
+            runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.root),
+            self.root,
+        )
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key and self.voice_id)
+        direct = bool(self.api_key and self.voice_id)
+        protected = self.backend_url.startswith("https://") and bool(self.voice_id)
+        return direct or protected
 
     def synthesize(self, text: str) -> Path:
         normalized = re.sub(r"\s+", " ", safe_text(text))[:9000]
@@ -623,13 +741,35 @@ class ElevenLabsVoice:
             return target
         if not self.configured:
             raise RuntimeError("ElevenLabs is not configured")
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{urllib.parse.quote(self.voice_id)}/stream?output_format=mp3_44100_128"
-        response = requests.post(
-            url,
-            headers={"xi-api-key": self.api_key, "Accept": "audio/mpeg"},
-            json={"text": normalized, "model_id": self.model, "voice_settings": {"stability": 0.55, "similarity_boost": 0.78, "style": 0.25, "use_speaker_boost": True}},
-            timeout=120,
-        )
+        payload = {
+            "text": normalized,
+            "voice_id": self.voice_id,
+            "model_id": self.model,
+            "voice_settings": {
+                "stability": 0.55,
+                "similarity_boost": 0.78,
+                "style": 0.25,
+                "speed": 1.0,
+                "use_speaker_boost": True,
+            },
+        }
+        if self.backend_url:
+            headers = {"Accept": "audio/mpeg"}
+            if self.backend_token:
+                headers["Authorization"] = f"Bearer {self.backend_token}"
+            response = requests.post(self.backend_url, headers=headers, json=payload, timeout=120)
+        else:
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{urllib.parse.quote(self.voice_id)}/stream?output_format=mp3_44100_128"
+            direct_payload = dict(payload)
+            # ElevenLabs selects the voice from the URL path; voice_id is only
+            # part of Sarah's protected-backend contract, not the provider body.
+            direct_payload.pop("voice_id", None)
+            response = requests.post(
+                url,
+                headers={"xi-api-key": self.api_key, "Accept": "audio/mpeg"},
+                json=direct_payload,
+                timeout=120,
+            )
         response.raise_for_status()
         target.write_bytes(response.content)
         return target
@@ -645,25 +785,52 @@ class ModelClient:
             age = profile.get("age")
             age_group = "child" if isinstance(age, int) and age < 13 else "teen" if isinstance(age, int) and age < 18 else "adult"
             return universal_calm(profile.get("name", "Traveler"), age_group, transport_context(message))
-        endpoint = safe_text(os.environ.get("SARAH_MODEL_BACKEND_URL"))
-        token = safe_text(os.environ.get("SARAH_MODEL_BACKEND_TOKEN"))
+        endpoint = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root)
+        token = runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.db.root)
+        connected_failed = False
         if endpoint:
-            prompt = self._prompt(message)
-            response = requests.post(endpoint, headers={"Authorization": f"Bearer {token}"} if token else {}, json={"message": message, "system": prompt, "store": False}, timeout=120)
-            response.raise_for_status()
-            data = response.json()
-            raw = data.get("text") or data.get("response") or data.get("output_text") or ""
-            return ChannelResponse.parse(raw)
+            try:
+                prompt = self._prompt(message)
+                history = [
+                    {"role": safe_text(row.get("role")) or "user", "content": safe_text(row.get("content"))}
+                    for row in self.db.recent_messages(24)
+                    if safe_text(row.get("content"))
+                ]
+                response = requests.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {token}"} if token else {},
+                    json={
+                        "provider": runtime_setting("SARAH_MODEL_PROVIDER", "workers-ai", self.db.root),
+                        "model": runtime_setting("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it", self.db.root),
+                        "system_prompt": prompt,
+                        "history": history,
+                        "message": message,
+                        "web_search": False,
+                    },
+                    timeout=120,
+                )
+                response.raise_for_status()
+                data = response.json()
+                raw = data.get("reply") or data.get("text") or data.get("response") or data.get("output_text") or ""
+                if not safe_text(raw):
+                    raise ValueError("Sarah backend returned no reply")
+                return ChannelResponse.parse(raw)
+            except (requests.RequestException, ValueError, TypeError):
+                # The next ordinary message tries online again. This turn moves
+                # to the configured local path without exposing a token or URL.
+                connected_failed = True
         ollama = safe_text(os.environ.get("SARAH_OLLAMA_URL"))
         if ollama:
             response = requests.post(ollama.rstrip("/") + "/api/chat", json={"model": safe_text(os.environ.get("SARAH_OLLAMA_MODEL")) or "qwen3.5:9b", "stream": False, "messages": [{"role": "system", "content": self._prompt(message)}, {"role": "user", "content": message}]}, timeout=180)
             response.raise_for_status()
             return ChannelResponse.parse(response.json().get("message", {}).get("content", ""))
         return ChannelResponse(
-            "I’m with you. My stronger connected or local model is not configured on this computer yet, but I can still save trips, organize photos, use offline calm support, pair with your phone, and work from saved information.",
+            ("My online mind is temporarily unavailable, so I’m staying with you locally for this turn. " if connected_failed else "I’m with you. My stronger connected or local model is not configured on this computer yet, but ")
+            + "I can still save trips, organize photos, use offline calm support, pair with your phone, and work from saved information.",
             "Sarah wants to remain useful without pretending a model answered.",
-            "No connected model or local Ollama endpoint is configured. No research, booking or external action occurred.",
-            "TRUTHFUL_STATEMENT",
+            ("The protected online call failed and no local Ollama endpoint answered. " if connected_failed else "No connected model or local Ollama endpoint is configured. ")
+            + "No research, booking or external action occurred.",
+            "RUNTIME_STATE_ERROR" if connected_failed else "TRUTHFUL_STATEMENT",
             True,
         )
 

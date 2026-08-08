@@ -33,11 +33,21 @@ SARAH_ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 SARAH_TAVILY_API_KEY=
 SARAH_MODEL_BACKEND_URL=
 SARAH_MODEL_BACKEND_TOKEN=
+SARAH_MODEL_PROVIDER=workers-ai
+SARAH_MODEL_ID=@cf/google/gemma-4-26b-a4b-it
 SARAH_OLLAMA_URL=http://localhost:11434
 SARAH_OLLAMA_MODEL=qwen3.5:9b
 ```
 
-Do not put real credentials into GitHub. Use Windows environment variables, a local `.env` loader outside source control, or a protected backend.
+Do not put provider credentials into source. Use Windows environment variables, a local `.env` loader outside source control, or a protected backend. The online-judge workflow uses one repository Actions secret named `SARAH_MODEL_BACKEND_TOKEN` as the event app-to-Worker credential; it is not a provider key.
+
+The event-ready UI also has an **Online setup** button. It writes only to the current Windows user's `%APPDATA%\SarahMorgan\runtime-config.json`. The online-judge CI build additionally bundles a workflow-generated `sarah-event-config.json` inside the application so the event laptop works without manually copying a token. Resolution order is environment variable, then per-user runtime config, then bundled event config. The config is generated only inside CI and is never committed or uploaded separately.
+
+The bundled event app token is deliberately revocable but is extractable from the APK or EXE by a determined person. Keeping it out of source, logs, and manifests does not make a client-held token secret. Rotate `SARAH_MODEL_BACKEND_TOKEN`, redeploy the Worker, and rebuild/reinstall the event clients after the event or whenever a binary leaves the intended team. Do not commit, email, or distribute the per-user runtime file either; it can contain an override token or direct ElevenLabs key. Use **CLEAR** in a secret prompt to remove a saved value.
+
+The Windows model client uses the same provider-neutral request and `{ "reply": "..." }` response contract as Android. This is required for one deployed Worker to serve both embodiments.
+
+When the protected model backend is configured, Windows Sarah automatically derives its voice URL as `<backend>/voice` and reuses the revocable Sarah app token. This enables ElevenLabs without storing its provider key in the EXE or local runtime file. A separately configured voice-backend URL/token may override that derivation.
 
 ## Pair Android
 

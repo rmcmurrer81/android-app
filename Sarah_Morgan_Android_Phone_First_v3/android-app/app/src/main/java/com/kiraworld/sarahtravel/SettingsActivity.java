@@ -76,8 +76,8 @@ public final class SettingsActivity extends Activity {
         Spinner mode = findViewById(R.id.providerSpinner);
         Spinner voice = findViewById(R.id.voiceModeSpinner);
         mode.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
-                "Automatic — OpenAI when included, public lookup or Local fallback otherwise",
-                "OpenAI preferred — retry the team connection on each message",
+                "Automatic — online mind when included, public lookup or Local fallback otherwise",
+                "Online mind preferred — retry the team connection on each message",
                 "Local only — never use the team model or public lookup"
         }));
         voice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{
@@ -153,8 +153,8 @@ public final class SettingsActivity extends Activity {
 
     private void finishWithMessage() {
         String conversation = SarahModelConfig.fullConversationAvailable()
-                ? "OpenAI conversation is included."
-                : "Public lookup and Local conversation remain available; the team OpenAI connection is not included.";
+                ? SarahModelConfig.providerLabel() + " conversation is included."
+                : "Public lookup and Local conversation remain available; the team online mind is not included.";
         String voice = ElevenLabsVoiceConfig.isConfigured()
                 ? ElevenLabsVoiceConfig.statusLabel() + "."
                 : "ElevenLabs is not included yet, so Sarah uses Android voice.";
