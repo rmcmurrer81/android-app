@@ -1,5 +1,5 @@
 {
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
-  "reason": "Rerun after protected backend-token provisioning and approved Sarah voice-ID default correction; prove Workers AI conversation, ElevenLabs voice, airplane-mode fallback, and automatic reconnection"
+  "reason": "Rerun after exact Worker deployment-identity polling and CI shell correction; prove Workers AI conversation, ElevenLabs voice, airplane-mode fallback, and automatic reconnection"
 }

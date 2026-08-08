@@ -17,18 +17,59 @@ function request(body, token = TOKEN) {
 }
 
 test("Workers AI health reports the configured provider without exposing secrets", async () => {
+  const deploymentId = "a".repeat(40);
+  const sourceSha256 = "b".repeat(64);
+  const configSha256 = "c".repeat(64);
   const env = {
     AI: { run: async () => ({ response: "unused" }) },
     SARAH_BACKEND_TOKEN: TOKEN,
     SARAH_MODEL_PROVIDER: "workers-ai",
     SARAH_MODEL_ID: "@cf/google/gemma-4-26b-a4b-it",
+    SARAH_DEPLOYMENT_ID: deploymentId,
+    SARAH_SOURCE_SHA256: sourceSha256,
+    SARAH_CONFIG_SHA256: configSha256,
   };
   const response = await worker.fetch(new Request("https://sarah.example/health"), env);
   const data = await response.json();
   assert.equal(response.status, 200);
   assert.equal(data.ok, true);
+  assert.equal(data.contract_version, "sarah-model-proxy-v2-workers-ai-voice");
+  assert.equal(data.deployment_ready, true);
+  assert.equal(data.deployment_id, deploymentId);
+  assert.equal(data.source_sha256, sourceSha256);
+  assert.equal(data.config_sha256, configSha256);
   assert.equal(data.provider, "workers-ai");
   assert.equal(JSON.stringify(data).includes(TOKEN), false);
+});
+
+test("health exposes absent deployment identity to the fail-closed verifier", async () => {
+  const env = {
+    AI: { run: async () => ({ response: "unused" }) },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+  };
+  const response = await worker.fetch(new Request("https://sarah.example/health"), env);
+  const data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.ok, true);
+  assert.equal(data.deployment_ready, false);
+  assert.equal(data.contract_version, "sarah-model-proxy-v2-workers-ai-voice");
+});
+
+test("health rejects truncated or malformed deployment identity metadata", async () => {
+  const env = {
+    AI: { run: async () => ({ response: "unused" }) },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_DEPLOYMENT_ID: `${"a".repeat(40)}extra`,
+    SARAH_SOURCE_SHA256: "b".repeat(64),
+    SARAH_CONFIG_SHA256: "c".repeat(64),
+  };
+  const response = await worker.fetch(new Request("https://sarah.example/health"), env);
+  const data = await response.json();
+  assert.equal(data.ok, true);
+  assert.equal(data.deployment_ready, false);
+  assert.equal(data.deployment_id, null);
 });
 
 test("conversation route rejects the wrong Sarah token", async () => {

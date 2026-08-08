@@ -1,6 +1,7 @@
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const WORKERS_AI_DEFAULT_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const OPENAI_DEFAULT_MODEL = "gpt-5.1";
+const WORKER_CONTRACT_VERSION = "sarah-model-proxy-v2-workers-ai-voice";
 const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 const MAX_HISTORY_MESSAGES = 24;
 const MAX_TEXT_CHARS = 40_000;
@@ -11,9 +12,15 @@ export default {
     const provider = configuredProvider(env);
 
     if (request.method === "GET" && url.pathname === "/health") {
+      const deployment = deploymentIdentity(env);
       return json({
         ok: Boolean(env.SARAH_BACKEND_TOKEN && providerReady(provider, env)),
         service: "sarah-model-proxy",
+        contract_version: WORKER_CONTRACT_VERSION,
+        deployment_ready: deployment.ready,
+        deployment_id: deployment.id || null,
+        source_sha256: deployment.sourceSha256 || null,
+        config_sha256: deployment.configSha256 || null,
         provider,
         model_override: configuredModel(provider, env) || null,
         voice_ready: Boolean(env.ELEVENLABS_API_KEY && cleanVoiceId(env.SARAH_ELEVENLABS_VOICE_ID)),
@@ -418,6 +425,23 @@ function providerReady(provider, env) {
   if (provider === "workers-ai") return Boolean(env.AI);
   if (provider === "openai") return Boolean(env.OPENAI_API_KEY);
   return false;
+}
+
+function deploymentIdentity(env) {
+  const id = cleanHex(env.SARAH_DEPLOYMENT_ID, 40);
+  const sourceSha256 = cleanHex(env.SARAH_SOURCE_SHA256, 64);
+  const configSha256 = cleanHex(env.SARAH_CONFIG_SHA256, 64);
+  return {
+    ready: Boolean(id && sourceSha256 && configSha256),
+    id,
+    sourceSha256,
+    configSha256,
+  };
+}
+
+function cleanHex(value, length) {
+  const text = value === null || value === undefined ? "" : String(value).trim().toLowerCase();
+  return new RegExp(`^[a-f0-9]{${length}}$`).test(text) ? text : "";
 }
 
 function maxOutputTokens(value) {
