@@ -1,0 +1,4 @@
+{
+  "requested_at": "2026-08-08T02:36:00Z",
+  "reason": "Distinguish Worker token, OpenAI key, model access, and API billing after workers.dev activation"
+}
