@@ -2,11 +2,12 @@ package com.kiraworld.sarahtravel;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.widget.Button;
 
 import java.util.Map;
 
 /** Compact profile-isolated entry point for source-bound discoveries. */
-public final class ProactiveDiscoveryButton extends androidx.appcompat.widget.AppCompatButton {
+public final class ProactiveDiscoveryButton extends Button {
     public ProactiveDiscoveryButton(Context context, AttributeSet attributes) {
         super(context, attributes);
         setOnClickListener(view -> TravelUi.start(getContext(), DiscoveryActivity.class));

@@ -150,6 +150,26 @@ The missing protected current-source credential is a deployment/setup blocker,
 not a Workers AI conversational failure. Do not weaken the current-source gate
 or claim live research merely to produce an artifact.
 
+## Second hosted R2 evidence
+
+- Source extraction run `31263579454`: passed. Artifact `9023467470`, digest
+  `sha256:f39d9da714978db2bb26abbc23c185273da64a758cbfdd5aebe977be56680b2d`.
+- Observable validation run `31263579464`: the Windows job passed and uploaded
+  artifact `9023483806`, digest
+  `sha256:3ab3b03abdeb173a076548a8507a8006b028f51853a514708a737dcd56e546da`.
+  Android source extraction and the pure-Java policy suite passed, then real
+  Gradle compilation exposed one new exact blocker: `ProactiveDiscoveryButton`
+  extended AppCompat although this deliberately small package declares no
+  AppCompat dependency. The resulting missing-superclass messages were
+  cascading compile errors, not separate runtime defects.
+- The narrow repair uses the Android platform `Button`, matching the existing
+  upgrade generator and avoiding a large unused AppCompat dependency. Static
+  validation now fails if this source reintroduces `androidx.appcompat`.
+
+The repaired source still requires a fresh hosted Gradle compile before any R2
+APK is claimed. The second Windows artifact is superseded by that source repair
+and remains engineering evidence only.
+
 The Android candidate is an in-place upgrade only: it retains
 `com.kiraworld.sarahtravel`. CI must have an exact R1 signing-cache hit, require
 the recorded R1 APK and signer SHA-256 checkpoints, compare the R2 signer to R1,

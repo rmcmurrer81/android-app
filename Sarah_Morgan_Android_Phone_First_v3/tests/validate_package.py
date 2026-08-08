@@ -53,6 +53,10 @@ gradle_properties=(APP/'gradle.properties').read_text(encoding='utf-8')
 assert re.search(r'^android\.useAndroidX\s*=\s*true\s*$', gradle_properties, re.MULTILINE), \
        'AndroidX dependencies require android.useAndroidX=true'
 
+discovery_button=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ProactiveDiscoveryButton.java').read_text(encoding='utf-8')
+assert 'extends Button' in discovery_button, 'discovery button must use the platform Button available in this package'
+assert 'androidx.appcompat' not in discovery_button, 'AppCompat is not a declared Android dependency'
+
 for p in (APP/'app/src/main/res').rglob('*.xml'):
     root=ET.parse(p).getroot()
     ids=[]
