@@ -31,6 +31,11 @@ public final class MemoryExtractorTravelBrainTest {
         System.out.println("MemoryExtractorTravelBrainTest passed");
     }
 
+    private static boolean has(List<MemoryExtractor.Candidate> values, String summary) {
+        for (MemoryExtractor.Candidate value : values) if (value.summary.equals(summary)) return true;
+        return false;
+    }
+
     private static boolean hasCategory(List<MemoryExtractor.Candidate> values, String category) {
         for (MemoryExtractor.Candidate value : values) if (value.category.equals(category)) return true;
         return false;
