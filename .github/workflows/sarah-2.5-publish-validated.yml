@@ -1,0 +1,136 @@
+name: Publish Validated Sarah 2.5 Installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/sarah-2.5-event-ready]
+    paths:
+      - '.github/workflows/sarah-2.5-publish-validated.yml'
+      - 'public-release/2.5/PUBLISH_VALIDATED_KICKOFF.json'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-validated-sarah-2-5
+  cancel-in-progress: true
+
+env:
+  VALIDATED_RUN_ID: '31138711432'
+  RELEASE_TAG: 'sarah-travel-os-v2.5-event-ready'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tested source branch
+        uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.5-event-ready
+          fetch-depth: 0
+
+      - name: Download the APK and EXE from the successful validation run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release
+          gh run download "$VALIDATED_RUN_ID" --repo "$GITHUB_REPOSITORY" --name 'Sarah-2.5-validated-APK' --dir release
+          gh run download "$VALIDATED_RUN_ID" --repo "$GITHUB_REPOSITORY" --name 'Sarah-2.5-validated-Windows-EXE' --dir release
+          find release -maxdepth 2 -type f -print
+
+      - name: Verify the exact public files again
+        run: |
+          set -euo pipefail
+          APK='release/Sarah-Morgan-2.5-event-ready.apk'
+          EXE='release/SarahMorganTravelOS-Setup.exe'
+          test -s "$APK"
+          test -s "$EXE"
+          python - <<'PY'
+          from pathlib import Path
+          apk = Path('release/Sarah-Morgan-2.5-event-ready.apk')
+          exe = Path('release/SarahMorganTravelOS-Setup.exe')
+          if apk.read_bytes()[:4] != b'PK\x03\x04':
+              raise SystemExit('The Android asset is not an APK/ZIP package.')
+          if exe.read_bytes()[:2] != b'MZ':
+              raise SystemExit('The Windows asset is not a PE executable.')
+          if apk.stat().st_size < 250_000:
+              raise SystemExit('The Android APK is unexpectedly small.')
+          if exe.stat().st_size < 20_000_000:
+              raise SystemExit('The Windows installer is unexpectedly small.')
+          print('APK bytes:', apk.stat().st_size)
+          print('EXE bytes:', exe.stat().st_size)
+          PY
+          sha256sum "$APK" "$EXE" > release/SHA256SUMS.txt
+          cat release/SHA256SUMS.txt
+
+      - name: Publish the tested installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          cat > release/README.txt <<'EOF'
+          Sarah Travel OS 2.5 — event-ready physical-test release
+
+          INSTALL ONLY THE FILE FOR THAT DEVICE:
+
+          Android phone:
+          Sarah-Morgan-2.5-event-ready.apk
+
+          Windows desktop or laptop:
+          SarahMorganTravelOS-Setup.exe
+
+          These exact files passed GitHub's Android and Windows validation jobs. The APK is version code 25 with a 2.5-event-ready build identifier. The Windows file is a genuine x86-64 PE self-installer; the exact installer installed its bundled Sarah application and completed the application self-test.
+
+          Sarah's interface uses a compact orbit logo and reserves the screen for conversation, maps, public photo previews, routes, trips, photos, travel tools, and device state.
+
+          PRIVATE-WIFI CONTINUITY:
+          Start Sarah on Windows and allow Private network access if Windows Firewall asks. Open Sarah on the Android phone while both devices use the same private Wi-Fi. Sarah may notice the computer, but nothing transfers merely because it is nearby. The phone and computer display the same six-digit code, and the already-running Windows Sarah must explicitly approve the named phone. Only then does encrypted two-way synchronization begin.
+
+          This is a physical-test prerelease. Robert's real Samsung, Windows microphone/speakers, firewall, offline behavior, ElevenLabs route, and phone/computer synchronization are the next acceptance tests.
+          EOF
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target agent/sarah-2.5-event-ready \
+            --title 'Sarah Travel OS 2.5 — Event Ready' \
+            --notes-file release/README.txt \
+            --prerelease \
+            release/Sarah-Morgan-2.5-event-ready.apk \
+            release/SarahMorganTravelOS-Setup.exe \
+            release/SHA256SUMS.txt \
+            release/README.txt
+
+  record:
+    if: always()
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.5-event-ready
+          fetch-depth: 0
+      - name: Record whether the GitHub release was published
+        env:
+          RESULT: ${{ needs.publish.result }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p public-release/2.5
+          cat > public-release/2.5/PUBLISHED_STATUS.json <<EOF
+          {
+            "workflow_run_id": "$RUN_ID",
+            "validated_artifact_run_id": "$VALIDATED_RUN_ID",
+            "source_sha": "$SOURCE_SHA",
+            "result": "$RESULT",
+            "release_tag": "$RELEASE_TAG"
+          }
+          EOF
+          git config user.name 'Sarah Release Publisher'
+          git config user.email 'actions@users.noreply.github.com'
+          git add public-release/2.5/PUBLISHED_STATUS.json
+          git commit -m '[skip ci] Record Sarah 2.5 validated release publication' || exit 0
+          git push origin HEAD:agent/sarah-2.5-event-ready

@@ -62,6 +62,14 @@ public final class ElevenLabsVoiceConfig {
         return "Sarah Morgan voice selected • ElevenLabs service credential not included";
     }
 
+    public static String humanModelLabel() {
+        String model = modelId();
+        if ("eleven_flash_v2_5".equals(model)) return "Eleven Flash v2.5";
+        if ("eleven_multilingual_v2".equals(model)) return "Eleven Multilingual v2";
+        if ("eleven_turbo_v2_5".equals(model)) return "Eleven Turbo v2.5";
+        return "configured ElevenLabs model";
+    }
+
     private static String clean(String value) {
         return value == null ? "" : value.trim();
     }

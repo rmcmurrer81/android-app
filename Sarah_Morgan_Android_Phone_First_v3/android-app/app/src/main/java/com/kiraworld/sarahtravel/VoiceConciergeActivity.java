@@ -65,8 +65,8 @@ public final class VoiceConciergeActivity extends Activity {
         status.addView(TravelUi.cardTitle(this, "🔌", "Integration status"));
         status.addView(TravelUi.body(this,
                 VoiceConciergeConfig.isConfigured()
-                        ? "The team voice concierge endpoint is configured. The traveler still reviews the script and presses the final call button."
-                        : "Manual dial and script sharing work now. An optional team voice backend—such as an ElevenLabs agent connected through authenticated tools—can be added through build secrets. The installer does not enter a provider key."));
+                        ? "The connected voice concierge is available. The traveler still reviews the script and presses the final call button."
+                        : "Manual dialing and script sharing work now. The connected voice concierge is not available, and no call is placed automatically."));
         root.addView(status);
 
         LinearLayout truth = TravelUi.card(this, TravelUi.PEACH);

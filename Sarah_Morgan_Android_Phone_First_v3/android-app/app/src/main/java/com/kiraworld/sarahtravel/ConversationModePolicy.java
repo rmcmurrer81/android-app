@@ -24,13 +24,13 @@ public final class ConversationModePolicy {
             int mode,
             boolean validatedInternet,
             boolean teamModelAvailable,
-            boolean lastConnectedCallFailed) {
-        if (mode == MODE_LOCAL_ONLY) return validatedInternet ? "Local only" : "Local only • offline";
-
-        String prefix = mode == MODE_AUTO ? "Automatic" : "OpenAI preferred";
-        if (!validatedInternet) return prefix + " • Local • offline";
-        if (!teamModelAvailable) return prefix + " • Public web online • OpenAI not included in this build";
-        if (lastConnectedCallFailed) return prefix + " • Public/local fallback";
-        return prefix + " • OpenAI online";
+            boolean lastConnectedCallFailed,
+            boolean connectedRouteProven) {
+        if (mode == MODE_LOCAL_ONLY) return "Offline mind ready • local-only mode";
+        if (!validatedInternet) return "Offline mind ready • no validated internet";
+        if (!teamModelAvailable) return "Online unavailable • offline mind ready";
+        if (lastConnectedCallFailed) return "Online unavailable • offline mind ready • next turn will retry";
+        if (!connectedRouteProven) return "Connected route configured • verifying with the next message";
+        return "Online mind ready • verified by a recent connected reply";
     }
 }

@@ -1,5 +1,8 @@
 package com.kiraworld.sarahtravel;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -32,16 +35,16 @@ public final class OfflineSongCatalog {
             this.id = id;
             this.title = title;
             this.rightsNote = rightsNote;
-            this.lines = List.copyOf(lines);
+            this.lines = Collections.unmodifiableList(new ArrayList<>(lines));
         }
     }
 
-    private static final List<Song> SONGS = List.of(
+    private static final List<Song> SONGS = Collections.unmodifiableList(Arrays.asList(
             new Song(
                     "twinkle",
                     "Twinkle, Twinkle, Little Star",
                     "Jane Taylor's 1806 verse and the traditional 18th-century melody are public domain.",
-                    List.of(
+                    Arrays.asList(
                             line("Twinkle, twinkle, little star,", 1.00f, 0.78f),
                             line("How I wonder what you are.", 1.10f, 0.78f),
                             line("Up above the world so high,", 1.20f, 0.76f),
@@ -52,7 +55,7 @@ public final class OfflineSongCatalog {
                     "row_boat",
                     "Row, Row, Row Your Boat",
                     "The familiar verse and tune were published in the 19th century and are public domain.",
-                    List.of(
+                    Arrays.asList(
                             line("Row, row, row your boat,", 0.96f, 0.82f),
                             line("Gently down the stream.", 1.04f, 0.78f),
                             line("Merrily, merrily, merrily, merrily,", 1.14f, 0.88f),
@@ -61,7 +64,7 @@ public final class OfflineSongCatalog {
                     "mary_lamb",
                     "Mary Had a Little Lamb",
                     "Sarah Josepha Hale's 1830 verse and the traditional melody are public domain.",
-                    List.of(
+                    Arrays.asList(
                             line("Mary had a little lamb,", 1.00f, 0.80f),
                             line("Little lamb, little lamb.", 1.10f, 0.82f),
                             line("Mary had a little lamb,", 1.00f, 0.80f),
@@ -70,14 +73,14 @@ public final class OfflineSongCatalog {
                     "baa_baa",
                     "Baa, Baa, Black Sheep",
                     "The traditional 18th-century nursery rhyme is public domain.",
-                    List.of(
+                    Arrays.asList(
                             line("Baa, baa, black sheep,", 1.00f, 0.80f),
                             line("Have you any wool?", 1.10f, 0.78f),
                             line("Yes sir, yes sir, three bags full.", 1.15f, 0.82f),
                             line("One for the master,", 1.05f, 0.78f),
                             line("One for the dame,", 1.00f, 0.78f),
                             line("And one for the little child who lives down the lane.", 0.92f, 0.76f)))
-    );
+    ));
 
     private OfflineSongCatalog() { }
 

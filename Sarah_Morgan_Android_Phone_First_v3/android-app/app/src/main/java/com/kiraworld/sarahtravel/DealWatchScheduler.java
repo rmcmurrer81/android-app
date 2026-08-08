@@ -12,10 +12,10 @@ public final class DealWatchScheduler {
 
     private DealWatchScheduler() { }
 
-    public static void ensureScheduled(Context context) {
+    public static boolean ensureScheduled(Context context) {
         Context app = context.getApplicationContext();
         JobScheduler scheduler = (JobScheduler) app.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler == null) return;
+        if (scheduler == null) return false;
         JobInfo job = new JobInfo.Builder(
                 JOB_PERIODIC,
                 new ComponentName(app, DealWatchWorker.class))
@@ -23,13 +23,13 @@ public final class DealWatchScheduler {
                 .setPersisted(true)
                 .setPeriodic(TWELVE_HOURS_MS)
                 .build();
-        scheduler.schedule(job);
+        return scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS;
     }
 
-    public static void runSoon(Context context) {
+    public static boolean runSoon(Context context) {
         Context app = context.getApplicationContext();
         JobScheduler scheduler = (JobScheduler) app.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (scheduler == null) return;
+        if (scheduler == null) return false;
         JobInfo job = new JobInfo.Builder(
                 JOB_SOON,
                 new ComponentName(app, DealWatchWorker.class))
@@ -38,7 +38,7 @@ public final class DealWatchScheduler {
                 .setOverrideDeadline(60L * 1000L)
                 .setBackoffCriteria(5L * 60L * 1000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .build();
-        scheduler.schedule(job);
+        return scheduler.schedule(job) == JobScheduler.RESULT_SUCCESS;
     }
 
     public static void cancel(Context context) {

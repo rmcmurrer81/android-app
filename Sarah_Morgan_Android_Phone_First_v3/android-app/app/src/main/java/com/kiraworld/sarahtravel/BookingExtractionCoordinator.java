@@ -4,6 +4,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +34,9 @@ public final class BookingExtractionCoordinator {
                     processed++;
                     continue;
                 }
-                if (!"screenshot".equals(sourceKind) || apiKey == null || apiKey.trim().isEmpty()) continue;
+                if (!"screenshot".equals(sourceKind)
+                        || !SarahModelConfig.fullConversationAvailable()
+                            && (apiKey == null || apiKey.trim().isEmpty())) continue;
                 File file = new File(booking.getOrDefault("local_path", ""));
                 if (!file.isFile()) continue;
                 byte[] image = Files.readAllBytes(file.toPath());
@@ -46,7 +49,7 @@ public final class BookingExtractionCoordinator {
                         apiKey,
                         model,
                         systemPrompt,
-                        List.<Map<String, String>>of(),
+                        Collections.<Map<String, String>>emptyList(),
                         "Extract the visible booking details from this screenshot.",
                         false,
                         image);

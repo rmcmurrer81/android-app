@@ -12,45 +12,45 @@ public final class JourneyPlannerCore {
         String route = intent.origin + " to " + intent.destination;
 
         if (intent.modes.contains(JourneyIntentParser.TRANSIT) && !intent.eventName.isEmpty()) {
-            return "I’ll treat this as a local-transit trip from " + intent.origin + " to "
+            return "This is a local-transit trip from " + intent.origin + " to "
                     + intent.eventName + " in " + intent.destination + ". "
-                    + "I’ll check the event venue, the realistic transit chain, walking distance, accessibility, service changes, and a backup route when current sources are connected. The Map and Route buttons can show the area now.";
+                    + "The event venue, realistic transit chain, walking distance, accessibility, service changes, and a backup route require verified current sources. The Map and Route buttons can show the area now.";
         }
 
         if (intent.modes.contains(JourneyIntentParser.RAIL) && intent.crossCountry) {
             return "A cross-country train trip from " + intent.origin + " to " + intent.destination
-                    + " is a multi-day rail journey. I’ll compare current Amtrak route combinations, coach versus sleeper choices, transfer points, total travel time, station access, scenery, meals, and possible overnight stops. Current timetables and prices need official live data, but I can save the rail plan now and show maps, photos, and videos of the route.";
+                    + " is a multi-day rail journey. Current Amtrak route combinations, coach versus sleeper choices, transfer points, total travel time, station access, scenery, meals, and possible overnight stops need official live data. A rail plan can be saved only through the explicit save action; maps, photos, and videos can still show the route.";
         }
 
         if (intent.modes.size() > 1) {
-            return "I’ll compare more than flights for " + route + ": " + naturalModes(intent.modes)
-                    + ". I’ll judge the complete trip—price, duration, transfers, baggage, station or airport access, accessibility, reliability, and local transportation at the destination—rather than picking the cheapest headline fare.";
+            return "Useful modes beyond flights for " + route + " are " + naturalModes(intent.modes)
+                    + ". A complete comparison needs price, duration, transfers, baggage, station or airport access, accessibility, reliability, and local transportation at the destination—not only the cheapest headline fare.";
         }
 
         String mode = intent.modes.get(0);
         if (JourneyIntentParser.RAIL.equals(mode)) {
-            return "I’ll plan " + route + " by rail. I’ll check current Amtrak or regional-rail options, transfers, coach and sleeper choices where relevant, station access, total trip time, and the final local connection.";
+            return "For " + route + " by rail, current Amtrak or regional-rail options, transfers, coach and sleeper choices, station access, total trip time, and the final local connection require verified sources.";
         }
         if (JourneyIntentParser.TRANSIT.equals(mode)) {
-            return "I’ll plan " + route + " by local transit. I’ll compare the practical train, subway, light-rail, bus, and walking pieces, including service changes, elevators, transfer time, and a backup route when current information is available.";
+            return "For " + route + " by local transit, compare the practical train, subway, light-rail, bus, and walking pieces. Service changes, elevators, transfer time, and a backup route require current information.";
         }
         if (JourneyIntentParser.BUS.equals(mode)) {
-            return "I’ll plan " + route + " by intercity bus and compare current operators, departure points, total time, luggage rules, transfer risk, and the local connection at each end.";
+            return "For " + route + " by intercity bus, current operators, departure points, total time, luggage rules, transfer risk, and the local connection at each end require verified sources.";
         }
         if (JourneyIntentParser.DRIVE.equals(mode)) {
-            return "I’ll plan the drive from " + intent.origin + " to " + intent.destination
+            return "A drive from " + intent.origin + " to " + intent.destination
                     + " with route options, tolls, charging or fuel stops, weather, parking, rest stops, and an alternative if traffic or conditions change.";
         }
         if (JourneyIntentParser.FERRY.equals(mode)) {
-            return "I’ll treat the ferry as part of the journey from " + intent.origin + " to " + intent.destination
-                    + " and check current terminals, schedules, boarding rules, weather sensitivity, and connections on both sides.";
+            return "The ferry is part of the journey from " + intent.origin + " to " + intent.destination
+                    + ". Current terminals, schedules, boarding rules, weather sensitivity, and connections on both sides require verified sources.";
         }
         if (JourneyIntentParser.AIR.equals(mode)) {
-            return "I’ll plan the full air trip from " + intent.origin + " to " + intent.destination
+            return "A full air trip from " + intent.origin + " to " + intent.destination
                     + ", including nearby airports, bags, ground transportation, schedule quality, and total door-to-door time—not only the airfare.";
         }
-        return "I’ll save the " + mode.replace('_', ' ') + " journey from " + intent.origin + " to "
-                + intent.destination + " and use current route information when the connected travel service is available.";
+        return "The " + mode.replace('_', ' ') + " journey from " + intent.origin + " to "
+                + intent.destination + " can be saved only through an explicit save action; current route information requires a connected source.";
     }
 
     private static String naturalModes(List<String> modes) {

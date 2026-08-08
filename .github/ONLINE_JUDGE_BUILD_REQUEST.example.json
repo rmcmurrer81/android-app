@@ -1,0 +1,4 @@
+{
+  "model": "gpt-5.1",
+  "reason": "Copy this file to ONLINE_JUDGE_BUILD_REQUEST.json and commit it on agent/sarah-2.5-event-ready after the three required GitHub Actions secrets are configured. Changing the model value and committing again triggers a new live-tested judge APK."
+}

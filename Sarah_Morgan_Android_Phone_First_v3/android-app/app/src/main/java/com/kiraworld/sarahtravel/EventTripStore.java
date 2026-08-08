@@ -51,6 +51,25 @@ public final class EventTripStore extends SQLiteOpenHelper {
         }
     }
 
+    /** Create or explicitly reactivate one runnable event monitor. */
+    public boolean ensureRunnableEventMonitor(String eventName, String destination) {
+        long id = upsertEventTrip(eventName, destination, true);
+        if (id < 0) return false;
+        ContentValues values = new ContentValues();
+        values.put("monitor_status", "queued");
+        values.put("active", 1);
+        values.put("next_check_at", 0);
+        if (getWritableDatabase().update(
+                "event_trips", values, "id=?", new String[]{String.valueOf(id)}) <= 0) return false;
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT active,monitor_status FROM event_trips WHERE id=? LIMIT 1",
+                new String[]{String.valueOf(id)})) {
+            return cursor.moveToFirst()
+                    && cursor.getInt(0) == 1
+                    && "queued".equals(cursor.getString(1));
+        }
+    }
+
     public void updateEventResearch(
             long id,
             String eventName,
@@ -147,6 +166,18 @@ public final class EventTripStore extends SQLiteOpenHelper {
 
     public long addBookingScreenshot(String localPath, String rawText) {
         return addBooking(null, "travel", "Unknown", "screenshot", "", localPath, rawText);
+    }
+
+    public long addBookingDocument(String localPath, String rawText) {
+        return addBooking(null, "travel", "Unknown", "pdf", "", localPath, rawText);
+    }
+
+    public long addBookingText(String rawText) {
+        return addBooking(null, "travel", "Unknown", "shared_text", "", "", rawText);
+    }
+
+    public int clearBookingImports() {
+        return getWritableDatabase().delete("booking_imports", null, null);
     }
 
     private long addBooking(

@@ -26,17 +26,28 @@ public final class SecureProfileVault {
     private SecureProfileVault() { }
 
     public static void put(Context context, String namespace, String personId, String value) {
+        putVerified(context, namespace, personId, value);
+    }
+
+    public static boolean putVerified(
+            Context context,
+            String namespace,
+            String personId,
+            String value) {
         String key = key(namespace, personId);
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
             byte[] encrypted = cipher.doFinal(clean(value).getBytes(StandardCharsets.UTF_8));
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            boolean committed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .edit()
                     .putString(key + "_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
                     .putString(key + "_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                    .apply();
-        } catch (Exception ignored) { }
+                    .commit();
+            return committed && clean(value).equals(get(context, namespace, personId));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     public static String get(Context context, String namespace, String personId) {
@@ -60,12 +71,57 @@ public final class SecureProfileVault {
     }
 
     public static void remove(Context context, String namespace, String personId) {
+        removeVerified(context, namespace, personId);
+    }
+
+    /** Synchronous removal used only after a migration destination is verified. */
+    public static boolean removeVerified(Context context, String namespace, String personId) {
         String key = key(namespace, personId);
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        boolean committed = preferences
                 .edit()
                 .remove(key + "_iv")
                 .remove(key + "_data")
-                .apply();
+                .commit();
+        return committed
+                && !preferences.contains(key + "_iv")
+                && !preferences.contains(key + "_data");
+    }
+
+    /**
+     * Move one encrypted record only when the confirmed target is empty.
+     * A conflicting target preserves both records for a store-specific merge.
+     */
+    public static boolean moveIfTargetEmpty(
+            Context context,
+            String namespace,
+            String oldPersonId,
+            String newPersonId) {
+        String oldKey = key(namespace, oldPersonId);
+        String newKey = key(namespace, newPersonId);
+        if (oldKey.equals(newKey)) return true;
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String oldIv = preferences.getString(oldKey + "_iv", "");
+        String oldData = preferences.getString(oldKey + "_data", "");
+        if (oldIv.isEmpty() || oldData.isEmpty()) return true;
+        String newIv = preferences.getString(newKey + "_iv", "");
+        String newData = preferences.getString(newKey + "_data", "");
+        if (!newIv.isEmpty() && !newData.isEmpty()) {
+            if (oldIv.equals(newIv) && oldData.equals(newData)) {
+                return preferences.edit().remove(oldKey + "_iv").remove(oldKey + "_data").commit();
+            }
+            return false;
+        }
+        boolean written = preferences.edit()
+                .putString(newKey + "_iv", oldIv)
+                .putString(newKey + "_data", oldData)
+                .commit();
+        if (written
+                && oldIv.equals(preferences.getString(newKey + "_iv", ""))
+                && oldData.equals(preferences.getString(newKey + "_data", ""))) {
+            return preferences.edit().remove(oldKey + "_iv").remove(oldKey + "_data").commit();
+        }
+        return false;
     }
 
     private static SecretKey getOrCreateKey() throws Exception {

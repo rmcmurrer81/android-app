@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/settingsScroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/sarah_warm">
+    android:background="@color/sarah_warm"
+    android:clipToPadding="false"
+    android:paddingBottom="24dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -11,6 +14,7 @@
         android:padding="20dp">
 
         <TextView
+            android:id="@+id/buildVersionText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Sarah settings"
@@ -22,10 +26,19 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Build 2.1-offline-flight-companion"
+            android:text="Sarah Travel OS 2.5"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/buildDetailsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Build details"
+            android:textColor="@color/sarah_text"
+            android:textSize="12sp" />
 
         <TextView
             android:layout_width="match_parent"
@@ -33,7 +46,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/mode_status_background"
             android:padding="12dp"
-            android:text="Conversation AI: OpenAI, selected by the app team. Premium online voice: Sarah Morgan on ElevenLabs when the team includes her connection. People installing Sarah are not asked for provider keys or model names."
+            android:text="Sarah uses her connected mind when it is available and continues with saved knowledge and on-device tools when it is not. Her natural online voice falls back automatically to the phone’s offline voice. No technical setup is required here."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -41,7 +54,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Connection behavior"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Online and offline mind"
             android:textStyle="bold" />
 
         <Spinner
@@ -60,8 +75,45 @@
             android:id="@+id/autoResearchCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:checked="true"
+            android:checked="false"
             android:text="Automatically refresh destination and event knowledge when internet is available" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Location"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/nearbyDiscoveryCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:text="With my permission, let Sarah use my saved home/current area for nearby source-backed events and places that match my interests" />
+
+        <EditText
+            android:id="@+id/nearbyAreaInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Approved approximate area, such as Newark, NJ"
+            android:inputType="textCapWords" />
+
+        <Button
+            android:id="@+id/useCurrentLocationButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Use my current location"
+            android:textAllCaps="false" />
+
+        <TextView
+            android:id="@+id/currentLocationStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Location permission has not been used. Sarah stores only a profile-scoped city/area, not raw coordinates."
+            android:textSize="13sp" />
 
         <CheckBox
             android:id="@+id/mediaPreviewCheck"
@@ -74,39 +126,60 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Without the team OpenAI connection, Sarah still uses public-source tools for recognized and unfamiliar events, maps, public media, routes, and selected factual questions. Without ElevenLabs or internet, she automatically speaks with Android's local voice."
+            android:text="If the connected mind is unavailable, Sarah can still use saved knowledge, on-device tools, maps, public media, and supported public-source lookups. Without internet, she automatically uses the phone’s local voice."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
             android:text="Offline flight companion"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="The airplane icon opens takeoff, turbulence and landing support that works without signal. It includes gentle breathing, conversation prompts, age-aware trivia, noticing games, an alphabet game, and short public-domain children's sing-alongs using the phone's local voice. Sarah still tells the traveler to keep the seat belt fastened and follow the flight crew."
+            android:text="Breathing, conversation, noticing games and trivia remain available without signal."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="People using the same phone"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Profile"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Use the person icon to switch saved profiles. A new person may say “My name is …” and Sarah creates a separate profile, asks their age, applies age-appropriate suggestions, and asks once whether they are joining the active trip."
+            android:text="Use the person icon to switch separate profiles. Unknown age remains family-safe."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Email and bookings"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Not connected · share a booking link, message, image or PDF through Connections."
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
             android:text="Travel and event monitoring"
             android:textStyle="bold" />
 
@@ -114,19 +187,21 @@
             android:id="@+id/dealAlertsCheck"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="Schedule background event, air, rail, bus, transit, driving, ferry, hotel, and deal checks when team services are available" />
+            android:checked="false"
+            android:text="Automatic travel monitoring · setup required" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Current prices, schedules, room inventory, delays, and automatic notifications require lawful team-owned sources. The person using Sarah does not enter those service credentials here."
+            android:text="Current prices, schedules, room inventory, delays, and automatic notifications require a verified live connection. Sarah labels when that connection is unavailable instead of inventing a result."
             android:textSize="13sp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
             android:text="Sarah's voice"
             android:textStyle="bold" />
 
@@ -136,9 +211,10 @@
             android:layout_height="wrap_content" />
 
         <TextView
+            android:id="@+id/voiceRouteStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="The selected Sarah Morgan ElevenLabs voice uses Eleven Multilingual v2 with the voice-design settings used for the approved samples. If the service is missing, slow, out of credits, or offline, Sarah continues with Android speech instead of becoming silent. The offline sing-alongs always use Android speech so they remain available in airplane mode."
+            android:text="Voice route status"
             android:textSize="13sp" />
 
         <CheckBox
@@ -164,7 +240,25 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="Memory"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Devices and synchronization"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/autoDeviceSyncCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:text="After Sarah replies, quietly synchronize with every explicitly paired desktop or laptop that is available on this trusted Wi-Fi network" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/mode_status_background"
+            android:padding="12dp"
+            android:text="Memory and privacy"
             android:textStyle="bold" />
 
         <CheckBox
@@ -185,7 +279,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:text="Hackathon prototype: public releases should keep shared OpenAI, ElevenLabs, hotel, travel-commerce, and voice-agent credentials on protected authenticated backends rather than inside an APK. See the repository setup documents for exact team configuration steps."
+            android:text="Sarah labels whether each reply was connected, on-device, or a fallback. Current prices, events, schedules, and availability require a verified source for that turn."
             android:textSize="13sp" />
     </LinearLayout>
 </ScrollView>

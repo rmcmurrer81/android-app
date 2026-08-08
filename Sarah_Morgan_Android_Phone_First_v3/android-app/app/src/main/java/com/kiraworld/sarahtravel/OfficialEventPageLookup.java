@@ -7,7 +7,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.time.Month;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -55,10 +54,13 @@ public final class OfficialEventPageLookup {
         }
     }
 
+    private static final String MONTH_NAME =
+            "(January|February|March|April|May|June|July|August|September|October|November|December|"
+                    + "Jan\\.?|Feb\\.?|Mar\\.?|Apr\\.?|Jun\\.?|Jul\\.?|Aug\\.?|Sep(?:t)?\\.?|Oct\\.?|Nov\\.?|Dec\\.?)";
     private static final Pattern TWO_DAY_RANGE = Pattern.compile(
-            "(?i)\\b(January|February|March|April|May|June|July|August|September|October|November|December)\\s+(\\d{1,2})\\s*(?:&|and|-)\\s*(\\d{1,2})\\s*,?\\s*(20\\d{2})\\b");
+            "(?i)\\b" + MONTH_NAME + "\\s+(\\d{1,2})\\s*(?:&|and|-|–|—)\\s*(\\d{1,2})\\s*,?\\s*(20\\d{2})\\b");
     private static final Pattern SINGLE_DATE = Pattern.compile(
-            "(?i)\\b(January|February|March|April|May|June|July|August|September|October|November|December)\\s+(\\d{1,2})\\s*,?\\s*(20\\d{2})\\b");
+            "(?i)\\b" + MONTH_NAME + "\\s+(\\d{1,2})\\s*,?\\s*(20\\d{2})\\b");
     private static final Pattern HOURS = Pattern.compile(
             "(?i)\\b(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm))\\s*(?:-|to)\\s*(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm))\\b");
 
@@ -261,8 +263,24 @@ public final class OfficialEventPageLookup {
     }
 
     private static int month(String value) {
-        try { return Month.valueOf(value.toUpperCase(Locale.US)).getValue(); }
-        catch (Exception ignored) { return 0; }
+        if (value == null) return 0;
+        String clean = value.replace(".", "").trim().toLowerCase(Locale.US);
+        if (clean.length() < 3) return 0;
+        switch (clean.substring(0, 3)) {
+            case "jan": return 1;
+            case "feb": return 2;
+            case "mar": return 3;
+            case "apr": return 4;
+            case "may": return 5;
+            case "jun": return 6;
+            case "jul": return 7;
+            case "aug": return 8;
+            case "sep": return 9;
+            case "oct": return 10;
+            case "nov": return 11;
+            case "dec": return 12;
+            default: return 0;
+        }
     }
 
     private static int integer(String value) {

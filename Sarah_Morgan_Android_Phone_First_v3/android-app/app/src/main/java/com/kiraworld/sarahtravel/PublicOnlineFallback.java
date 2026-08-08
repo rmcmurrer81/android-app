@@ -2,6 +2,7 @@ package com.kiraworld.sarahtravel;
 
 import android.content.Context;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -12,7 +13,7 @@ public final class PublicOnlineFallback {
 
     private PublicOnlineFallback() { }
 
-    public static String answer(
+    public static PublicSourceResult answerResult(
             Context context,
             String message,
             List<Map<String, String>> history) {
@@ -33,29 +34,42 @@ public final class PublicOnlineFallback {
                     } finally {
                         store.close();
                     }
-                    return OfficialEventPageLookup.conversationalReply(result);
+                    return PublicSourceResult.verified(
+                            OfficialEventPageLookup.conversationalReply(result),
+                            result.officialUrl);
                 }
             } catch (Exception ignored) { }
-            return "I recognized " + knownEvent.eventName + " in " + knownEvent.destination
-                    + ", but I could not read its official page right now. I saved the official source and will retry. Use the media panel for its map, public photos, videos, official page, and route options.";
+            return PublicSourceResult.unavailable(
+                    "I recognized " + knownEvent.eventName + " in " + knownEvent.destination
+                            + ", but I could not read its official page right now. I will not invent current dates or details. Use the media panel to open its official page, map, public photos, videos, and route options.");
         }
 
         if (!GenericEventReference.recentEvent(history, message).isEmpty()) {
-            String discovered = PublicEventDiscoveryGateway.answer(context, message, history);
-            if (discovered != null && !discovered.trim().isEmpty()) return discovered.trim();
+            PublicSourceResult discovered = PublicEventDiscoveryGateway.answerResult(context, message, history);
+            if (discovered != null && !discovered.reply.isEmpty()) return discovered;
             if (SarahModelConfig.fullConversationAvailable()) {
                 // Let the connected model use its current-source tools rather than
                 // replacing a potentially useful answer with a scripted failure.
                 return null;
             }
             String eventName = GenericEventReference.recentEvent(history, message);
-            return "I recognize “" + eventName
-                    + "” as an event rather than a city, but " + UNVERIFIED_MARKER
-                    + ". I will not invent its location or dates. Use Explore to open a public event search, and I’ll retry when a better source is available.";
+            return PublicSourceResult.unavailable(
+                    "I recognize “" + eventName
+                            + "” as an event rather than a city, but " + UNVERIFIED_MARKER
+                            + ". I will not invent its location or dates. Use Explore to open a public event search.");
         }
 
         String publicKnowledge = PublicKnowledgeGateway.answer(message);
-        return publicKnowledge == null || publicKnowledge.trim().isEmpty() ? null : publicKnowledge.trim();
+        return publicKnowledge == null || publicKnowledge.trim().isEmpty()
+                ? null : PublicSourceResult.unavailable(publicKnowledge.trim());
+    }
+
+    public static String answer(
+            Context context,
+            String message,
+            List<Map<String, String>> history) {
+        PublicSourceResult result = answerResult(context, message, history);
+        return result == null ? null : result.reply;
     }
 
     public static boolean isUnverifiedEventReply(String reply) {
@@ -64,7 +78,7 @@ public final class PublicOnlineFallback {
 
     /** Compatibility overload for older callers. */
     public static String answer(Context context, String message) {
-        return answer(context, message, List.of());
+        return answer(context, message, Collections.emptyList());
     }
 
     private static KnownEventCatalog.Entry recentKnownEvent(

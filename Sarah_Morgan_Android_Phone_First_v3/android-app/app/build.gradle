@@ -6,6 +6,9 @@ def javaString = { String value ->
     '"' + (value ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
 def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
+def sarahModelProvider = System.getenv('SARAH_MODEL_PROVIDER') ?: 'workers-ai'
+def sarahModelId = System.getenv('SARAH_MODEL_ID') ?: (System.getenv('SARAH_OPENAI_MODEL') ?: '@cf/google/gemma-4-26b-a4b-it')
+def sarahOpenAiModel = System.getenv('SARAH_OPENAI_MODEL') ?: sarahModelId
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
 def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
 def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
@@ -17,20 +20,29 @@ def sarahElevenLabsVoiceId = System.getenv('SARAH_ELEVENLABS_VOICE_ID') ?: ''
 def sarahElevenLabsModelId = System.getenv('SARAH_ELEVENLABS_MODEL_ID') ?: 'eleven_multilingual_v2'
 def sarahElevenLabsBackendUrl = System.getenv('SARAH_ELEVENLABS_BACKEND_URL') ?: ''
 def sarahElevenLabsBackendToken = System.getenv('SARAH_ELEVENLABS_BACKEND_TOKEN') ?: ''
+def sarahStay22Aid = System.getenv('SARAH_STAY22_AID') ?: ''
+def sarahStay22BackendUrl = System.getenv('SARAH_STAY22_BACKEND_URL') ?: ''
+def sarahStay22BackendToken = System.getenv('SARAH_STAY22_BACKEND_TOKEN') ?: ''
+def sarahBuildCommit = System.getenv('GITHUB_SHA') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
     compileSdk 35
 
     defaultConfig {
+        // Keep the original app identity so Android performs the real R1 -> R2
+        // private-data upgrade instead of silently creating a fresh sandbox.
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 21
-        versionName '2.1-offline-flight-companion'
+        versionCode 26
+        versionName '2.5-r2-owner-repair'
 
         // Team-owned connections. People installing Sarah do not enter provider keys.
         buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
+        buildConfigField 'String', 'SARAH_OPENAI_MODEL', javaString(sarahOpenAiModel)
+        buildConfigField 'String', 'SARAH_MODEL_PROVIDER', javaString(sarahModelProvider)
+        buildConfigField 'String', 'SARAH_MODEL_ID', javaString(sarahModelId)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
         buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_URL', javaString(sarahTravelCommerceUrl)
@@ -42,6 +54,13 @@ android {
         buildConfigField 'String', 'SARAH_ELEVENLABS_MODEL_ID', javaString(sarahElevenLabsModelId)
         buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_URL', javaString(sarahElevenLabsBackendUrl)
         buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', javaString(sarahElevenLabsBackendToken)
+        // Provider search credentials must remain server-side. This constant
+        // is intentionally blank even if an old build environment sets one.
+        buildConfigField 'String', 'SARAH_TAVILY_API_KEY', '""'
+        buildConfigField 'String', 'SARAH_STAY22_AID', javaString(sarahStay22Aid)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_URL', javaString(sarahStay22BackendUrl)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_TOKEN', javaString(sarahStay22BackendToken)
+        buildConfigField 'String', 'SARAH_BUILD_COMMIT', javaString(sarahBuildCommit)
     }
 
     buildFeatures {
@@ -50,7 +69,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
         }
         release {
@@ -63,4 +81,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // 1.9.4 is the bounded stable Media3 line selected for this compileSdk 35 app.
+    // It lets the approved ElevenLabs MP3 response begin playing progressively.
+    implementation 'androidx.media3:media3-exoplayer:1.9.4'
 }

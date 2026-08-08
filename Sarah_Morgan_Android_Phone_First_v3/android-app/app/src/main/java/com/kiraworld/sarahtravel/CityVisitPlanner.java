@@ -18,7 +18,7 @@ public final class CityVisitPlanner {
         if (trip == null || !trip.found()) return null;
         String lower = trip.destination.toLowerCase(Locale.US);
         String interests = combinedInterests(profile, memories).toLowerCase(Locale.US);
-        String ageGroup = profile.getOrDefault("age_group", "adult");
+        String ageGroup = MaturityAccessPolicy.ageGroup(profile);
 
         StringBuilder reply = new StringBuilder();
         reply.append("I saved ").append(trip.destination).append(" as a planned ")
@@ -36,21 +36,21 @@ public final class CityVisitPlanner {
                 reply.append("Because you like movies or shows, filming-location walks, the Museum of the Moving Image, and event listings may fit you better than a generic landmark checklist. ");
             }
             if (containsAny(interests, "ai", "technology", "computer", "robot")) {
-                reply.append("For technology interests, I can also check current exhibitions, public talks, maker events, and science museums. ");
+                reply.append("For technology interests, current exhibitions, public talks, maker events, and science museums are useful categories; exact listings require a verified current source. ");
             }
-            if ("child".equals(ageGroup) || "teen".equals(ageGroup)) {
-                reply.append("I’ll keep the list age-appropriate and prioritize interactive museums, parks, comics, games, and daytime activities. ");
+            if (!"adult".equals(ageGroup)) {
+                reply.append("This list stays age-appropriate and prioritizes interactive museums, parks, comics, games, and daytime activities. ");
             }
-            reply.append("When online, I’ll check what is actually open during those dates, current weather, timed-entry rules, transit changes, and events next week. The media panel can show a map and public photos now.");
+            reply.append("What is actually open during those dates, current weather, timed-entry rules, transit changes, and events next week all require a verified online source for this turn. The media panel can show a map and public photos now.");
             return reply.toString();
         }
 
         reply.append("A balanced first pass is: one walkable neighborhood, one free public space or viewpoint, one local-history or culture stop, one food area, and one optional paid attraction. That gives you useful choices without assuming a large budget.\n\n");
         if (!interests.isEmpty()) {
-            reply.append("I’ll use your saved interests—").append(shorten(interests, 100))
+            reply.append("I used your saved interests—").append(shorten(interests, 100))
                     .append("—to rank museums, events, stores, tours, food, and entertainment instead of giving everyone the same list. ");
         }
-        reply.append("When online, I’ll verify current events, weather, hours, closures, reservations, and local transportation for those exact dates. The media panel can show the place, public photos, videos, and a route.");
+        reply.append("Current events, weather, hours, closures, reservations, and local transportation for those exact dates require a verified online source. The media panel can show the place, public photos, videos, and a route.");
         return reply.toString();
     }
 

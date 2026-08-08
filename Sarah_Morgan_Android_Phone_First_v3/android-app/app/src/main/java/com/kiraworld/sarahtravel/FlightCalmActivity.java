@@ -11,6 +11,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -26,8 +27,8 @@ public final class FlightCalmActivity extends Activity {
     private TextView sessionText;
     private TextView sessionStatus;
     private Map<String, String> profile = new LinkedHashMap<>();
-    private List<Map<String, String>> trips = List.of();
-    private List<Map<String, String>> wishes = List.of();
+    private List<Map<String, String>> trips = Collections.emptyList();
+    private List<Map<String, String>> wishes = Collections.emptyList();
     private int age = -1;
     private int breathingGeneration;
 
@@ -328,8 +329,8 @@ public final class FlightCalmActivity extends Activity {
                     }
                 }
                 profile.put("interests", String.join(", ", interests));
-                trips = List.of();
-                wishes = List.of();
+                trips = Collections.emptyList();
+                wishes = Collections.emptyList();
             }
             age = CalmSupport.parseAge(profile.get("age"));
         } finally {

@@ -10,8 +10,11 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.speech.RecognizerIntent;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -22,6 +25,8 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,14 +34,49 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class MainActivity extends Activity {
+    private static final String TAG = "SarahOwnerChat";
     private static final int REQ_SPEECH = 1201;
     private static final int REQ_PHOTO = 1202;
     private static final int REQ_AUDIO_PERMISSION = 1203;
     private static final int REQ_NOTIFICATIONS = 1204;
+    private static final int REQ_LOCATION = 1205;
+    private static final String STATE_PENDING_LOCATION_MESSAGE = "pending_location_message";
+    private static final String STATE_PENDING_LOCATION_PERSON = "pending_location_person";
+    private static final String STATE_PENDING_LOCATION_SPEAKER = "pending_location_speaker";
+    private static final String STATE_PENDING_LOCATION_GENERATION = "pending_location_generation";
+
+    private static final class ActiveVoice {
+        final String personId;
+        final String turnId;
+        final int characterCount;
+        final String attemptedRoute;
+        final long requestedAt;
+
+        ActiveVoice(
+                String personId,
+                String turnId,
+                int characterCount,
+                String attemptedRoute,
+                long requestedAt) {
+            this.personId = personId;
+            this.turnId = turnId;
+            this.characterCount = characterCount;
+            this.attemptedRoute = attemptedRoute;
+            this.requestedAt = requestedAt;
+        }
+    }
 
     private SarahDatabase db;
     private SarahTts tts;
@@ -44,49 +84,146 @@ public final class MainActivity extends Activity {
     private LinearLayout chat;
     private ScrollView scroll;
     private EditText input;
+    private ImageButton sendButton;
     private TextView status;
     private ConnectivityMonitor connectivityMonitor;
     private volatile boolean internetAvailable;
     private volatile boolean lastSmartCallFailed;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private volatile boolean connectedRouteProven;
+    private volatile String lastTurnRoute = TurnRoute.UNKNOWN_LEGACY;
+    private final ExecutorService conversationExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService backgroundResearchExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService mediaExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService networkAttemptExecutor = Executors.newCachedThreadPool();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean knowledgeRefreshInFlight = new AtomicBoolean(false);
+    private final AtomicLong photoRequestSequence = new AtomicLong();
+    private volatile Thread backgroundResearchThread;
+    private volatile ActiveVoice activeVoice;
     private byte[] pendingPhoto;
     private File pendingPhotoFile;
+    private SarahLocationStore locationStore;
+    private ApproximateLocationCoordinator locationCoordinator;
+    private String pendingLocationMessage = "";
+    private String pendingLocationPersonId = "";
+    private String pendingLocationSpeaker = "";
+    private long pendingLocationGeneration;
+    private final AtomicLong lifecycleGeneration = new AtomicLong(1L);
+    private volatile boolean turnInFlight;
+    private volatile boolean destroyed;
+    private final Runnable deferredKnowledgeRefresh = new Runnable() {
+        @Override public void run() {
+            if (destroyed) return;
+            if (turnInFlight) {
+                mainHandler.postDelayed(this, 3_000L);
+                return;
+            }
+            refreshKnowledgeAsync();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (state != null) {
+            pendingLocationMessage = state.getString(STATE_PENDING_LOCATION_MESSAGE, "");
+            pendingLocationPersonId = state.getString(STATE_PENDING_LOCATION_PERSON, "");
+            pendingLocationSpeaker = state.getString(STATE_PENDING_LOCATION_SPEAKER, "");
+            pendingLocationGeneration = state.getLong(STATE_PENDING_LOCATION_GENERATION, 0L);
+        }
         SettingsActivity.ensureAutomaticModeDefault(this);
         db = new SarahDatabase(this);
-        DealNotificationManager.createChannel(this);
-        if (!db.listActiveDealWatches(1).isEmpty()) DealWatchScheduler.ensureScheduled(this);
+        SarahLocationStore pendingLocations = new SarahLocationStore(this);
+        if (!pendingLocations.pendingOwnerMoveIds().isEmpty()) {
+            startActivity(new Intent(this, OwnerIdentityCorrectionActivity.class));
+            finish();
+            return;
+        }
         if (!db.hasProfile()) {
             startActivity(new Intent(this, OnboardingActivity.class));
             finish();
             return;
         }
-
+        PersonProfileStore ownerProfiles = new PersonProfileStore(this);
+        Map<String, String> ownerRecord;
+        try {
+            if (db.isPlaceholderOwner()) {
+                startActivity(new Intent(this, OwnerIdentityCorrectionActivity.class));
+                finish();
+                return;
+            }
+            ownerRecord = ownerProfiles.ensureOwner(db.getProfile());
+        } finally {
+            ownerProfiles.close();
+        }
+        db.repairPlaceholderOwnerLabels();
+        DealNotificationManager.createChannel(this);
+        SharedPreferences startupPreferences = getSharedPreferences(
+                SettingsActivity.PREFS, MODE_PRIVATE);
+        boolean dealMonitoringAllowed = BackgroundResearchPolicy.monitoringCanRun(
+                startupPreferences.getBoolean(
+                        "deal_alerts_enabled",
+                        BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED),
+                TravelCommerceConfig.isConfigured(),
+                !db.listActiveDealWatches(1).isEmpty());
+        if (dealMonitoringAllowed) {
+            DealWatchScheduler.ensureScheduled(this);
+        } else {
+            DealWatchScheduler.cancel(this);
+        }
+        String ownerPersonId = ownerRecord.getOrDefault(
+                "person_id", ownerRecord.getOrDefault("name", "unknown_profile"));
+        boolean proactiveAllowed = KnowledgePackSchedulingPolicy.canSchedule(
+                    "yes".equals(ownerRecord.getOrDefault("is_owner", "no")),
+                    "yes".equals(ownerRecord.getOrDefault("memory_consent", "no")),
+                    ConnectivityMonitor.hasValidatedInternet(this),
+                    SarahModelConfig.fullConversationAvailable(),
+                    TavilyClient.configured(),
+                    new SarahLocationStore(this).backgroundResearchEnabled(ownerPersonId))
+                && startupPreferences.getBoolean("web_search", true)
+                && SettingsActivity.getConversationMode(this)
+                    != ConversationModePolicy.MODE_LOCAL_ONLY;
+        if (proactiveAllowed) ProactiveDiscoveryScheduler.ensureScheduled(this);
+        else ProactiveDiscoveryScheduler.cancel(this);
         setContentView(R.layout.activity_main);
         chat = findViewById(R.id.chatContainer);
         scroll = findViewById(R.id.chatScroll);
         input = findViewById(R.id.messageInput);
         status = findViewById(R.id.statusText);
+        SafeAreaInsets.apply(
+                this,
+                findViewById(R.id.mainRoot),
+                findViewById(R.id.bottomNavigation),
+                scroll);
         speakerContext = new SpeakerContext(db.getProfile());
+        locationStore = new SarahLocationStore(this);
+        locationCoordinator = new ApproximateLocationCoordinator(this);
+        if (!pendingLocationMessage.isEmpty()) {
+            input.setText("");
+            if (locationCoordinator.hasPermission()) {
+                mainHandler.post(this::resolvePendingLocation);
+            } else {
+                updateSpeakerStatus("Waiting for approximate-location permission…");
+            }
+        }
 
         connectivityMonitor = new ConnectivityMonitor(this, connected -> {
             boolean changed = internetAvailable != connected;
             internetAvailable = connected;
-            if (connected) lastSmartCallFailed = false;
+            if (changed) connectedRouteProven = false;
             runOnUiThread(() -> {
+                applyProactiveResearchSchedule(connected);
                 updateSpeakerStatus(null);
                 if (changed) {
                     String message = connected
                             ? (SarahModelConfig.fullConversationAvailable()
-                                ? "Internet is back. Sarah will return to OpenAI automatically."
-                                : "Internet is back. Sarah can use public lookup, maps, and media; the team OpenAI connection is not included in this build.")
+                                ? "Internet is back. Sarah will reconnect automatically."
+                                : "Internet is back. Sarah can use connected public information when a verified source is available.")
                             : "Connection lost. Sarah is continuing locally.";
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                 }
-                if (connected) refreshKnowledgeAsync();
+                if (connected) scheduleDeferredKnowledgeRefresh();
+                else mainHandler.removeCallbacks(deferredKnowledgeRefresh);
             });
         });
         internetAvailable = connectivityMonitor.currentValidatedInternet();
@@ -107,8 +244,8 @@ public final class MainActivity extends Activity {
         loadHistory();
         if (currentHistory(1).isEmpty()) greet();
 
-        ImageButton send = findViewById(R.id.sendButton);
-        send.setOnClickListener(v -> sendCurrent());
+        sendButton = findViewById(R.id.sendButton);
+        sendButton.setOnClickListener(v -> sendCurrent());
         input.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 sendCurrent();
@@ -116,12 +253,42 @@ public final class MainActivity extends Activity {
             }
             return false;
         });
+        input.setOnFocusChangeListener((v, focused) -> {
+            if (focused) {
+                findViewById(R.id.tripContextPanel).setVisibility(View.GONE);
+                ((TextView) findViewById(R.id.tripContextToggle))
+                        .setText("Trip context and calm tools ▾");
+                scroll.postDelayed(() -> scroll.fullScroll(View.FOCUS_DOWN), 180L);
+            }
+        });
+
+        TextView contextToggle = findViewById(R.id.tripContextToggle);
+        View contextPanel = findViewById(R.id.tripContextPanel);
+        contextToggle.setOnClickListener(v -> {
+            boolean opening = contextPanel.getVisibility() != View.VISIBLE;
+            contextPanel.setVisibility(opening ? View.VISIBLE : View.GONE);
+            contextToggle.setText(opening
+                    ? "Trip context and calm tools ▴"
+                    : "Trip context and calm tools ▾");
+        });
 
         findViewById(R.id.calmButton).setOnClickListener(v -> showCalmMenu());
         findViewById(R.id.settingsButton).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         findViewById(R.id.notebookButton).setOnClickListener(v -> startActivity(new Intent(this, TravelNotebookActivity.class)));
         findViewById(R.id.micButton).setOnClickListener(v -> startSpeech());
         findViewById(R.id.photoButton).setOnClickListener(v -> pickPhoto());
+        findViewById(R.id.chatNavButton).setOnClickListener(v -> {
+            contextPanel.setVisibility(View.GONE);
+            contextToggle.setText("Trip context and calm tools ▾");
+            scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+            input.requestFocus();
+        });
+        findViewById(R.id.tripNavButton).setOnClickListener(
+                v -> startActivity(new Intent(this, TravelHubActivity.class)));
+        findViewById(R.id.discoverNavButton).setOnClickListener(
+                v -> startActivity(new Intent(this, DiscoveryActivity.class)));
+        findViewById(R.id.connectionsNavButton).setOnClickListener(
+                v -> startActivity(new Intent(this, SponsorConnectionsActivity.class)));
         updateSpeakerStatus(null);
     }
 
@@ -137,11 +304,12 @@ public final class MainActivity extends Activity {
         if (tts != null) tts.setRate(currentSpeechRate());
         if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         if (speakerContext != null) updateSpeakerStatus(null);
-        refreshKnowledgeAsync();
+        if (internetAvailable) scheduleDeferredKnowledgeRefresh();
     }
 
     @Override
     protected void onStop() {
+        mainHandler.removeCallbacks(deferredKnowledgeRefresh);
         if (connectivityMonitor != null) connectivityMonitor.stop();
         super.onStop();
     }
@@ -149,21 +317,22 @@ public final class MainActivity extends Activity {
     private void showConversationModeMenu() {
         int mode = SettingsActivity.getConversationMode(this);
         String[] choices = {
-                "Automatic — OpenAI when included, public/local fallback otherwise",
-                "OpenAI preferred — retry the team connection whenever possible",
-                "Local only — never use the team model or public lookup",
+                "Automatic — connect when available, continue offline when needed",
+                "Connected preferred — retry Sarah's online conversation when possible",
+                "Offline only — use saved knowledge and phone tools",
                 "Open detailed settings"
         };
         String current = ConversationModePolicy.statusLabel(
                 mode,
                 internetAvailable,
                 SarahModelConfig.fullConversationAvailable(),
-                lastSmartCallFailed);
+                lastSmartCallFailed,
+                connectedRouteProven);
 
         new AlertDialog.Builder(this)
                 .setTitle("Choose how Sarah connects")
                 .setMessage("Current: " + current
-                        + "\n\nOpenAI is selected by the app team in the source code. People who install Sarah are not asked to choose a provider, model, or API key. Automatic mode uses the team OpenAI connection when it is included in the APK, public lookup while online when it is not, and the Local Travel Brain without internet.")
+                        + "\n\nAutomatic mode reconnects when possible and keeps the conversation available offline. Current information is shown only when Sarah receives a verified source receipt. Technical connection details remain in Settings.")
                 .setItems(choices, (dialog, which) -> {
                     if (which == 3) {
                         startActivity(new Intent(this, SettingsActivity.class));
@@ -175,8 +344,8 @@ public final class MainActivity extends Activity {
                     if (which != ConversationModePolicy.MODE_LOCAL_ONLY
                             && !SarahModelConfig.fullConversationAvailable()) {
                         new AlertDialog.Builder(this)
-                                .setTitle("OpenAI is controlled by the app build")
-                                .setMessage("This APK does not contain the team OpenAI connection. Public lookup, maps, media, and Local mode remain available. A team member must configure the GitHub build secret or protected backend and build a new APK; there is nothing for the person installing Sarah to enter.")
+                                .setTitle("Connected conversation is unavailable")
+                                .setMessage("Sarah can keep talking offline and can open supported public tools while internet is available. There is nothing you need to configure here.")
                                 .setPositiveButton("OK", null)
                                 .show();
                     }
@@ -199,10 +368,23 @@ public final class MainActivity extends Activity {
     }
 
     private void postLocalSarahReply(String reply, String mode) {
-        db.addMessage("assistant", reply, speakerContext.activeName());
-        addBubble("Sarah", reply, false);
+        postLocalSarahReply(reply, mode, TurnRoute.LOCAL_TOOL_RESULT);
+    }
+
+    private void postLocalSarahReply(String reply, String mode, String route) {
+        MindEventStore.record(
+                this,
+                speakerContext.activeName(),
+                SarahChannelResponse.spokenOnly(
+                        reply,
+                        "Sarah returned a local calm, trivia, grounding, or offline-support response. No booking or external action was completed."),
+                route);
+        lastTurnRoute = route;
+        db.addMessage("assistant", reply, speakerContext.activeName(), lastTurnRoute);
+        addBubble("Sarah", reply, false, lastTurnRoute);
         updateSpeakerStatus(mode);
         speak(reply);
+        TrustedSyncClient.syncAllAsync(this);
     }
 
     private void startTriviaGame() {
@@ -248,8 +430,9 @@ public final class MainActivity extends Activity {
                     + ". I’m ready to talk about a trip, a place you dream about, or absolutely nothing travel-related."
                 : "Hi, " + name
                     + ". I’m using your separate profile. Travel is optional—we can talk about whatever interests you.";
-        db.addMessage("assistant", greeting, name);
-        addBubble("Sarah", greeting, false);
+        lastTurnRoute = TurnRoute.OFFLINE_LOCAL;
+        db.addMessage("assistant", greeting, name, lastTurnRoute);
+        addBubble("Sarah", greeting, false, lastTurnRoute);
         speak(greeting);
     }
 
@@ -258,18 +441,31 @@ public final class MainActivity extends Activity {
             boolean assistant = "assistant".equals(row.get("role"));
             String who = assistant ? "Sarah" : row.getOrDefault("speaker_name", speakerContext.activeName());
             if (who == null || who.trim().isEmpty()) who = speakerContext.activeName();
-            addBubble(who, row.get("content"), !assistant);
+            addBubble(who, row.get("content"), !assistant, row.getOrDefault("route", TurnRoute.UNKNOWN_LEGACY));
         }
     }
 
     private void sendCurrent() {
+        if (!TurnLifecyclePolicy.canSubmit(destroyed, turnInFlight)) {
+            if (!destroyed) Toast.makeText(
+                    this,
+                    "Sarah is finishing the current reply so the conversation stays in order.",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
         String text = input.getText().toString().trim();
         if (text.isEmpty() && pendingPhoto == null) return;
+        if (!text.isEmpty() && ensureApproximateAreaForTurn(text)) return;
+        final long turnSubmittedAt = System.currentTimeMillis();
+        final String turnId = "turn-" + turnSubmittedAt + "-"
+                + UUID.randomUUID().toString().replace("-", "");
+        pauseBackgroundResearchForOwnerTurn();
         input.setText("");
 
         String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
         String speakerBefore = speakerContext.activeName();
         SpeakerContext.Result speakerResult = speakerContext.handle(display);
+        if (speakerResult.speakerChanged) invalidatePriorSpeakerWork();
         String turnSpeaker = speakerResult.messageBelongsToActiveSpeaker
                 ? speakerContext.activeName() : speakerBefore;
         addBubble(turnSpeaker, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
@@ -277,22 +473,50 @@ public final class MainActivity extends Activity {
 
         if (speakerResult.handled) {
             String replySpeaker = speakerContext.activeName();
-            db.addMessage("assistant", speakerResult.reply, replySpeaker);
-            addBubble("Sarah", speakerResult.reply, false);
+            long completedAt = System.currentTimeMillis();
+            MindEventStore.record(
+                    this,
+                    replySpeaker,
+                    SarahChannelResponse.spokenOnly(
+                            speakerResult.reply,
+                            "Sarah returned a local identity, profile, consent, or calm-support response. No booking or external action was completed.")
+                            .withFactualAudit(TextTurnReceipt.build(
+                                    turnId,
+                                    TurnRoute.LOCAL_TOOL_RESULT,
+                                    "on-device",
+                                    "SpeakerContext",
+                                    turnSubmittedAt,
+                                    completedAt)),
+                    "local-profile");
+            lastTurnRoute = TurnRoute.LOCAL_TOOL_RESULT;
+            db.addMessage("assistant", speakerResult.reply, replySpeaker, lastTurnRoute);
+            addBubble("Sarah", speakerResult.reply, false, lastTurnRoute);
             updateSpeakerStatus(speakerContext.ageKnown() ? "Profile: " + replySpeaker : "Family-friendly until age is known");
-            speak(speakerResult.reply);
+            speak(speakerResult.reply, turnId);
+            TrustedSyncClient.syncAllAsync(this);
             return;
         }
 
         Map<String, String> profile = currentProfile();
+        if (connectivityMonitor != null) {
+            internetAvailable = connectivityMonitor.currentValidatedInternet();
+        }
         List<Map<String, String>> historyForActions = currentHistory(12);
         List<Map<String, String>> memoriesForActions = currentMemories(profile);
         AgenticTravelPlanner.Plan proactive = AgenticTravelPlanner.plan(
                 display, profile, historyForActions, memoriesForActions);
+        final String plannerReply = proactive.handled() ? proactive.reply.trim() : "";
         AgenticActionExecutor.Result actionResult = AgenticActionExecutor.apply(
-                this, db, profile, proactive.actions);
+                this, db, profile, proactive.actions, internetAvailable);
         if (actionResult.createdDealWatch) {
             DealNotificationManager.requestPermissionIfNeeded(this, REQ_NOTIFICATIONS);
+        }
+        if (actionResult.monitoringUnavailable) {
+            addMemoryNote("No background travel watch was created · live monitoring unavailable");
+            Toast.makeText(
+                    this,
+                    "Automatic monitoring is not connected, so Sarah did not start a background watch.",
+                    Toast.LENGTH_LONG).show();
         }
         learnFrom(display, profile);
 
@@ -300,11 +524,10 @@ public final class MainActivity extends Activity {
         final File imageFile = pendingPhotoFile;
         pendingPhoto = null;
         pendingPhotoFile = null;
-        updateSpeakerStatus("Sarah is thinking…");
+        updateSpeakerStatus("Checking the reply route…");
 
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         int mode = SettingsActivity.getConversationMode(this);
-        if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         String key = SecureStore.loadApiKey(this);
         boolean teamModelAvailable = SarahModelConfig.fullConversationAvailable();
         boolean useSmart = ConversationModePolicy.ROUTE_SMART.equals(
@@ -317,55 +540,159 @@ public final class MainActivity extends Activity {
         List<Map<String, String>> wishes = currentWishes(profile);
         List<Map<String, String>> knowledgePacks = currentKnowledgePacks(profile);
         List<Map<String, String>> dealWatches = currentDealWatches(profile);
-        String prompt = SarahPromptBuilder.build(
-                profile, memories, trips, wishes, image != null, web);
+        final String plannedTurnRoute = useSmart
+                ? TurnRoute.connectedRoute(SarahModelConfig.PROVIDER_ID)
+                : TurnRoute.OFFLINE_LOCAL;
+        String basePrompt = SarahPromptBuilder.build(
+                profile, memories, trips, wishes, image != null, web, plannedTurnRoute);
+        final String prompt = plannerReply.isEmpty()
+                ? basePrompt
+                : basePrompt
+                    + "\nBOUNDED_LOCAL_PLANNING_DRAFT: " + plannerReply
+                    + "\nUse that draft only as conversational planning context. Do not claim a search, monitor, download, or saved job unless the runtime action receipt proves it happened. Current prices, events, or availability still require a verified source receipt.";
         final boolean offerLiveTravelSearch = explicitExploreRequest(display);
         final boolean sourceFirstEvent = internetAvailable
                 && mode != ConversationModePolicy.MODE_LOCAL_ONLY
+                && prefs.getBoolean("web_search", true)
                 && (KnownEventCatalog.find(display) != null
                     || !GenericEventReference.recentEvent(history, display).isEmpty());
         final String providerId = SarahModelConfig.PROVIDER_ID;
         final String model = SarahModelConfig.MODEL_ID;
         final String responseSpeaker = speakerContext.activeName();
+        final String searchQuery = web
+                ? TravelSearchQueryPolicy.build(display, history, profile, trips)
+                : "";
+        final String activeDestination = TravelContextResolver.primaryDestination(display, history);
+        final long requestGeneration = lifecycleGeneration.get();
+        setTurnInFlight(true);
 
-        executor.submit(() -> {
+        try {
+        conversationExecutor.submit(() -> {
             String reply;
             boolean smartFallback = false;
             boolean smartSucceeded = false;
+            String actualTurnRoute = plannedTurnRoute;
+            String actualProvider = useSmart ? providerId : "on-device";
+            String actualModel = useSmart ? model : "DemoSarah";
+            String connectedAudit = "";
+            String sourceDetails = "No current-source lookup was used for this reply.";
             try {
-                String sourceBackedEvent = sourceFirstEvent
-                        ? PublicOnlineFallback.answer(getApplicationContext(), display, history)
+                PublicSourceResult sourceBackedEvent = sourceFirstEvent
+                        ? PublicOnlineFallback.answerResult(getApplicationContext(), display, history)
                         : null;
-                if (sourceBackedEvent != null && !sourceBackedEvent.trim().isEmpty()) {
-                    reply = sourceBackedEvent.trim();
+                if (sourceBackedEvent != null && !sourceBackedEvent.reply.isEmpty()) {
+                    reply = sourceBackedEvent.reply;
+                    actualTurnRoute = sourceBackedEvent.turnRoute();
+                    actualProvider = "public-source-tool";
+                    actualModel = sourceBackedEvent.verified
+                            ? "verified-source-gate" : "source-unavailable-gate";
+                    sourceDetails = sourceBackedEvent.ownerSourceDetails();
                 } else if (useSmart) {
-                    reply = ConnectedModelGateway.respond(
-                            providerId, key, model, prompt, history, display, web, image);
+                    ConnectedModelResponse connected = connectedReplyWithRetry(
+                            providerId, key, model, prompt, history, display,
+                            web, searchQuery, image);
                     smartSucceeded = true;
+                    actualProvider = connected.provider;
+                    actualModel = connected.model;
+                    connectedAudit = connected.auditFact(turnSubmittedAt);
+                    sourceDetails = connected.ownerSourceDetails();
+                    FinalDisplayedResponsePolicy.Selection selection = FinalDisplayedResponsePolicy.select(
+                            display,
+                            activeDestination,
+                            plannerReply,
+                            connected.reply,
+                            connected.turnRoute(),
+                            web,
+                            connected.hasVerifiedWebReceipt());
+                    reply = selection.reply;
+                    actualTurnRoute = selection.route;
+                    if (!selection.usedConnectedReply) {
+                        actualProvider = "on-device-response-selection";
+                        actualModel = "FinalDisplayedResponsePolicy";
+                        sourceDetails = "Connected reply was not displayed: " + selection.reason
+                                + ". No unsupported current-source claim was passed through.";
+                    }
                 } else {
-                    reply = DemoSarah.reply(
-                            display, profile, image != null, history, memories,
-                            trips, wishes, knowledgePacks, dealWatches);
+                    reply = plannerReply.isEmpty()
+                            ? DemoSarah.reply(
+                                    display, profile, image != null, history, memories,
+                                    trips, wishes, knowledgePacks, dealWatches, TurnRoute.OFFLINE_LOCAL)
+                            : plannerReply;
+                    actualTurnRoute = TurnRoute.OFFLINE_LOCAL;
+                    actualProvider = "on-device";
+                    actualModel = "DemoSarah";
                 }
             } catch (Exception e) {
-                reply = DemoSarah.reply(
-                        display, profile, image != null, history, memories,
-                        trips, wishes, knowledgePacks, dealWatches);
+                reply = plannerReply.isEmpty()
+                        ? DemoSarah.reply(
+                                display, profile, image != null, history, memories,
+                                trips, wishes, knowledgePacks, dealWatches,
+                                TurnRoute.ONLINE_FAILED_FELL_BACK_OFFLINE)
+                        : plannerReply
+                            + " The connected conversation was unavailable for this turn, so I stayed with the on-device planning answer and did not invent live results.";
                 smartFallback = useSmart;
+                actualTurnRoute = useSmart
+                        ? TurnRoute.ONLINE_FAILED_FELL_BACK_OFFLINE
+                        : TurnRoute.OFFLINE_LOCAL;
+                actualProvider = "on-device";
+                actualModel = "DemoSarah";
             }
 
-            String finalReply = reply;
+            SarahChannelResponse parsedChannels = SarahChannelResponse.parse(reply);
+            SarahChannelResponse guardedChannels = ReplyTruthGuard.enforce(
+                    parsedChannels,
+                    actionResult.hasDurableBackgroundWork(),
+                    actionResult.receiptSummary(),
+                    actionResult.pendingSummary());
+            String exactTuringAnswer = OfflineTuringPolicy.answer(
+                    display,
+                    profile,
+                    actualTurnRoute);
+            if (!exactTuringAnswer.isEmpty()) {
+                guardedChannels = SarahChannelResponse.spokenOnly(
+                        exactTuringAnswer,
+                        "The application supplied exact identity or route truth after the actual turn route was recorded; model wording was not used for this explicit acceptance prompt.");
+            }
+            long textCompletedAt = System.currentTimeMillis();
+            SarahChannelResponse finalChannels = guardedChannels
+                    .withFactualAudit(connectedAudit)
+                    .withFactualAudit(TextTurnReceipt.build(
+                            turnId,
+                            actualTurnRoute,
+                            actualProvider,
+                            actualModel,
+                            turnSubmittedAt,
+                            textCompletedAt));
+            String finalReply = finalChannels.spoken;
             boolean finalSmartFallback = smartFallback;
             boolean finalSmartSucceeded = smartSucceeded;
-            runOnUiThread(() -> {
-                if (finalSmartSucceeded) lastSmartCallFailed = false;
-                if (finalSmartFallback) lastSmartCallFailed = true;
-                db.addMessage("assistant", finalReply, responseSpeaker);
+            String finalTurnRoute = actualTurnRoute;
+            String finalSourceDetails = sourceDetails;
+            runOnUiThreadIfActive(requestGeneration, () -> {
+                boolean assistantCommitted = false;
+                try {
+                if (finalSmartSucceeded) {
+                    lastSmartCallFailed = false;
+                    connectedRouteProven = true;
+                }
+                if (finalSmartFallback) {
+                    lastSmartCallFailed = true;
+                    connectedRouteProven = false;
+                }
+                MindEventStore.record(
+                        this,
+                        responseSpeaker,
+                        finalChannels,
+                        finalTurnRoute);
+                lastTurnRoute = finalTurnRoute;
+                db.addMessage("assistant", finalReply, responseSpeaker, finalTurnRoute);
+                assistantCommitted = true;
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
                 if (speakerContext.activeName().equalsIgnoreCase(responseSpeaker)) {
-                    addBubble("Sarah", finalReply, false);
+                    addBubble("Sarah", finalReply, false, finalTurnRoute, finalSourceDetails);
                     updateSpeakerStatus(null);
-                    speak(finalReply);
+                    speak(finalReply, turnId);
+                    TrustedSyncClient.syncAllAsync(this);
                 } else {
                     Toast.makeText(
                             this,
@@ -375,42 +702,134 @@ public final class MainActivity extends Activity {
                 if (finalSmartFallback) {
                     Toast.makeText(
                             this,
-                            "The team OpenAI connection did not answer, so Sarah continued with public or Local tools. Automatic mode will try OpenAI again on the next message.",
+                            "The connected mind did not answer, so Sarah continued with supported public or offline tools. Automatic mode will try the connection again on the next message.",
                             Toast.LENGTH_LONG).show();
                 }
                 if (offerLiveTravelSearch) TravelSearchHelper.show(this, display, profile);
-                if (finalSmartSucceeded || actionResult.queuedKnowledge) refreshKnowledgeAsync();
+                if (finalSmartSucceeded || actionResult.queuedKnowledge) {
+                    scheduleDeferredKnowledgeRefresh();
+                }
+                } finally {
+                    setTurnInFlight(false);
+                    if (!assistantCommitted) {
+                        updateSpeakerStatus("Reply could not be committed · try again");
+                    }
+                }
             });
         });
+        } catch (RuntimeException submissionFailure) {
+            setTurnInFlight(false);
+            throw submissionFailure;
+        }
     }
 
     private void refreshKnowledgeAsync() {
-        if (!internetAvailable || !SarahModelConfig.fullConversationAvailable()) return;
+        if (destroyed || turnInFlight) return;
+        if (!knowledgeRefreshInFlight.compareAndSet(false, true)) {
+            mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+            mainHandler.postDelayed(deferredKnowledgeRefresh, 3_000L);
+            return;
+        }
+        final long requestGeneration = lifecycleGeneration.get();
+        SharedPreferences researchPrefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        int researchMode = SettingsActivity.getConversationMode(this);
+        Map<String, String> researchProfile = currentProfile();
+        List<Map<String, String>> researchTrips = currentTrips(researchProfile);
+        String researchDestination = researchTrips.isEmpty()
+                ? ""
+                : researchTrips.get(0).getOrDefault("destination", "");
+        String researchPersonId = researchProfile.getOrDefault(
+                "person_id", researchProfile.getOrDefault("name", "unknown_profile"));
+        boolean researchEnabled = researchMode != ConversationModePolicy.MODE_LOCAL_ONLY
+                && researchPrefs.getBoolean("web_search", true)
+                && locationStore.backgroundResearchEnabled(researchPersonId);
+        if (!BackgroundResearchPolicy.canRun(
+                internetAvailable,
+                SarahModelConfig.fullConversationAvailable(),
+                researchEnabled,
+                isOwner(researchProfile),
+                "yes".equals(researchProfile.getOrDefault("memory_consent", "no")),
+                researchDestination,
+                ProfileLearningContext.interests(researchProfile))) {
+            knowledgeRefreshInFlight.set(false);
+            return;
+        }
         String key = SecureStore.loadApiKey(this);
-        executor.submit(() -> {
+        try {
+        backgroundResearchExecutor.submit(() -> {
+            backgroundResearchThread = Thread.currentThread();
             SarahDatabase backgroundDb = new SarahDatabase(getApplicationContext());
             try {
                 int refreshed = DestinationKnowledgeCoordinator.refreshPending(
                         backgroundDb,
+                        KnowledgeProfileKey.forProfile(researchProfile),
                         SarahModelConfig.PROVIDER_ID,
                         key,
                         SarahModelConfig.MODEL_ID,
-                        2);
+                            BackgroundResearchPolicy.MAX_PACKS_PER_RUN);
+                try {
+                    ProactiveDiscoveryCoordinator.refresh(
+                            getApplicationContext(),
+                            researchProfile,
+                            researchTrips);
+                } catch (Exception proactiveFailure) {
+                    Log.e(TAG,
+                            "Proactive discovery failed; its append-only failure receipt was retained",
+                            proactiveFailure);
+                }
                 if (refreshed > 0) {
-                    runOnUiThread(() -> Toast.makeText(
+                    runOnUiThreadIfActive(requestGeneration, () -> Toast.makeText(
                             this,
                             "Sarah refreshed " + refreshed + " destination knowledge pack"
                                     + (refreshed == 1 ? "." : "s."),
                             Toast.LENGTH_SHORT).show());
                 }
+            } catch (Exception failure) {
+                runOnUiThreadIfActive(requestGeneration, () -> Toast.makeText(
+                        this,
+                        "Destination research did not complete. The failure receipt was saved and no result was claimed.",
+                        Toast.LENGTH_LONG).show());
             } finally {
                 backgroundDb.close();
+                backgroundResearchThread = null;
+                knowledgeRefreshInFlight.set(false);
             }
         });
+        } catch (RuntimeException rejected) {
+            knowledgeRefreshInFlight.set(false);
+            throw rejected;
+        }
+    }
+
+    private void scheduleDeferredKnowledgeRefresh() {
+        if (destroyed) return;
+        mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        mainHandler.postDelayed(deferredKnowledgeRefresh, 8_000L);
+    }
+
+    /** Chat owns the foreground latency budget; interrupted work remains FAILED/pending with receipts. */
+    private void pauseBackgroundResearchForOwnerTurn() {
+        mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        Thread worker = backgroundResearchThread;
+        if (worker == null) return;
+        TavilyClient.cancel(worker);
+        ConnectedModelGateway.cancel(worker);
+        worker.interrupt();
     }
 
     private Map<String, String> currentProfile() {
-        return speakerContext.profileFor(db.getProfile());
+        Map<String, String> profile = speakerContext.profileFor(db.getProfile());
+        if (locationStore != null) {
+            String personId = profile.getOrDefault("person_id", speakerContext.activeName());
+            String area = locationStore.freshArea(
+                    personId,
+                    System.currentTimeMillis());
+            if (!area.isEmpty()) {
+                profile.put("runtime_current_area", area);
+                profile.put("runtime_current_area_source", locationStore.source(personId));
+            }
+        }
+        return profile;
     }
 
     private List<Map<String, String>> currentHistory(int limit) {
@@ -439,7 +858,7 @@ public final class MainActivity extends Activity {
         trip.put("destination", destination);
         trip.put("status", "shared");
         trip.put("notes", "The active profile is recorded as joining this trip; owner-private details are omitted.");
-        return List.of(trip);
+        return Collections.singletonList(trip);
     }
 
     private List<Map<String, String>> currentWishes(Map<String, String> profile) {
@@ -447,17 +866,28 @@ public final class MainActivity extends Activity {
     }
 
     private List<Map<String, String>> currentKnowledgePacks(Map<String, String> profile) {
-        List<Map<String, String>> all = db.listKnowledgePacks(40);
-        if (isOwner(profile)) return all;
-        if (!"going".equals(profile.getOrDefault("current_shared_trip_participation", "unknown"))) {
-            return Collections.emptyList();
-        }
-        String destination = profile.getOrDefault("current_shared_trip", "");
-        List<Map<String, String>> filtered = new ArrayList<>();
-        for (Map<String, String> row : all) {
-            if (destination.equalsIgnoreCase(row.getOrDefault("destination", ""))) filtered.add(row);
-        }
-        return filtered;
+        return db.listKnowledgePacks(KnowledgeProfileKey.forProfile(profile), 40);
+    }
+
+    private void applyProactiveResearchSchedule(boolean validatedInternet) {
+        if (destroyed || speakerContext == null || locationStore == null) return;
+        Map<String, String> profile = currentProfile();
+        String personId = profile.getOrDefault(
+                "person_id", profile.getOrDefault("name", "unknown_profile"));
+        SharedPreferences preferences = getSharedPreferences(
+                SettingsActivity.PREFS, MODE_PRIVATE);
+        boolean runnable = KnowledgePackSchedulingPolicy.canSchedule(
+                    isOwner(profile),
+                    "yes".equals(profile.getOrDefault("memory_consent", "no")),
+                    validatedInternet,
+                    SarahModelConfig.fullConversationAvailable(),
+                    TavilyClient.configured(),
+                    locationStore.backgroundResearchEnabled(personId))
+                && preferences.getBoolean("web_search", true)
+                && SettingsActivity.getConversationMode(this)
+                    != ConversationModePolicy.MODE_LOCAL_ONLY;
+        if (runnable) ProactiveDiscoveryScheduler.ensureScheduled(this);
+        else ProactiveDiscoveryScheduler.cancel(this);
     }
 
     private List<Map<String, String>> currentDealWatches(Map<String, String> profile) {
@@ -465,7 +895,53 @@ public final class MainActivity extends Activity {
     }
 
     private static boolean isOwner(Map<String, String> profile) {
-        return "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
+        return "yes".equalsIgnoreCase(profile.getOrDefault("active_speaker_is_owner", "no"))
+                || "yes".equalsIgnoreCase(profile.getOrDefault("is_owner", "no"));
+    }
+
+    private void setTurnInFlight(boolean inFlight) {
+        turnInFlight = inFlight;
+        if (input != null) input.setEnabled(!inFlight);
+        if (sendButton != null) sendButton.setEnabled(!inFlight);
+    }
+
+    private boolean requestMayApply(long requestGeneration) {
+        return TurnLifecyclePolicy.completionMayApply(
+                destroyed, requestGeneration, lifecycleGeneration.get())
+                && !isFinishing();
+    }
+
+    private boolean requestMayApplyToSpeaker(
+            long requestGeneration,
+            String expectedPersonId,
+            String expectedSpeaker) {
+        return TurnLifecyclePolicy.speakerCompletionMayApply(
+                    destroyed,
+                    requestGeneration,
+                    lifecycleGeneration.get(),
+                    expectedPersonId,
+                    speakerContext == null ? "" : speakerContext.activePersonId(),
+                    expectedSpeaker,
+                    speakerContext == null ? "" : speakerContext.activeName())
+                && !isFinishing();
+    }
+
+    private void invalidatePriorSpeakerWork() {
+        recordActiveVoiceCancellation("profile_switch_cancelled");
+        lifecycleGeneration.incrementAndGet();
+        CloudVoiceClient.cancel();
+        if (tts != null) tts.stop();
+        mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        photoRequestSequence.incrementAndGet();
+        pendingLocationGeneration++;
+        clearPendingLocationTurn();
+        discardPendingPhoto();
+    }
+
+    private void runOnUiThreadIfActive(long requestGeneration, Runnable action) {
+        runOnUiThread(() -> {
+            if (requestMayApply(requestGeneration)) action.run();
+        });
     }
 
     private void updateSpeakerStatus(String event) {
@@ -473,11 +949,16 @@ public final class MainActivity extends Activity {
         String label;
         if (event == null || event.trim().isEmpty() || "Ready".equals(event)) {
             int mode = SettingsActivity.getConversationMode(this);
-            label = ConversationModePolicy.statusLabel(
+            String nextRoute = ConversationModePolicy.statusLabel(
                     mode,
                     internetAvailable,
                     SarahModelConfig.fullConversationAvailable(),
-                    lastSmartCallFailed) + " • tap to switch";
+                    lastSmartCallFailed,
+                    connectedRouteProven);
+            label = TurnRoute.UNKNOWN_LEGACY.equals(lastTurnRoute)
+                    ? nextRoute + " • tap to switch"
+                    : "Last reply: " + TurnRoute.sourceLabel(lastTurnRoute)
+                        + " • Next: " + nextRoute + " • tap to switch";
         } else {
             label = event;
         }
@@ -514,8 +995,22 @@ public final class MainActivity extends Activity {
     }
 
     private void addBubble(String who, String text, boolean user) {
+        addBubble(who, text, user, user ? "" : TurnRoute.UNKNOWN_LEGACY);
+    }
+
+    private void addBubble(String who, String text, boolean user, String route) {
+        addBubble(who, text, user, route, "");
+    }
+
+    private void addBubble(
+            String who,
+            String text,
+            boolean user,
+            String route,
+            String sourceDetails) {
         LinearLayout wrapper = new LinearLayout(this);
         wrapper.setGravity(user ? Gravity.END : Gravity.START);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
         wrapper.setPadding(0, 6, 0, 6);
         TextView bubble = new TextView(this);
         bubble.setText(who + "\n" + text);
@@ -524,8 +1019,95 @@ public final class MainActivity extends Activity {
         bubble.setBackgroundResource(user ? R.drawable.chat_user : R.drawable.chat_sarah);
         bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.84));
         wrapper.addView(bubble);
+        if (!user && route != null && !route.trim().isEmpty()) {
+            TextView source = new TextView(this);
+            boolean hasDetails = sourceDetails != null && !sourceDetails.trim().isEmpty();
+            source.setText(TurnRoute.sourceLabel(route)
+                    + (hasDetails ? " · tap for source details" : ""));
+            source.setTextSize(11f);
+            source.setTextColor(getColor(R.color.sarah_blue));
+            source.setPadding(10, 2, 10, 0);
+            source.setGravity(Gravity.START);
+            if (hasDetails) {
+                source.setOnClickListener(v -> new AlertDialog.Builder(this)
+                        .setTitle("Reply source details")
+                        .setMessage(sourceDetails)
+                        .setPositiveButton("Close", null)
+                        .show());
+            }
+            wrapper.addView(source);
+        }
         chat.addView(wrapper);
         scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private ConnectedModelResponse connectedReplyWithRetry(
+            String providerId,
+            String key,
+            String model,
+            String prompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean web,
+            String searchQuery,
+            byte[] image) throws Exception {
+        long startedAtNanos = System.nanoTime();
+        Exception lastFailure = null;
+        for (int attempt = 1; attempt <= ConnectedTurnPolicy.ATTEMPTS_PER_TURN; attempt++) {
+            long remainingMs = ConnectedTurnPolicy.remainingBudgetMs(
+                    startedAtNanos, System.nanoTime());
+            if (remainingMs <= 0L) break;
+            AtomicReference<Thread> attemptThread = new AtomicReference<>();
+            Future<ConnectedModelResponse> attemptFuture = networkAttemptExecutor.submit(() -> {
+                attemptThread.set(Thread.currentThread());
+                try {
+                    return ConnectedModelGateway.respondDetailed(
+                            providerId, key, model, prompt, history, message,
+                            web, searchQuery, image);
+                } finally {
+                    attemptThread.set(null);
+                }
+            });
+            try {
+                ConnectedModelResponse connected = attemptFuture.get(
+                        remainingMs, TimeUnit.MILLISECONDS);
+                if (!connected.online) {
+                    throw new IllegalStateException(
+                            "Connected route returned an offline response without fallback telemetry");
+                }
+                return connected;
+            } catch (TimeoutException deadline) {
+                Thread worker = attemptThread.get();
+                attemptFuture.cancel(true);
+                ConnectedModelGateway.cancel(worker);
+                lastFailure = new IllegalStateException(
+                        "Connected reply exceeded the shared owner-wait deadline.", deadline);
+                break;
+            } catch (InterruptedException interrupted) {
+                Thread worker = attemptThread.get();
+                attemptFuture.cancel(true);
+                ConnectedModelGateway.cancel(worker);
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            } catch (ExecutionException execution) {
+                Throwable cause = execution.getCause();
+                lastFailure = cause instanceof Exception
+                        ? (Exception) cause
+                        : new IllegalStateException("Connected reply failed", cause);
+            } catch (Exception failure) {
+                lastFailure = failure;
+            }
+            long remainingAfterFailure = ConnectedTurnPolicy.remainingBudgetMs(
+                    startedAtNanos, System.nanoTime());
+            if (!ConnectedTurnPolicy.mayRetry(attempt, remainingAfterFailure)) break;
+            long backoff = Math.min(
+                    ConnectedTurnPolicy.RETRY_BACKOFF_MS,
+                    Math.max(0L, remainingAfterFailure - 1L));
+            if (backoff > 0L) Thread.sleep(backoff);
+        }
+        throw new IllegalStateException(
+                "The connected mind did not answer within the bounded two-attempt owner wait.",
+                lastFailure);
     }
 
     private void addMemoryNote(String text) {
@@ -550,6 +1132,12 @@ public final class MainActivity extends Activity {
                 || lower.contains("tomorrow")
                 || lower.contains("weekend")
                 || lower.contains("deal")
+                || lower.contains("cheapest")
+                || lower.contains("lowest cost")
+                || lower.contains("low cost")
+                || lower.contains("low-cost")
+                || lower.contains("least expensive")
+                || lower.contains("budget")
                 || lower.contains("price")
                 || lower.contains("fare")
                 || lower.contains("discount")
@@ -581,17 +1169,218 @@ public final class MainActivity extends Activity {
     }
 
     private void speak(String text) {
+        speak(text, "voice-" + System.currentTimeMillis() + "-"
+                + UUID.randomUUID().toString().replace("-", ""));
+    }
+
+    private void speak(String text, String turnId) {
+        final long voiceGeneration = lifecycleGeneration.get();
+        Map<String, String> voiceProfile = currentProfile();
+        final String expectedSpeaker = speakerContext.activeName();
+        final String personId = voiceProfile.getOrDefault(
+                "person_id", speakerContext.activePersonId());
+        if (!requestMayApplyToSpeaker(voiceGeneration, personId, expectedSpeaker)) return;
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         if (!prefs.getBoolean("auto_speak", true)) return;
         tts.setRate(currentSpeechRate());
-        if (prefs.getInt("voice_mode", 0) == 1) {
-            String key = SarahModelConfig.apiKey();
-            if (!key.isEmpty() && internetAvailable) {
-                CloudVoiceClient.speak(this, key, text, () -> runOnUiThread(() -> tts.speak(text)));
-                return;
-            }
+        int voiceMode = prefs.getInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0);
+        boolean validatedInternet = connectivityMonitor != null
+                ? connectivityMonitor.currentValidatedInternet() : internetAvailable;
+        boolean protectedBackend = ElevenLabsVoiceConfig.backendConfigured();
+        boolean directCredential = ElevenLabsVoiceConfig.directConfigured();
+        boolean attemptPremium = VoiceRoutePolicy.shouldAttemptPremium(
+                voiceMode, validatedInternet, protectedBackend, directCredential);
+        String attemptedVoiceRoute = attemptPremium
+                ? (protectedBackend ? "elevenlabs_protected_backend" : "elevenlabs_direct")
+                : (voiceMode == 1 ? "elevenlabs_approved_route" : "android_tts");
+        markActiveVoice(personId, turnId, text.length(), attemptedVoiceRoute);
+        if (attemptPremium) {
+            CloudVoiceClient.speak(this, "", text, receipt -> {
+                if (!requestMayApplyToSpeaker(
+                        voiceGeneration, personId, expectedSpeaker)) return;
+                if (receipt.completed) {
+                    recordVoiceReceipt(personId, turnId, text.length(), receipt, "");
+                    clearActiveVoice(personId, turnId);
+                } else if (!VoiceFallbackPolicy.shouldStartAndroidFallback(
+                        receipt.playbackStart, receipt.failureReason)) {
+                    String detail = receipt.playbackStart > 0
+                            ? "approved progressive playback began; partial route failure recorded; full Android replay suppressed"
+                            : "newer voice request owns playback; obsolete Android fallback suppressed";
+                    recordVoiceReceipt(personId, turnId, text.length(), receipt, detail);
+                    clearActiveVoice(personId, turnId);
+                } else {
+                    runOnUiThreadIfActive(voiceGeneration, () -> speakLocallyWithReceipt(
+                            personId, expectedSpeaker, turnId, text,
+                            receipt.attemptedRoute, receipt.failureReason, receipt,
+                            voiceGeneration));
+                }
+            });
+            return;
         }
-        tts.speak(text);
+        speakLocallyWithReceipt(
+                personId,
+                expectedSpeaker,
+                turnId,
+                text,
+                voiceMode == 1 ? "elevenlabs_approved_route" : "android_tts",
+                VoiceRoutePolicy.fallbackReason(
+                        voiceMode, validatedInternet, protectedBackend, directCredential),
+                null,
+                voiceGeneration);
+    }
+
+    private void speakLocallyWithReceipt(
+            String personId,
+            String expectedSpeaker,
+            String turnId,
+            String text,
+            String attemptedRoute,
+            String fallbackReason,
+            CloudVoiceClient.Receipt failedPremium,
+            long voiceGeneration) {
+        if (!requestMayApplyToSpeaker(
+                voiceGeneration, personId, expectedSpeaker)) return;
+        long requestedAt = System.currentTimeMillis();
+        AtomicLong playbackStarted = new AtomicLong(0L);
+        tts.speak(text, new SarahTts.SpeechListener() {
+            @Override public void onStart(long startedAt) {
+                if (requestMayApplyToSpeaker(
+                        voiceGeneration, personId, expectedSpeaker)) {
+                    playbackStarted.set(startedAt);
+                } else if (tts != null) {
+                    tts.stop();
+                }
+            }
+
+            @Override public void onDone(long completedAt) {
+                if (!requestMayApplyToSpeaker(
+                        voiceGeneration, personId, expectedSpeaker)) return;
+                recordLocalVoiceReceipt(
+                        personId, turnId, text.length(), attemptedRoute, fallbackReason,
+                        requestedAt, playbackStarted.get(), completedAt, true, failedPremium);
+                clearActiveVoice(personId, turnId);
+            }
+
+            @Override public void onError(long failedAt, String reason) {
+                if (!requestMayApplyToSpeaker(
+                        voiceGeneration, personId, expectedSpeaker)) return;
+                recordLocalVoiceReceipt(
+                        personId, turnId, text.length(), attemptedRoute,
+                        fallbackReason + "; " + reason,
+                        requestedAt, playbackStarted.get(), failedAt, false, failedPremium);
+                clearActiveVoice(personId, turnId);
+            }
+        });
+    }
+
+    private void recordLocalVoiceReceipt(
+            String personId,
+            String turnId,
+            int characterCount,
+            String attemptedRoute,
+            String fallbackReason,
+            long requestedAt,
+            long playbackStart,
+            long playbackEnd,
+            boolean completed,
+            CloudVoiceClient.Receipt failedPremium) {
+        CloudVoiceClient.Receipt local = new CloudVoiceClient.Receipt(
+                attemptedRoute,
+                "android_tts",
+                fallbackReason,
+                requestedAt,
+                requestedAt,
+                0L,
+                playbackStart,
+                playbackStart,
+                playbackStart,
+                playbackEnd,
+                completed);
+        recordVoiceReceipt(personId, turnId, characterCount, local, failedPremium == null
+                ? "" : "premium_failure_synthesis_start=" + failedPremium.synthesisStart
+                        + "; premium_failure_synthesis_end=" + failedPremium.synthesisEnd
+                        + "; premium_failure_first_network_byte=" + failedPremium.firstNetworkByte
+                        + "; premium_failure_player_ready=" + failedPremium.playerReady
+                        + "; premium_failure_response_complete=" + failedPremium.responseComplete
+                        + "; premium_failure_playback_start=" + failedPremium.playbackStart
+                        + "; premium_failure_playback_end=" + failedPremium.playbackEnd);
+    }
+
+    private void recordVoiceReceipt(
+            String personId,
+            String turnId,
+            int characterCount,
+            CloudVoiceClient.Receipt receipt,
+            String additionalDetail) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("attempted_route", receipt.attemptedRoute);
+            json.put("actual_route", receipt.actualRoute);
+            json.put("fallback_reason", receipt.failureReason);
+            json.put("requested_at", receipt.requestedAt);
+            json.put("synthesis_start", receipt.synthesisStart);
+            json.put("first_network_byte", receipt.firstNetworkByte);
+            json.put("player_ready", receipt.playerReady);
+            json.put("response_complete", receipt.responseComplete);
+            // Retained for prior receipt readers; equals response_complete.
+            json.put("synthesis_end", receipt.synthesisEnd);
+            json.put("playback_start", receipt.playbackStart);
+            json.put("playback_end", receipt.playbackEnd);
+            json.put("completed", receipt.completed);
+            json.put("character_count", characterCount);
+            json.put("voice_id", ElevenLabsVoiceConfig.voiceId());
+            json.put("voice_model", ElevenLabsVoiceConfig.modelId());
+            json.put("detail", additionalDetail == null ? "" : additionalDetail);
+            VoiceReceiptStore.append(this, personId, turnId, json);
+        } catch (Exception ignored) { }
+    }
+
+    private void markActiveVoice(
+            String personId,
+            String turnId,
+            int characterCount,
+            String attemptedRoute) {
+        activeVoice = new ActiveVoice(
+                personId,
+                turnId,
+                characterCount,
+                attemptedRoute,
+                System.currentTimeMillis());
+    }
+
+    private void clearActiveVoice(String personId, String turnId) {
+        ActiveVoice active = activeVoice;
+        if (active != null
+                && active.personId.equals(personId)
+                && active.turnId.equals(turnId)) {
+            activeVoice = null;
+        }
+    }
+
+    /** Keep append-only evidence while suppressing all stale UI and fallback work. */
+    private void recordActiveVoiceCancellation(String reason) {
+        ActiveVoice active = activeVoice;
+        if (active == null) return;
+        activeVoice = null;
+        long cancelledAt = System.currentTimeMillis();
+        CloudVoiceClient.Receipt cancellation = new CloudVoiceClient.Receipt(
+                active.attemptedRoute,
+                "unknown_cancelled",
+                reason,
+                active.requestedAt,
+                active.requestedAt,
+                0L,
+                0L,
+                0L,
+                0L,
+                cancelledAt,
+                false);
+        recordVoiceReceipt(
+                active.personId,
+                active.turnId,
+                active.characterCount,
+                cancellation,
+                "Active speech was stopped at an exact speaker boundary; playback phase was not yet reported, so it is recorded as unknown_cancelled. Stale playback and fallback were suppressed.");
     }
 
     private float currentSpeechRate() {
@@ -613,6 +1402,129 @@ public final class MainActivity extends Activity {
         } catch (Exception e) {
             Toast.makeText(this, "No speech recognizer is available on this phone.", Toast.LENGTH_LONG).show();
         }
+    }
+
+    private boolean ensureApproximateAreaForTurn(String message) {
+        if (!CurrentLocationPolicy.asksForCurrentArea(message) || locationStore == null || locationCoordinator == null) {
+            return false;
+        }
+        Map<String, String> profile = speakerContext.profileFor(db.getProfile());
+        String personId = profile.getOrDefault("person_id", speakerContext.activeName());
+        if (!locationStore.freshArea(personId, System.currentTimeMillis()).isEmpty()) return false;
+
+        if (!pendingLocationMessage.isEmpty()) {
+            Toast.makeText(
+                    this,
+                    "Sarah is still finding the current area. Your newer message remains in the composer.",
+                    Toast.LENGTH_LONG).show();
+            return true;
+        }
+        pendingLocationMessage = message;
+        pendingLocationPersonId = personId;
+        pendingLocationSpeaker = profile.getOrDefault("name", speakerContext.activeName());
+        pendingLocationGeneration++;
+        input.setText("");
+        if (!locationCoordinator.hasPermission()) {
+            SharedPreferences preferences = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+            if (preferences.getBoolean("coarse_location_permission_asked", false)) {
+                completeLocationFailure("permission_denied", pendingLocationGeneration);
+                return true;
+            }
+            preferences.edit().putBoolean("coarse_location_permission_asked", true).apply();
+            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOCATION);
+            return true;
+        }
+        resolvePendingLocation();
+        return true;
+    }
+
+    private void resolvePendingLocation() {
+        final long requestGeneration = pendingLocationGeneration;
+        final String personId = pendingLocationPersonId;
+        final String initiatingSpeaker = pendingLocationSpeaker;
+        updateSpeakerStatus("Finding your approximate current area…");
+        locationCoordinator.resolve(new ApproximateLocationCoordinator.Callback() {
+            @Override public void onResolved(String area, long capturedAt) {
+                if (!locationTurnActive(requestGeneration)) return;
+                locationStore.save(
+                        personId,
+                        area,
+                        capturedAt,
+                        CurrentLocationPolicy.SOURCE_DEVICE_RESOLVED);
+                String message = pendingLocationMessage;
+                clearPendingLocationTurn();
+                if (!sameActiveProfile(personId, initiatingSpeaker)) {
+                    db.addMessage("user", message, initiatingSpeaker, TurnRoute.LOCAL_TOOL_RESULT);
+                    db.addMessage(
+                            "assistant",
+                            "I found the approximate current area for your profile, but I did not send the waiting question after the active phone user changed. Ask it again when your profile is active.",
+                            initiatingSpeaker,
+                            TurnRoute.LOCAL_TOOL_RESULT);
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Current area was saved to " + initiatingSpeaker
+                                    + "'s profile; the waiting message was not sent under another person.",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+                Toast.makeText(MainActivity.this, "Using approximate current area: " + area, Toast.LENGTH_SHORT).show();
+                input.setText(message);
+                sendCurrent();
+            }
+
+            @Override public void onUnavailable(String reason) {
+                completeLocationFailure(reason, requestGeneration);
+            }
+        });
+    }
+
+    private void completeLocationFailure(String reason, long requestGeneration) {
+        if (!locationTurnActive(requestGeneration)) return;
+        String message = pendingLocationMessage;
+        String personId = pendingLocationPersonId;
+        String initiatingSpeaker = pendingLocationSpeaker;
+        clearPendingLocationTurn();
+        String reply = CurrentLocationPolicy.unavailableReply(reason);
+        if (!sameActiveProfile(personId, initiatingSpeaker)) {
+            if (!message.isEmpty()) {
+                db.addMessage("user", message, initiatingSpeaker, TurnRoute.TOOL_UNAVAILABLE);
+            }
+            db.addMessage("assistant", reply, initiatingSpeaker, TurnRoute.TOOL_UNAVAILABLE);
+            Toast.makeText(
+                    this,
+                    "The location result stayed with " + initiatingSpeaker
+                            + " and was not sent under the newly active profile.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!message.isEmpty()) {
+            addBubble(initiatingSpeaker, message, true);
+            db.addMessage("user", message, initiatingSpeaker);
+        }
+        postLocalSarahReply(
+                reply,
+                "Current area unavailable",
+                TurnRoute.TOOL_UNAVAILABLE);
+    }
+
+    private boolean locationTurnActive(long requestGeneration) {
+        return !destroyed
+                && !pendingLocationMessage.isEmpty()
+                && pendingLocationGeneration == requestGeneration;
+    }
+
+    private boolean sameActiveProfile(String personId, String speaker) {
+        if (destroyed || speakerContext == null || db == null) return false;
+        Map<String, String> active = speakerContext.profileFor(db.getProfile());
+        String activeId = active.getOrDefault("person_id", speakerContext.activeName());
+        return personId.equals(activeId)
+                && speaker.equalsIgnoreCase(speakerContext.activeName());
+    }
+
+    private void clearPendingLocationTurn() {
+        pendingLocationMessage = "";
+        pendingLocationPersonId = "";
+        pendingLocationSpeaker = "";
     }
 
     private void pickPhoto() {
@@ -637,14 +1549,27 @@ public final class MainActivity extends Activity {
         } else if (requestCode == REQ_PHOTO) {
             Uri uri = data.getData();
             if (uri == null) return;
+            final long photoGeneration = lifecycleGeneration.get();
+            final long photoRequest = photoRequestSequence.incrementAndGet();
+            Map<String, String> photoProfile = currentProfile();
+            final String photoPersonId = photoProfile.getOrDefault(
+                    "person_id", speakerContext.activePersonId());
+            final String photoSpeaker = speakerContext.activeName();
             updateSpeakerStatus("Cleaning the selected photo…");
-            executor.submit(() -> {
+            mediaExecutor.submit(() -> {
                 try {
                     ImageSanitizer.Result result = ImageSanitizer.sanitize(
                             getContentResolver(), uri, new File(getFilesDir(), "photos"));
-                    pendingPhoto = result.jpeg;
-                    pendingPhotoFile = result.file;
                     runOnUiThread(() -> {
+                        if (photoRequestSequence.get() != photoRequest
+                                || !requestMayApplyToSpeaker(
+                                    photoGeneration, photoPersonId, photoSpeaker)) {
+                            discardSanitizedDerivative(result.file);
+                            return;
+                        }
+                        discardPendingPhoto();
+                        pendingPhoto = result.jpeg;
+                        pendingPhotoFile = result.file;
                         updateSpeakerStatus("Photo ready — add a question or press send");
                         Toast.makeText(
                                 this,
@@ -652,13 +1577,37 @@ public final class MainActivity extends Activity {
                                 Toast.LENGTH_LONG).show();
                     });
                 } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(
-                            this,
-                            "The photo could not be prepared: " + e.getMessage(),
-                            Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> {
+                        if (photoRequestSequence.get() == photoRequest
+                                && requestMayApplyToSpeaker(
+                                    photoGeneration, photoPersonId, photoSpeaker)) {
+                            Toast.makeText(
+                                    this,
+                                    "The photo could not be prepared: " + e.getMessage(),
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    });
                 }
             });
         }
+    }
+
+    private void discardPendingPhoto() {
+        pendingPhoto = null;
+        File file = pendingPhotoFile;
+        pendingPhotoFile = null;
+        discardSanitizedDerivative(file);
+    }
+
+    private void discardSanitizedDerivative(File file) {
+        if (file == null) return;
+        try {
+            File photoRoot = new File(getFilesDir(), "photos").getCanonicalFile();
+            File exactFile = file.getCanonicalFile();
+            if (exactFile.getPath().startsWith(photoRoot.getPath() + File.separator)) {
+                exactFile.delete();
+            }
+        } catch (Exception ignored) { }
     }
 
     @Override
@@ -668,15 +1617,45 @@ public final class MainActivity extends Activity {
                 && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             startSpeech();
+        } else if (requestCode == REQ_LOCATION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                resolvePendingLocation();
+            } else {
+                completeLocationFailure("permission_denied", pendingLocationGeneration);
+            }
         }
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString(STATE_PENDING_LOCATION_MESSAGE, pendingLocationMessage);
+        outState.putString(STATE_PENDING_LOCATION_PERSON, pendingLocationPersonId);
+        outState.putString(STATE_PENDING_LOCATION_SPEAKER, pendingLocationSpeaker);
+        outState.putLong(STATE_PENDING_LOCATION_GENERATION, pendingLocationGeneration);
+    }
+
+    @Override
     protected void onDestroy() {
+        recordActiveVoiceCancellation("activity_destroyed_or_profile_recreated");
+        destroyed = true;
+        lifecycleGeneration.incrementAndGet();
+        photoRequestSequence.incrementAndGet();
+        turnInFlight = false;
+        pendingLocationGeneration++;
+        clearPendingLocationTurn();
+        mainHandler.removeCallbacks(deferredKnowledgeRefresh);
         if (connectivityMonitor != null) connectivityMonitor.stop();
-        executor.shutdownNow();
+        conversationExecutor.shutdownNow();
+        backgroundResearchExecutor.shutdownNow();
+        mediaExecutor.shutdownNow();
+        networkAttemptExecutor.shutdownNow();
+        TavilyClient.cancel(backgroundResearchThread);
+        CloudVoiceClient.cancel();
         if (tts != null) tts.shutdown();
+        discardPendingPhoto();
         if (speakerContext != null) speakerContext.close();
+        if (locationCoordinator != null) locationCoordinator.close();
         if (db != null) db.close();
         super.onDestroy();
     }

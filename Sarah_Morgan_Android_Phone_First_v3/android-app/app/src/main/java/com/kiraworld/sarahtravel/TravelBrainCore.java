@@ -41,7 +41,7 @@ public final class TravelBrainCore {
             }
             String destination = contextDestinations.get(contextDestinations.size() - 1);
             return "I’ll treat this as a multimodal watch from " + home(profile) + " to " + destination
-                    + ". The default comparison includes air, Amtrak or rail, and intercity bus where available, plus the local connection at both ends. I’ll use flexible dates and sensible defaults instead of asking a long questionnaire. Real notifications require the configured team travel backend.";
+                    + ". The default comparison includes air, Amtrak or rail, and intercity bus where available, plus the local connection at both ends. Flexible dates and sensible defaults avoid a long questionnaire. Real notifications require an available live monitoring connection.";
         }
 
         if (currentDestinations.size() >= 2 && isDestinationChoice(lower)) {
@@ -163,8 +163,7 @@ public final class TravelBrainCore {
     }
 
     private static boolean isChildSafe(Map<String, String> profile) {
-        String group = profile.getOrDefault("age_group", "adult");
-        return "child".equals(group) || "unknown_use_child_safe_mode".equals(group);
+        return MaturityAccessPolicy.requiresNonAdultSafeContent(profile);
     }
 
     private static String priorConversation(List<Map<String, String>> history, String current) {

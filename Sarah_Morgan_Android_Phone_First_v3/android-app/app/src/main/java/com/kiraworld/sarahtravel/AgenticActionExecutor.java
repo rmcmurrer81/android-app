@@ -3,6 +3,8 @@ package com.kiraworld.sarahtravel;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -13,17 +15,31 @@ public final class AgenticActionExecutor {
         public final boolean queuedKnowledge;
         public final boolean changedEventMonitor;
         public final boolean importedBooking;
+        public final boolean monitoringUnavailable;
+        public final List<String> durableActionReceipts;
+        public final List<String> pendingActionReceipts;
 
         Result(
                 boolean createdDealWatch,
                 boolean queuedKnowledge,
                 boolean changedEventMonitor,
-                boolean importedBooking) {
+                boolean importedBooking,
+                boolean monitoringUnavailable,
+                List<String> durableActionReceipts,
+                List<String> pendingActionReceipts) {
             this.createdDealWatch = createdDealWatch;
             this.queuedKnowledge = queuedKnowledge;
             this.changedEventMonitor = changedEventMonitor;
             this.importedBooking = importedBooking;
+            this.monitoringUnavailable = monitoringUnavailable;
+            this.durableActionReceipts = new ArrayList<>(durableActionReceipts);
+            this.pendingActionReceipts = new ArrayList<>(pendingActionReceipts);
         }
+
+        public boolean hasDurableBackgroundWork() { return !durableActionReceipts.isEmpty(); }
+        public String receiptSummary() { return String.join("; ", durableActionReceipts); }
+        public boolean hasPendingRequests() { return !pendingActionReceipts.isEmpty(); }
+        public String pendingSummary() { return String.join("; ", pendingActionReceipts); }
     }
 
     private AgenticActionExecutor() { }
@@ -33,33 +49,105 @@ public final class AgenticActionExecutor {
             SarahDatabase db,
             Map<String, String> profile,
             List<AgenticTravelPlanner.Action> actions) {
+        return apply(context, db, profile, actions, false);
+    }
+
+    public static Result apply(
+            Context context,
+            SarahDatabase db,
+            Map<String, String> profile,
+            List<AgenticTravelPlanner.Action> actions,
+            boolean validatedInternet) {
         boolean createdWatch = false;
         boolean queuedKnowledge = false;
         boolean changedEventMonitor = false;
         boolean importedBooking = false;
+        boolean monitoringUnavailable = false;
+        List<String> durableReceipts = new ArrayList<>();
+        List<String> pendingReceipts = new ArrayList<>();
         String origin = profile.getOrDefault("hometown", "Home area").trim();
         EventTripStore eventStore = new EventTripStore(context.getApplicationContext());
         MobilityWatchStore mobilityStore = new MobilityWatchStore(context.getApplicationContext());
         PersonProfileStore people = new PersonProfileStore(context.getApplicationContext());
+        SharedPreferences preferences = context.getSharedPreferences(
+                SettingsActivity.PREFS,
+                Context.MODE_PRIVATE);
+        boolean alertsEnabled = preferences.getBoolean(
+                "deal_alerts_enabled",
+                BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED);
+        String personId = profile.getOrDefault(
+                "person_id", profile.getOrDefault("name", "unknown_profile"));
+        boolean researchEnabled = new SarahLocationStore(context)
+                .backgroundResearchEnabled(personId);
+        boolean memoryConsent = "yes".equals(profile.getOrDefault("memory_consent", "no"));
+        String knowledgeScope = KnowledgeProfileKey.forProfile(profile);
 
         try {
             for (AgenticTravelPlanner.Action action : actions) {
                 if (AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK.equals(action.type)) {
-                    db.queueKnowledgePack(action.destination);
-                    queuedKnowledge = true;
+                    boolean requestSaved = KnowledgePackSchedulingPolicy.canRequest(
+                            memoryConsent, action.destination)
+                            && db.queueKnowledgePack(
+                                    knowledgeScope, action.destination, false);
+                    if (!requestSaved) continue;
+                    String receipt = "destination knowledge request for " + action.destination;
+                    boolean canSchedule = KnowledgePackSchedulingPolicy.canSchedule(
+                            isOwner(profile),
+                            memoryConsent,
+                            validatedInternet,
+                            SarahModelConfig.fullConversationAvailable(),
+                            TavilyClient.configured(),
+                            researchEnabled);
+                    boolean scheduled = false;
+                    boolean promotedBeforeScheduling = canSchedule
+                            && db.markKnowledgePackScheduled(knowledgeScope, action.destination);
+                    if (promotedBeforeScheduling) {
+                        boolean periodicAccepted = DealWatchScheduler.ensureScheduled(context);
+                        boolean immediateAccepted = DealWatchScheduler.runSoon(context);
+                        scheduled = periodicAccepted || immediateAccepted;
+                        if (!scheduled) {
+                            db.markKnowledgePackNotScheduled(knowledgeScope, action.destination);
+                        }
+                    }
+                    if (scheduled) {
+                        queuedKnowledge = true;
+                        durableReceipts.add(receipt);
+                    } else {
+                        pendingReceipts.add(receipt + " (saved, not scheduled)");
+                        monitoringUnavailable = true;
+                    }
                 } else if (AgenticTravelPlanner.SAVE_WISH.equals(action.type)) {
                     db.addWish(action.destination, action.detail);
                 } else if (AgenticTravelPlanner.CREATE_DEAL_WATCH.equals(action.type)) {
-                    createdWatch |= db.createDefaultDealWatch(origin, action.destination);
+                    if (TravelDealGateway.isConfigured(context)) {
+                        boolean created = db.createDefaultDealWatch(origin, action.destination);
+                        createdWatch |= created;
+                        if (created) {
+                            String receipt = "fare watch from " + origin + " to " + action.destination;
+                            if (alertsEnabled) durableReceipts.add(receipt);
+                            else pendingReceipts.add(receipt + " (saved; automatic monitoring is off)");
+                        }
+                    } else {
+                        monitoringUnavailable = true;
+                    }
                 } else if (AgenticTravelPlanner.UPDATE_DESTINATION_FOCUS.equals(action.type)) {
                     db.addMemory("trip_focus", action.destination + " trip priority: " + action.detail, action.detail);
                     db.addWish(action.destination, action.detail + " is the main reason for the trip");
                 } else if (AgenticTravelPlanner.SET_FLEXIBLE_DATES.equals(action.type)) {
                     db.addMemory("travel_preference", "Travel dates are flexible", action.detail);
-                    db.markDealWatchesFlexible(List.of(action.destination));
+                    db.markDealWatchesFlexible(Collections.singletonList(action.destination));
                 } else if (AgenticTravelPlanner.CREATE_EVENT_TRIP.equals(action.type)) {
-                    long eventTripId = eventStore.upsertEventTrip(action.detail, action.destination, true);
-                    changedEventMonitor |= eventTripId > 0;
+                    boolean sourceRouteAvailable = KnownEventCatalog.find(action.detail) != null
+                            || ("openai".equals(SarahModelConfig.PROVIDER_ID)
+                                && SarahModelConfig.fullConversationAvailable());
+                    boolean runnable = sourceRouteAvailable
+                            && eventStore.ensureRunnableEventMonitor(action.detail, action.destination);
+                    changedEventMonitor |= runnable;
+                    if (runnable) {
+                        durableReceipts.add("event monitor for " + action.detail + " in " + action.destination);
+                    } else if (!sourceRouteAvailable) {
+                        monitoringUnavailable = true;
+                    }
                     if (isOwner(profile)) {
                         db.addMemory(
                                 "event_trip",
@@ -86,11 +174,14 @@ public final class AgenticActionExecutor {
                     PlannedTripDetail detail = PlannedTripDetail.parse(action.detail);
                     if (isOwner(profile)) {
                         if (!plannedTripExists(db.listTrips(100), action.destination, detail)) {
+                            String dateNote = detail.hasDates()
+                                    ? "Planned dates: " + detail.startDate + " through " + detail.endDate
+                                    : "Dates not set; source: " + detail.label;
                             db.addTrip(
                                     detail.label + " trip to " + action.destination,
                                     action.destination,
                                     "planned",
-                                    "Planned dates: " + detail.startDate + " through " + detail.endDate);
+                                    dateNote);
                         }
                     } else {
                         String name = activeName(profile);
@@ -99,7 +190,9 @@ public final class AgenticActionExecutor {
                                 name,
                                 "planned_trip",
                                 "Plans to visit " + action.destination + " " + detail.label,
-                                detail.startDate + " through " + detail.endDate);
+                                detail.hasDates()
+                                        ? detail.startDate + " through " + detail.endDate
+                                        : "Dates not set; source: " + detail.label);
                     }
                 } else if (AgenticTravelPlanner.SAVE_JOURNEY_PLAN.equals(action.type)) {
                     JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
@@ -127,12 +220,23 @@ public final class AgenticActionExecutor {
                     }
                 } else if (AgenticTravelPlanner.CREATE_MOBILITY_WATCH.equals(action.type)) {
                     JourneyDetail detail = JourneyDetail.parse(action.detail, origin);
-                    createdWatch |= mobilityStore.createWatch(
-                            detail.origin,
-                            action.destination,
-                            detail.eventName,
-                            detail.modes,
-                            detail.purpose);
+                    if (MobilityGateway.isConfigured(context)) {
+                        boolean created = mobilityStore.createWatch(
+                                detail.origin,
+                                action.destination,
+                                detail.eventName,
+                                detail.modes,
+                                detail.purpose);
+                        createdWatch |= created;
+                        if (created) {
+                            String receipt = "mobility watch from " + detail.origin
+                                    + " to " + action.destination;
+                            if (alertsEnabled) durableReceipts.add(receipt);
+                            else pendingReceipts.add(receipt + " (saved; automatic monitoring is off)");
+                        }
+                    } else {
+                        monitoringUnavailable = true;
+                    }
                 }
             }
         } finally {
@@ -141,12 +245,11 @@ public final class AgenticActionExecutor {
             people.close();
         }
 
-        SharedPreferences preferences = context.getSharedPreferences(
-                SettingsActivity.PREFS,
-                Context.MODE_PRIVATE);
-        boolean alertsEnabled = preferences.getBoolean("deal_alerts_enabled", true);
-        boolean researchEnabled = preferences.getBoolean("auto_destination_research", true);
-        if ((createdWatch && alertsEnabled) || (queuedKnowledge && researchEnabled)) {
+        boolean monitoringRunnable = BackgroundResearchPolicy.monitoringCanRun(
+                alertsEnabled,
+                TravelDealGateway.isConfigured(context) || MobilityGateway.isConfigured(context),
+                createdWatch);
+        if (monitoringRunnable) {
             DealWatchScheduler.ensureScheduled(context);
             DealWatchScheduler.runSoon(context);
         }
@@ -155,14 +258,18 @@ public final class AgenticActionExecutor {
             EventMonitorScheduler.runSoon(context);
         }
         return new Result(
-                createdWatch || changedEventMonitor,
+                monitoringRunnable || changedEventMonitor,
                 queuedKnowledge,
                 changedEventMonitor,
-                importedBooking);
+                importedBooking,
+                monitoringUnavailable,
+                durableReceipts,
+                pendingReceipts);
     }
 
     private static boolean isOwner(Map<String, String> profile) {
-        return "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
+        return "yes".equalsIgnoreCase(profile.getOrDefault("active_speaker_is_owner", "no"))
+                || "yes".equalsIgnoreCase(profile.getOrDefault("is_owner", "no"));
     }
 
     private static String activeName(Map<String, String> profile) {
@@ -198,6 +305,10 @@ public final class AgenticActionExecutor {
                     parts.length > 0 ? parts[0].trim() : "",
                     parts.length > 1 ? parts[1].trim() : "",
                     parts.length > 2 ? parts[2].trim() : "planned");
+        }
+
+        boolean hasDates() {
+            return !startDate.isEmpty() && !endDate.isEmpty();
         }
     }
 

@@ -5,6 +5,7 @@ import android.content.Context;
 import java.time.LocalDate;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,7 +68,7 @@ public final class SpeakerContext implements AutoCloseable {
     private final Map<String, String> ownerProfile;
     private final PersonProfileStore people;
     private final String ownerName;
-    private Map<String, String> activeProfile;
+    private volatile Map<String, String> activeProfile;
     private Pending pending = Pending.NONE;
     private String pendingTripDestination = "";
     private String pendingMemoryText = "";
@@ -104,11 +105,29 @@ public final class SpeakerContext implements AutoCloseable {
                     true);
         }
 
+        Result correction = detectIdentityCorrection(raw);
+        if (correction.handled) return correction;
+
         Result pendingResult = handlePending(raw, lower);
         if (pendingResult.handled) return pendingResult;
 
         Result handoff = detectHandoff(raw, lower);
         if (handoff.handled) return handoff;
+
+        if (IdentityIntent.isStressOrFear(raw)) {
+            String transport = IdentityIntent.transport(raw);
+            String reply = UniversalCalmSupport.reply(activeName(), ageGroup(), transport);
+            if (context != null) {
+                MindEventStore.recordLocal(
+                        context,
+                        activeName(),
+                        reply,
+                        UniversalCalmSupport.privateMind(transport),
+                        UniversalCalmSupport.factualTruth(transport),
+                        "TRUTHFUL_STATEMENT");
+            }
+            return new Result(true, reply);
+        }
 
         Result intro = detectSelfIntroduction(raw);
         if (intro.handled) return intro;
@@ -117,6 +136,32 @@ public final class SpeakerContext implements AutoCloseable {
         if (consent.handled) return consent;
 
         rememberApprovedDetails(raw);
+        return new Result(false, "");
+    }
+
+    private Result detectIdentityCorrection(String raw) {
+        String corrected = IdentityIntent.correctedName(raw);
+        if (corrected.isEmpty()) return new Result(false, "");
+        boolean cue = IdentityIntent.hasCorrectionCue(raw) || pending != Pending.NONE;
+        if (!cue && !corrected.equalsIgnoreCase(ownerName)) return new Result(false, "");
+        String before = activeName();
+        if (corrected.equalsIgnoreCase(ownerName)) {
+            if (context != null && IdentityIntent.looksLikeStateNotName(before)) {
+                ProfileCorrectionStore.ignore(context, before);
+            }
+            switchTo(ownerName);
+            clearPending();
+            return new Result(true,
+                    "I understand. You are " + ownerName + ", and I’m using your profile again.",
+                    !before.equalsIgnoreCase(ownerName), true);
+        }
+        if (people != null && !people.findByName(corrected).isEmpty()) {
+            switchTo(corrected);
+            clearPending();
+            return new Result(true,
+                    "Thanks for correcting me. I’m using " + activeName() + "’s profile now.",
+                    !before.equalsIgnoreCase(activeName()), true);
+        }
         return new Result(false, "");
     }
 
@@ -312,7 +357,7 @@ public final class SpeakerContext implements AutoCloseable {
     }
 
     public List<Map<String, String>> savedProfiles() {
-        return people == null ? List.of(activeProfile) : people.listProfiles();
+        return people == null ? Collections.singletonList(activeProfile) : people.listProfiles();
     }
 
     public Map<String, String> profileFor(Map<String, String> ignoredOwnerProfile) {
@@ -328,6 +373,8 @@ public final class SpeakerContext implements AutoCloseable {
         if (people != null) {
             String memories = people.memorySummary(activeName(), 8);
             if (!memories.isEmpty()) result.put("speaker_memories", memories);
+            String learnedInterests = people.interestSummary(activeName(), 12);
+            if (!learnedInterests.isEmpty()) result.put("learned_interests", learnedInterests);
             String trip = currentPlannedTrip();
             if (!trip.isEmpty()) {
                 String participation = people.getTripParticipation(activeName(), trip);
@@ -343,6 +390,10 @@ public final class SpeakerContext implements AutoCloseable {
 
     public String activeName() {
         return activeProfile.getOrDefault("name", ownerName);
+    }
+
+    public String activePersonId() {
+        return activeProfile.getOrDefault("person_id", activeName());
     }
 
     public boolean isGuest() {
@@ -434,8 +485,7 @@ public final class SpeakerContext implements AutoCloseable {
     }
 
     private static boolean looksLikeNonName(String value) {
-        String lower = value == null ? "" : value.toLowerCase(Locale.US).trim();
-        return lower.matches("^(tired|hungry|scared|worried|nervous|fine|good|great|okay|ok|sad|happy|sick|cold|hot|bored|lost|confused|ready|here|back|going|thinking|planning|trying|working|watching|looking|visiting|traveling|travelling)$");
+        return IdentityIntent.looksLikeStateNotName(value);
     }
 
     private static Boolean yesNo(String lower) {

@@ -15,6 +15,7 @@ import android.widget.Button;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +25,7 @@ public final class ExploreButton extends Button {
     private static final ExecutorService MEDIA_EXECUTOR = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String loadedQuery = "";
+    private String dismissedQuery = "";
     private String currentMessage = "";
     private Map<String, String> currentProfile = Collections.emptyMap();
     private final Runnable poll = new Runnable() {
@@ -54,12 +56,14 @@ public final class ExploreButton extends Button {
         setGravity(Gravity.CENTER);
         setCompoundDrawablePadding(dp(8));
         setPadding(dp(12), dp(10), dp(12), dp(10));
-        setMinHeight(dp(76));
+        setMinHeight(dp(52));
         setText("Explore map • photos • videos • route");
+        setVisibility(GONE);
         setOnClickListener(v -> openExplorer());
         setOnLongClickListener(v -> {
-            loadedQuery = "";
-            refreshPreview();
+            dismissedQuery = loadedQuery.isEmpty() ? currentMessage : loadedQuery;
+            clearPreview();
+            announceForAccessibility("Travel image cleared");
             return true;
         });
     }
@@ -83,8 +87,8 @@ public final class ExploreButton extends Button {
                 SettingsActivity.PREFS,
                 Context.MODE_PRIVATE);
         if (!preferences.getBoolean("inline_media_previews", true)) {
-            setCompoundDrawables(null, null, null, null);
-            setText("Explore map • photos • videos • route");
+            dismissedQuery = "";
+            clearPreview();
             return;
         }
 
@@ -103,8 +107,26 @@ public final class ExploreButton extends Button {
         }
 
         String latest = latestUserMessage(messages);
+        String latestLower = latest.toLowerCase(Locale.US).trim();
+        if (TravelContextResolver.clearsTravelContext(latestLower) || isClearPreviewRequest(latestLower)) {
+            dismissedQuery = "";
+            clearPreview();
+            return;
+        }
+
+        List<String> directDestinations = DestinationParser.extractDestinations(latest);
+        boolean visualFollowUp = GenericEventReference.isFollowUp(latest) || isTravelVisualFollowUp(latestLower);
         KnownEventCatalog.Entry knownEvent = recentKnownEvent(messages, latest);
         String unfamiliarEvent = GenericEventReference.recentEvent(messages, latest);
+        if (knownEvent == null
+                && unfamiliarEvent.isEmpty()
+                && directDestinations.isEmpty()
+                && !visualFollowUp) {
+            dismissedQuery = "";
+            clearPreview();
+            return;
+        }
+
         Map<String, String> storedEvent = unfamiliarEvent.isEmpty()
                 ? Collections.emptyMap() : findStoredEvent(context, unfamiliarEvent);
         TravelMediaHelper.Tools tools = TravelMediaHelper.resolve(latest, profile, messages);
@@ -121,15 +143,24 @@ public final class ExploreButton extends Button {
             query = tools.query.trim();
             destination = tools.destination;
         } else {
+            dismissedQuery = "";
+            clearPreview();
             return;
         }
 
+        if (!dismissedQuery.isEmpty() && query.equalsIgnoreCase(dismissedQuery)) {
+            clearPreview();
+            return;
+        }
+        if (!dismissedQuery.isEmpty()) dismissedQuery = "";
+
+        setVisibility(VISIBLE);
         currentMessage = query;
         currentProfile = profile;
         if (query.equalsIgnoreCase(loadedQuery)) return;
         loadedQuery = query;
         setCompoundDrawables(null, null, null, null);
-        setText(query + "\nLoading a public photo…\nTap for map, more photos, videos, route, and official sources");
+        setText(query + "\nLoading a public photo…\nTap for map, more photos, videos, route, and official sources\nLong-press to clear");
 
         String knownDestination = knownEvent == null ? "" : knownEvent.destination;
         MEDIA_EXECUTOR.submit(() -> {
@@ -145,7 +176,7 @@ public final class ExploreButton extends Button {
     private void applyMedia(String query, PublicMediaGateway.MediaItem item) {
         if (!query.equalsIgnoreCase(loadedQuery)) return;
         if (item == null || !item.found()) {
-            setText(query + "\nTap for map, public photos, videos, route, and official sources");
+            setText(query + "\nTap for map, public photos, videos, route, and official sources\nLong-press to clear");
             return;
         }
         Bitmap decoded = BitmapFactory.decodeByteArray(item.imageBytes, 0, item.imageBytes.length);
@@ -160,8 +191,19 @@ public final class ExploreButton extends Button {
         BitmapDrawable drawable = new BitmapDrawable(getResources(), scaled);
         drawable.setBounds(0, 0, width, height);
         setCompoundDrawables(null, drawable, null, null);
-        setText(query + "\nPublic photo preview • tap for map, more photos, videos, route, and sources");
-        setContentDescription("Public photo preview for " + query + ". Tap for map, photos, videos, route, and official sources.");
+        setText(query + "\nPublic photo preview • tap for map, more photos, videos, route, and sources\nLong-press to clear");
+        setContentDescription("Public photo preview for " + query
+                + ". Tap for map, photos, videos, route, and official sources. Long-press to clear.");
+    }
+
+    private void clearPreview() {
+        loadedQuery = "";
+        currentMessage = "";
+        currentProfile = Collections.emptyMap();
+        setCompoundDrawables(null, null, null, null);
+        setText("Explore map • photos • videos • route");
+        setContentDescription("Travel media preview hidden");
+        setVisibility(GONE);
     }
 
     private void openExplorer() {
@@ -223,9 +265,13 @@ public final class ExploreButton extends Button {
             String current) {
         KnownEventCatalog.Entry direct = KnownEventCatalog.find(current);
         if (direct != null) return direct;
+        if (!GenericEventReference.isFollowUp(current)) return null;
         int inspected = 0;
         for (int i = messages.size() - 1; i >= 0 && inspected < 16; i--, inspected++) {
-            String content = messages.get(i).getOrDefault("content", "");
+            Map<String, String> row = messages.get(i);
+            if (!"user".equalsIgnoreCase(row.getOrDefault("role", ""))) continue;
+            String content = row.getOrDefault("content", "");
+            if (content.equals(current)) continue;
             KnownEventCatalog.Entry entry = KnownEventCatalog.find(content);
             if (entry != null) return entry;
         }
@@ -240,6 +286,22 @@ public final class ExploreButton extends Button {
             if (!content.isEmpty()) return content;
         }
         return "";
+    }
+
+    private static boolean isTravelVisualFollowUp(String lower) {
+        return containsAny(lower,
+                "hotel", "where should i stay", "accommodation", "flight", "plane ticket",
+                "train ticket", "bus ticket", "fare", "route", "map", "photo", "picture",
+                "video", "getting there", "how do i get there", "parking", "nearby");
+    }
+
+    private static boolean isClearPreviewRequest(String lower) {
+        return lower.matches("^(?:clear|hide|remove)(?: the)? (?:image|photo|picture|preview|details|card)[.! ]*$");
+    }
+
+    private static boolean containsAny(String text, String... phrases) {
+        for (String phrase : phrases) if (text.contains(phrase)) return true;
+        return false;
     }
 
     private int dp(int value) {

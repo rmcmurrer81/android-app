@@ -40,6 +40,7 @@ public final class OnboardingActivity extends Activity {
 
     private SarahDatabase db;
     private SarahTts tts;
+    private SarahVoiceRouter voiceRouter;
     private LinearLayout chat;
     private ScrollView scroll;
     private EditText input;
@@ -68,11 +69,18 @@ public final class OnboardingActivity extends Activity {
         status = findViewById(R.id.onboardingStatus);
         composer = findViewById(R.id.onboardingComposer);
         beginButton = findViewById(R.id.beginChatButton);
+        SafeAreaInsets.apply(
+                this,
+                findViewById(R.id.onboardingRoot),
+                composer,
+                scroll);
 
         tts = new SarahTts(this, new SarahTts.Listener() {
             @Override
             public void onReady(String voiceName) {
-                runOnUiThread(() -> status.setText("Voice ready • " + voiceName));
+                runOnUiThread(() -> status.setText(ElevenLabsVoiceConfig.isConfigured()
+                        ? "Phone voice ready as fallback · ElevenLabs Sarah voice will be tried online"
+                        : "Phone voice ready for offline use"));
             }
 
             @Override
@@ -80,6 +88,9 @@ public final class OnboardingActivity extends Activity {
                 runOnUiThread(() -> status.setText("Voice unavailable — text still works"));
             }
         });
+
+        voiceRouter = new SarahVoiceRouter(this, tts,
+                routeStatus -> runOnUiThread(() -> status.setText(routeStatus)));
 
         ImageButton send = findViewById(R.id.onboardingSend);
         send.setOnClickListener(v -> submitAnswer());
@@ -110,13 +121,19 @@ public final class OnboardingActivity extends Activity {
             case STEP_NAME:
                 name = parseName(answer);
                 if (name.isEmpty()) {
-                    ask("I didn’t catch the name you want me to use. You can say something like, ‘I’m Robert.’");
+                    ask("I didn’t catch the name you want me to use. You can say something like, ‘I’m Alex.’");
                     return;
                 }
                 step = STEP_AGE;
                 ask("Nice to meet you, " + name + ". How old are you? You can tell me your age or the year you were born.");
                 break;
             case STEP_AGE:
+                if (isSkip(answer)) {
+                    age = 0;
+                    step = STEP_HOME;
+                    ask("That’s fine. I’ll leave your age unknown and keep suggestions family-friendly until you choose to tell me. Where are you from? A city, state, or country is enough.");
+                    break;
+                }
                 age = parseAge(answer);
                 if (age < 1 || age > 120) {
                     ask("I couldn’t work out your age from that. You can say, for example, ‘I’m 45’ or ‘I was born in 1981.’");
@@ -166,11 +183,12 @@ public final class OnboardingActivity extends Activity {
 
     private void finishOnboarding() {
         step = STEP_DONE;
-        db.saveProfile(name, home, age, firstFlight, interests, worries, memoryConsent);
+        boolean ageKnown = age >= 1 && age <= 120;
+        db.saveProfile(name, home, age, ageKnown, firstFlight, interests, worries, memoryConsent);
         if (memoryConsent) {
             db.addMemory("profile", "Name: " + name, "First conversation with Sarah");
             db.addMemory("profile", "From: " + home, "First conversation with Sarah");
-            db.addMemory("profile", "Age: " + age, "First conversation with Sarah");
+            if (ageKnown) db.addMemory("profile", "Age: " + age, "First conversation with Sarah");
             if (firstFlight) db.addMemory("travel_experience", "Flying is new or this may be a first flight", "First conversation with Sarah");
             if (!interests.isEmpty()) db.addMemory("interest", interests, "First conversation with Sarah");
             if (!worries.isEmpty()) db.addMemory("travel_need", worries, "First conversation with Sarah");
@@ -185,7 +203,8 @@ public final class OnboardingActivity extends Activity {
     private void ask(String text) {
         addBubble("Sarah", text, false);
         status.setText(tts != null && tts.isReady() ? "Sarah is speaking" : "Preparing Sarah’s voice…");
-        if (tts != null) tts.speak(text);
+        if (voiceRouter != null) voiceRouter.speak(text);
+        else if (tts != null) tts.speak(text);
         updateHint();
     }
 
@@ -193,7 +212,7 @@ public final class OnboardingActivity extends Activity {
         String hint;
         switch (step) {
             case STEP_NAME: hint = "Tell Sarah your name"; break;
-            case STEP_AGE: hint = "Age or birth year"; break;
+            case STEP_AGE: hint = "Age, birth year, or skip"; break;
             case STEP_HOME: hint = "City, state, or country"; break;
             case STEP_FLIGHT: hint = "New to flying, or flown before?"; break;
             case STEP_INTERESTS: hint = "Things you enjoy, or skip"; break;
@@ -348,6 +367,7 @@ public final class OnboardingActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (voiceRouter != null) voiceRouter.stop();
         if (tts != null) tts.shutdown();
         if (db != null) db.close();
         super.onDestroy();

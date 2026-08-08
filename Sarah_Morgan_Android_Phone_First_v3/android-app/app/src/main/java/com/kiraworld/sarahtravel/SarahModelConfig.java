@@ -4,14 +4,18 @@ package com.kiraworld.sarahtravel;
  * Build-owned conversation model configuration.
  *
  * End users do not choose a provider, model, or API key in Sarah's Settings.
- * The hackathon team controls those choices here and in ConnectedModelGateway.
+ * The hackathon team controls those choices here, through build variables,
+ * and in ConnectedModelGateway.
  */
 public final class SarahModelConfig {
-    /** Included provider adapter. Change with the provider branch in ConnectedModelGateway. */
-    public static final String PROVIDER_ID = "openai";
+    /** Provider selected by the team build; ordinary users never enter provider keys. */
+    public static final String PROVIDER_ID = configuredProviderId();
 
-    /** Higher-intelligence OpenAI model used by the hackathon build. */
-    public static final String MODEL_ID = "gpt-5.1";
+    /** Safe repository default; the online-judge workflow can override this without editing Java. */
+    public static final String DEFAULT_MODEL_ID = "@cf/google/gemma-4-26b-a4b-it";
+
+    /** Provider model selected by SARAH_MODEL_ID for this build. */
+    public static final String MODEL_ID = configuredModelId();
 
     private static final String VOICE_READY_MARKER = "__SARAH_ELEVENLABS_VOICE_READY__";
 
@@ -37,8 +41,8 @@ public final class SarahModelConfig {
     }
 
     /**
-     * Optional protected Sarah backend. When configured, the team may route
-     * OpenAI through server-side credentials instead of embedding a key.
+     * Optional protected Sarah backend. When configured, the team routes the
+     * selected provider through server-side bindings instead of embedding a key.
      */
     public static String backendUrl() {
         return clean(BuildConfig.SARAH_MODEL_BACKEND_URL);
@@ -54,7 +58,27 @@ public final class SarahModelConfig {
     }
 
     public static String providerLabel() {
-        return "OpenAI";
+        if ("workers-ai".equals(PROVIDER_ID)) return "Cloudflare Workers AI";
+        if ("openai".equals(PROVIDER_ID)) return "OpenAI";
+        return "Connected online mind";
+    }
+
+    public static String modelLabel() {
+        return MODEL_ID;
+    }
+
+    private static String configuredModelId() {
+        String configured = clean(BuildConfig.SARAH_MODEL_ID);
+        if (configured.isEmpty()) configured = clean(BuildConfig.SARAH_OPENAI_MODEL);
+        return configured.isEmpty() ? DEFAULT_MODEL_ID : configured;
+    }
+
+    private static String configuredProviderId() {
+        String configured = clean(BuildConfig.SARAH_MODEL_PROVIDER).toLowerCase(java.util.Locale.US);
+        if ("cloudflare".equals(configured) || "cloudflare-workers-ai".equals(configured)) {
+            return "workers-ai";
+        }
+        return configured.isEmpty() ? "workers-ai" : configured;
     }
 
     private static String clean(String value) {

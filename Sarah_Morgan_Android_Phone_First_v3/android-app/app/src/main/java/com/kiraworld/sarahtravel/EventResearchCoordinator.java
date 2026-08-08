@@ -7,6 +7,7 @@ import org.json.JSONObject;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -22,7 +23,8 @@ public final class EventResearchCoordinator {
             String apiKey,
             String model,
             int limit) {
-        boolean modelAvailable = apiKey != null && !apiKey.trim().isEmpty();
+        boolean modelAvailable = SarahModelConfig.fullConversationAvailable()
+                || apiKey != null && !apiKey.trim().isEmpty();
         int refreshed = 0;
         for (Map<String, String> event : store.listDueEventTrips(Math.max(1, limit))) {
             boolean officialRefreshed = false;
@@ -45,9 +47,9 @@ public final class EventResearchCoordinator {
                 // Known official sources can refresh without a model key. Unknown events stay due.
                 continue;
             }
+            if (officialRefreshed) continue;
             try {
-                refreshOne(context, store, event, providerId, apiKey, model);
-                if (!officialRefreshed) refreshed++;
+                if (refreshOne(context, store, event, providerId, apiKey, model)) refreshed++;
             } catch (Exception ignored) {
                 // Keep the event due so a later connected run can retry.
             }
@@ -55,7 +57,7 @@ public final class EventResearchCoordinator {
         return refreshed;
     }
 
-    private static void refreshOne(
+    private static boolean refreshOne(
             Context context,
             EventTripStore store,
             Map<String, String> event,
@@ -93,22 +95,27 @@ public final class EventResearchCoordinator {
                 + "Previously known start date: " + knownStartDate + "\n"
                 + "Previously known venue: " + knownVenue;
 
-        String raw = ConnectedModelGateway.respond(
+        ConnectedModelResponse connected = ConnectedModelGateway.respondDetailed(
                 providerId,
                 apiKey,
                 model,
                 systemPrompt,
-                List.<Map<String, String>>of(),
+                Collections.<Map<String, String>>emptyList(),
                 message,
                 true,
                 null);
-        JSONObject json = new JSONObject(stripCodeFence(raw));
+        if (!connected.hasVerifiedWebReceipt()) return false;
+        JSONObject json = new JSONObject(stripCodeFence(connected.reply));
         String refreshedEventName = value(json, "event_name", eventName);
         String refreshedDestination = value(json, "destination", destination);
         String startDate = value(json, "start_date", knownStartDate);
         long now = System.currentTimeMillis();
         long nextCheck = now + cadenceMillis(startDate);
 
+        String candidateOfficialUrl = value(json, "official_url", knownOfficialUrl);
+        if (!candidateOfficialUrl.isEmpty() && !connected.hasSourceUrl(candidateOfficialUrl)) {
+            candidateOfficialUrl = knownOfficialUrl;
+        }
         store.updateEventResearch(
                 eventId,
                 refreshedEventName,
@@ -116,17 +123,17 @@ public final class EventResearchCoordinator {
                 value(json, "venue", knownVenue),
                 startDate,
                 value(json, "end_date", event.getOrDefault("end_date", "")),
-                value(json, "official_url", knownOfficialUrl),
+                candidateOfficialUrl,
                 value(json, "updates_summary", ""),
                 value(json, "nearby_food", ""),
                 value(json, "nearby_places", ""),
                 value(json, "transport_notes", ""),
-                value(json, "source_note", "Connected research; verify before relying on time-sensitive details"),
+                connected.sourceReceipt(),
                 now,
                 nextCheck);
 
         JSONArray updates = json.optJSONArray("latest_updates");
-        if (updates == null) return;
+        if (updates == null) return true;
         for (int i = 0; i < updates.length(); i++) {
             JSONObject update = updates.optJSONObject(i);
             if (update == null) continue;
@@ -135,7 +142,7 @@ public final class EventResearchCoordinator {
             String publishedAt = update.optString("published_at", "").trim();
             String key = update.optString("update_key", "").trim();
             if (key.isEmpty()) key = stableKey(title, sourceUrl, publishedAt);
-            if (title.isEmpty() || key.isEmpty()) continue;
+            if (title.isEmpty() || key.isEmpty() || !connected.hasSourceUrl(sourceUrl)) continue;
             boolean added = store.addEventUpdate(
                     eventId,
                     key,
@@ -154,6 +161,7 @@ public final class EventResearchCoordinator {
                         sourceUrl);
             }
         }
+        return true;
     }
 
     private static long cadenceMillis(String startDate) {

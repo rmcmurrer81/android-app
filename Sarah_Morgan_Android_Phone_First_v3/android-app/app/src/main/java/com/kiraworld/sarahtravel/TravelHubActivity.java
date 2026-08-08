@@ -30,7 +30,7 @@ public final class TravelHubActivity extends Activity {
                 : "Talk with Sarah about a place or event and it will appear here.";
         root.addView(TravelUi.hero(
                 this,
-                "Sarah Travel OS 2.1",
+                "Sarah Travel OS " + BuildConfig.VERSION_NAME,
                 trip.title(),
                 subtitle));
 
@@ -40,6 +40,10 @@ public final class TravelHubActivity extends Activity {
                 "Build an itinerary, compare where to stay and how to get there, discover food and events, open local rides, plan road-trip stops, use loyalty value, respect accessibility needs, manage hotel requests, and keep offline support available during the flight."));
         now.addView(TravelUi.primaryButton(this, "Open Sarah's travel notebook",
                 v -> TravelUi.start(this, TravelNotebookActivity.class)));
+        if (trip.hasDestination() && !trip.hasDates()) {
+            now.addView(TravelUi.outlineButton(this, "Add dates",
+                    v -> TravelUi.start(this, TripPlannerActivity.class)));
+        }
         root.addView(now);
 
         root.addView(TravelUi.section(this, "Plan and book"));
@@ -50,7 +54,7 @@ public final class TravelHubActivity extends Activity {
                 TripPlannerActivity.class));
         root.addView(feature(
                 "🏨", "Hotels and rooms",
-                "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and live team-backend results when configured.",
+                "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and verified live results when available.",
                 TravelUi.PEACH,
                 HotelSearchActivity.class));
         root.addView(feature(
@@ -104,16 +108,18 @@ public final class TravelHubActivity extends Activity {
                 StayAssistantActivity.class));
         root.addView(feature(
                 "📞", "Supervised voice concierge",
-                "Prepare a hotel call, review the script, dial manually, or use an optional team voice-agent backend that never purchases or changes a booking without confirmation.",
+                "Prepare a hotel call, review the script, dial manually, or use the optional connected voice assistant. Nothing purchases or changes a booking without confirmation.",
                 TravelUi.LAVENDER,
                 VoiceConciergeActivity.class));
 
-        root.addView(TravelUi.section(this, "Hackathon hospitality track"));
+        root.addView(TravelUi.section(this, "Hotel and event-travel connections"));
         root.addView(feature(
                 "🏢", "Hotel operations demo",
                 "Show how Sarah can turn guest requests into a front-desk, housekeeping, maintenance, and guest-experience task board while keeping unverified requests separate from completed work.",
                 TravelUi.SKY,
                 HospitalityOpsActivity.class));
+
+        TravelUi.makeSectionsCollapsible(root);
     }
 
     private LinearLayout feature(
