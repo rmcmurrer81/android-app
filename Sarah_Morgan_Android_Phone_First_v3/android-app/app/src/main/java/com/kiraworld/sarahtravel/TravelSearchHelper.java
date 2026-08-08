@@ -35,7 +35,9 @@ public final class TravelSearchHelper {
         List<String> places = DestinationParser.extractDestinations(message);
         KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(message);
         Map<String, String> storedEvent = event.recognized()
-                ? findStoredEvent(activity, event.eventName) : Collections.emptyMap();
+                ? findStoredEvent(
+                        activity, event.eventName, profile.getOrDefault("person_id", ""))
+                : Collections.emptyMap();
 
         String destination = event.found() ? event.destination
                 : !storedEvent.getOrDefault("destination", "").isEmpty() ? storedEvent.get("destination")
@@ -86,8 +88,11 @@ public final class TravelSearchHelper {
                 .show();
     }
 
-    private static Map<String, String> findStoredEvent(Activity activity, String eventName) {
-        EventTripStore store = new EventTripStore(activity.getApplicationContext());
+    private static Map<String, String> findStoredEvent(
+            Activity activity,
+            String eventName,
+            String personId) {
+        EventTripStore store = new EventTripStore(activity.getApplicationContext(), personId);
         try {
             for (Map<String, String> event : store.listActiveEventTrips(50)) {
                 if (eventName.equalsIgnoreCase(event.getOrDefault("event_name", ""))) return event;

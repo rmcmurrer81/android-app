@@ -35,13 +35,14 @@ public final class TravelNotebookActivity extends Activity {
                 null,
                 findViewById(R.id.notebookScroll));
         db = new SarahDatabase(this);
-        eventStore = new EventTripStore(this);
         mobilityStore = new MobilityWatchStore(this);
         people = new PersonProfileStore(this);
         Map<String, String> owner = db.getProfile();
         people.ensureOwner(owner);
         activeProfile = people.getActiveProfile();
         if (activeProfile.isEmpty()) activeProfile = people.ensureOwner(owner);
+        eventStore = new EventTripStore(
+                this, activeProfile.getOrDefault("person_id", ""));
 
         container = findViewById(R.id.notebookContainer);
         View addWish = findViewById(R.id.addWishButton);
@@ -163,19 +164,39 @@ public final class TravelNotebookActivity extends Activity {
             }
         }
 
-        addHeader("Monitored event trips");
+        addHeader("Event trips");
         List<Map<String, String>> events = eventStore.listActiveEventTrips(100);
         if (events.isEmpty()) {
-            addRow("No monitored events", "Mention a known event or an unfamiliar convention. Sarah should verify its location and dates before saving it as an event trip.");
+            addRow("No saved event trips", "Mention a known event or an unfamiliar convention. Sarah should verify its location and dates before saving it as an event trip.");
         } else {
+            boolean ownerMonitoringOptIn = getSharedPreferences(
+                    SettingsActivity.PREFS, MODE_PRIVATE).getBoolean(
+                    "deal_alerts_enabled",
+                    BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED);
+            boolean durableMonitorScheduled = EventMonitorScheduler.isDurablyScheduled(this);
             for (Map<String, String> event : events) {
                 String title = event.getOrDefault("event_name", "Event") + " — "
                         + event.getOrDefault("destination", "Destination");
+                boolean monitorEnabled = "yes".equals(
+                        event.getOrDefault("monitor_enabled", "no"));
+                boolean sourceReady = KnownEventCatalog.find(
+                            event.getOrDefault("event_name", "")) != null
+                        || TavilyClient.configured();
+                String monitorTruth = !monitorEnabled
+                        ? "Saved event trip - background monitoring is off"
+                        : !ownerMonitoringOptIn
+                            ? "Monitor enabled in saved data - owner monitoring opt-in is off"
+                            : !sourceReady
+                                ? "Monitor enabled - current source route unavailable"
+                                : !durableMonitorScheduled
+                                    ? "Monitor enabled - durable Android job is not scheduled"
+                                    : "Monitoring enabled - durable Android job scheduled";
                 String detail = joinSections(
-                        label("Status", humanMonitoringStatus(event.getOrDefault("monitor_status", "queued"))),
+                        label("Monitoring", monitorTruth),
+                        label("Last worker state", humanMonitoringStatus(event.getOrDefault("monitor_status", "saved"))),
                         label("Venue", event.getOrDefault("venue", "")),
                         dateRange(event.get("start_date"), event.get("end_date")),
-                        label("Latest monitored details", event.getOrDefault("updates_summary", "")),
+                        label("Latest researched details", event.getOrDefault("updates_summary", "")),
                         label("Nearby food", event.getOrDefault("nearby_food", "")),
                         label("Nearby places", event.getOrDefault("nearby_places", "")),
                         label("Transportation", event.getOrDefault("transport_notes", "")),
@@ -304,7 +325,21 @@ public final class TravelNotebookActivity extends Activity {
     }
 
     private boolean isOwnerActive() {
-        return "yes".equals(activeProfile.getOrDefault("is_owner", "no"));
+        return "yes".equals(activeProfile.getOrDefault("is_owner", "no"))
+                && isExactOwnerActiveNow();
+    }
+
+    private boolean isExactOwnerActiveNow() {
+        return ConfirmedOwnerLease.isExactActiveOwner(
+                this,
+                activeProfile.getOrDefault(
+                        "person_id", activeProfile.getOrDefault("name", "")));
+    }
+
+    private void showOwnerChangedWithoutSaving() {
+        Toast.makeText(this,
+                "The confirmed owner profile changed. Nothing was saved; reopen the notebook.",
+                Toast.LENGTH_LONG).show();
     }
 
     private boolean addMemoryRows(List<Map<String, String>> memories, String wantedCategory) {
@@ -355,14 +390,30 @@ public final class TravelNotebookActivity extends Activity {
                 .setTitle("Wish-list place")
                 .setView(box)
                 .setPositiveButton("Save", (d, w) -> {
+                    if (!isExactOwnerActiveNow()) {
+                        showOwnerChangedWithoutSaving();
+                        return;
+                    }
                     if (destination.getText().toString().trim().isEmpty()) {
                         Toast.makeText(this, "Enter a destination.", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     String place = destination.getText().toString().trim();
+                    if (!isExactOwnerActiveNow()) {
+                        showOwnerChangedWithoutSaving();
+                        return;
+                    }
                     db.addWish(place, notes.getText().toString());
+                    if (!isExactOwnerActiveNow()) {
+                        Toast.makeText(this,
+                                "The wish was saved, but research was not queued because the owner profile changed.",
+                                Toast.LENGTH_LONG).show();
+                        refresh();
+                        return;
+                    }
+                    if (!isExactOwnerActiveNow()) return;
                     db.queueKnowledgePack(place);
-                    DealWatchScheduler.runSoon(this);
+                    if (isExactOwnerActiveNow()) DealWatchScheduler.runSoon(this);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)
@@ -384,19 +435,35 @@ public final class TravelNotebookActivity extends Activity {
                 .setTitle("Trip record")
                 .setView(box)
                 .setPositiveButton("Save", (d, w) -> {
+                    if (!isExactOwnerActiveNow()) {
+                        showOwnerChangedWithoutSaving();
+                        return;
+                    }
                     if (title.getText().toString().trim().isEmpty()
                             || destination.getText().toString().trim().isEmpty()) {
                         Toast.makeText(this, "Enter a name and destination.", Toast.LENGTH_SHORT).show();
                         return;
                     }
                     String place = destination.getText().toString().trim();
+                    if (!isExactOwnerActiveNow()) {
+                        showOwnerChangedWithoutSaving();
+                        return;
+                    }
                     db.addTrip(
                             title.getText().toString(),
                             place,
                             status.getText().toString().trim().isEmpty() ? "planned" : status.getText().toString(),
                             notes.getText().toString());
+                    if (!isExactOwnerActiveNow()) {
+                        Toast.makeText(this,
+                                "The trip was saved, but research was not queued because the owner profile changed.",
+                                Toast.LENGTH_LONG).show();
+                        refresh();
+                        return;
+                    }
+                    if (!isExactOwnerActiveNow()) return;
                     db.queueKnowledgePack(place);
-                    DealWatchScheduler.runSoon(this);
+                    if (isExactOwnerActiveNow()) DealWatchScheduler.runSoon(this);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null)

@@ -5,6 +5,8 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 /** Uses Sarah Morgan on ElevenLabs when connected and local Android speech otherwise. */
 public final class SarahVoiceRouter {
     public interface Listener { void onStatus(String status); }
@@ -12,6 +14,9 @@ public final class SarahVoiceRouter {
     private final Context context;
     private final SarahTts local;
     private final Listener listener;
+    private final AtomicLong requestSequence = new AtomicLong();
+    private final android.os.Handler mainHandler = new android.os.Handler(
+            android.os.Looper.getMainLooper());
     private volatile boolean stopped;
     public SarahVoiceRouter(Context context, SarahTts local) {
         this(context, local, null);
@@ -22,18 +27,28 @@ public final class SarahVoiceRouter {
         this.listener = listener;
     }
     public void speak(String text) {
+        long request = requestSequence.incrementAndGet();
         stopped = false;
-        if (ElevenLabsVoiceConfig.isConfigured() && online()) {
+        CloudVoiceClient.cancel();
+        local.stop();
+        boolean protectedReady = ElevenLabsVoiceConfig.backendConfigured()
+                && ProtectedBackendCapabilities.voiceReady(context);
+        boolean directReady = !ElevenLabsVoiceConfig.backendConfigured()
+                && ElevenLabsVoiceConfig.directConfigured();
+        if ((protectedReady || directReady) && online()) {
             report("Generating ElevenLabs Sarah voice · " + ElevenLabsVoiceConfig.humanModelLabel());
             CloudVoiceClient.speak(context, "", text, receipt -> {
-                if (stopped) return;
+                if (stopped || request != requestSequence.get()) return;
                 if (receipt.completed) {
                     report("ElevenLabs Sarah voice played · " + ElevenLabsVoiceConfig.humanModelLabel());
                 } else if (VoiceFallbackPolicy.shouldStartAndroidFallback(
                         receipt.playbackStart,
                         receipt.failureReason)) {
-                    report("Online voice unavailable · phone voice fallback started");
-                    local.speak(text);
+                    mainHandler.post(() -> {
+                        if (stopped || request != requestSequence.get()) return;
+                        report("Online voice unavailable · phone voice fallback started");
+                        local.speak(text);
+                    });
                 } else if (receipt.playbackStart > 0L) {
                     report("ElevenLabs playback ended early · full phone replay suppressed");
                 }
@@ -45,6 +60,7 @@ public final class SarahVoiceRouter {
     }
     public void stop() {
         stopped = true;
+        requestSequence.incrementAndGet();
         CloudVoiceClient.cancel();
         local.stop();
     }

@@ -45,6 +45,16 @@ required=[
     APP/'app/src/main/java/com/kiraworld/sarahtravel/SyncPhotoPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/BookingImportTextPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TrustedLanEndpointPolicy.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripStore.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeBackupGate.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilities.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java',
+    ROOT/'tests/EventTripProfilePolicyTest.java',
+    ROOT/'tests/EventTripPreUpgradeVersionPolicyTest.java',
+    ROOT/'tests/ProtectedBackendCapabilityPolicyTest.java',
     REPO/'GOOGLE_GMAIL_SETUP.md',
 ]
 for p in required:
@@ -83,13 +93,14 @@ for phrase in ['talk about anything','pre-request route plan','not proof of the 
     assert phrase.lower() in prompt.lower(), phrase
 
 main=(APP/'app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java').read_text(encoding='utf-8')
-for phrase in ['RecognizerIntent','ACTION_PICK_IMAGES','MemoryExtractor.extract','CloudVoiceClient.speak','showCalmMenu','startTriviaGame','connectedReplyWithRetry','ensureApproximateAreaForTurn','finalTurnRoute','ReplyTruthGuard.enforce','VoiceRoutePolicy.shouldAttemptPremium','connected.hasVerifiedWebReceipt()','TextTurnReceipt.build','findViewById(R.id.bottomNavigation)','actualProvider = connected.provider','actualModel = connected.model','BOUNDED_LOCAL_PLANNING_DRAFT','lower.contains("cheapest")','TravelSearchQueryPolicy.build','ownerSourceDetails','tap for source details','turnId','OfflineTuringPolicy.answer','PublicOnlineFallback.answerResult','sourceBackedEvent.turnRoute()','connectedRouteProven = true','if (changed) connectedRouteProven = false','Last reply:','Next:']:
+for phrase in ['RecognizerIntent','ACTION_PICK_IMAGES','MemoryExtractor.extract','CloudVoiceClient.speak','showCalmMenu','startTriviaGame','connectedReplyWithRetry','ensureApproximateAreaForTurn','finalTurnRoute','ReplyTruthGuard.enforce','VoiceRoutePolicy.shouldAttemptPremium','connected.hasVerifiedWebReceipt()','TextTurnReceipt.build','findViewById(R.id.bottomNavigation)','findViewById(R.id.bottomControls)','actualProvider = connected.provider','actualModel = connected.model','BOUNDED_LOCAL_PLANNING_DRAFT','lower.contains("cheapest")','TravelSearchQueryPolicy.build','ownerSourceDetails','tap for source details','turnId','OfflineTuringPolicy.answer','PublicOnlineFallback.answerResult','sourceBackedEvent.turnRoute()','connectedRouteProven = true','if (changed) connectedRouteProven = false','Last reply:','Next:','ProtectedBackendCapabilities.voiceReady(this)','Generating Sarah’s online voice']:
     assert phrase in main, phrase
 assert 'if (connected) lastSmartCallFailed = false' not in main
 
 onboarding=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java').read_text(encoding='utf-8')
 assert 'Age, birth year, or skip' in onboarding
 assert 'Phone voice ready as fallback' in onboarding
+assert 'ElevenLabsVoiceConfig.isConfigured()' not in onboarding
 database=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahDatabase.java').read_text(encoding='utf-8')
 assert 'DB_VERSION = 11' in database and 'age_known' in database and 'route TEXT' in database
 for phrase in ['person_key TEXT NOT NULL','destination_knowledge_attempts','PENDING_NOT_SCHEDULED','PENDING_SCHEDULED','recordKnowledgeAttempt','markKnowledgePackScheduled']:
@@ -151,22 +162,66 @@ destination=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DestinationKnowled
 assert 'getOrDefault("age_group", "unknown_use_child_safe_mode")' in destination
 assert 'DestinationSourcePolicy.canPersistReadyPack' in destination
 events=(APP/'app/src/main/java/com/kiraworld/sarahtravel/EventResearchCoordinator.java').read_text(encoding='utf-8')
-assert 'if (!connected.hasVerifiedWebReceipt()) return false;' in events
+assert '!connected.hasVerifiedWebReceipt()' in events
+assert 'leaseStillValid(context, store, ownerLease)' in events
 assert '!connected.hasSourceUrl(sourceUrl)' in events
+for phrase in ['if (!leaseStillValid(context, store, ownerLease)) break;',
+               '|| !store.updateEventResearch(',
+               'if (!leaseStillValid(context, store, ownerLease)) return false;',
+               'leaseStillValidForProfileKey',
+               'ownerLease.requireActive()']:
+    assert phrase in events, phrase
 planner=(APP/'app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java').read_text(encoding='utf-8')
 assert 'TravelPlanningConversationPolicy.asksForCurrentCost' in planner
 assert 'TravelPlanningConversationPolicy.shortTripReply' in planner
 for phrase in ['TravelPlanningConversationPolicy.explicitlyPlansTrip','SAVE_PLANNED_TRIP','memoryConsent','conversation-confirmed planned destination; dates not set']:
     assert phrase in planner, phrase
+for phrase in ['public final boolean monitoringRequested',
+               'eventIntent.monitoringRequested',
+               'without silently turning on background monitoring']:
+    assert phrase in planner, phrase
+global_action_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/AgenticGlobalActionPolicy.java').read_text(encoding='utf-8')
+for action_type in ['SAVE_WISH','CREATE_DEAL_WATCH','UPDATE_DESTINATION_FOCUS',
+                    'SET_FLEXIBLE_DATES','SAVE_JOURNEY_PLAN','CREATE_MOBILITY_WATCH']:
+    assert f'AgenticTravelPlanner.{action_type}.equals(actionType)' in global_action_policy, action_type
+action_executor=(APP/'app/src/main/java/com/kiraworld/sarahtravel/AgenticActionExecutor.java').read_text(encoding='utf-8')
+owner_gate=action_executor.index('AgenticGlobalActionPolicy.requiresExactConfirmedOwner(action.type)')
+first_action=action_executor.index('if (AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK.equals(action.type))')
+assert owner_gate < first_action
+for phrase in ['ConfirmedOwnerLease.capture(context)',
+               '!isExactConfirmedOwner(ownerLease, profile)',
+               'failedForegroundReceipts.add(',
+               'AgenticGlobalActionPolicy.rejectedReceipt(',
+               'ownerLease.requireActive()',
+               'continue;']:
+    assert phrase in action_executor[0:first_action] or phrase in action_executor, phrase
+deal_scheduler=action_executor[action_executor.index('boolean monitoringRunnable ='):
+                               action_executor.index('boolean eventSchedulerAccepted = false;')]
+for phrase in ['monitoringRunnable && exactOwnerAtSchedulerBoundary',
+               'DealWatchScheduler.ensureScheduled(context)',
+               'DealWatchScheduler.runSoon(context)',
+               'globalWatchSchedulerAccepted = periodicAccepted',
+               'exact confirmed owner lease changed before scheduling']:
+    assert phrase in deal_scheduler, phrase
+knowledge_scheduler=action_executor[
+    action_executor.index('if (AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK.equals(action.type)'):
+    action_executor.index('} else if (AgenticTravelPlanner.SAVE_WISH.equals(action.type))')]
+for phrase in ['promotedBeforeScheduling\n                            && isExactConfirmedOwner(ownerLease, profile)',
+               'ownerLeaseRevokedBeforeScheduling = true',
+               'db.markKnowledgePackNotScheduled(',
+               'exact confirmed owner lease changed before scheduling']:
+    assert phrase in knowledge_scheduler, phrase
 backend_worker=(REPO/'services/sarah-model-proxy/src/index.js').read_text(encoding='utf-8')
 assert 'annotation.type === "url_citation"' in backend_worker
 assert 'item.status === "completed"' in backend_worker
 sponsors=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SponsorConnectionsActivity.java').read_text(encoding='utf-8')
-assert 'Gmail mailbox access is not connected' in sponsors
+assert 'GmailTravelConnection.status()' in sponsors
+assert 'GmailTravelConnection.privacySummary()' in sponsors
 assert 'BookingImportActivity.class' in sponsors
 migrator=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OwnerProfileDataMigrator.java').read_text(encoding='utf-8')
-for store in ['TripPlanStore','StayRequestStore','TravelerNeedsStore','LoyaltyVaultStore','RoadTripProfileStore','HotelSearchState','SarahLocationStore','ProactiveDiscoveryStore','ProactiveResearchReceiptStore','VoiceReceiptStore']:
+for store in ['TripPlanStore','StayRequestStore','TravelerNeedsStore','LoyaltyVaultStore','RoadTripProfileStore','HotelSearchState','SarahLocationStore','ProactiveDiscoveryStore','ProactiveResearchReceiptStore','VoiceReceiptStore','EventTripStore']:
     assert store in migrator, store
+assert 'claimLegacyOwnerData' in migrator
 migration_archive=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationArchiveStore.java').read_text(encoding='utf-8')
 for phrase in ['profile_migration_archive_v1','preserveCollision','containsExact','source_payload','target_payload','putVerified']:
     assert phrase in migration_archive, phrase
@@ -213,11 +268,33 @@ voice_receipts=(APP/'app/src/main/java/com/kiraworld/sarahtravel/VoiceReceiptSto
 for phrase in ['voice_receipt_event_','turn_id','commit()','moveProfile','scanEvents']:
     assert phrase in voice_receipts, phrase
 booking_import=(APP/'app/src/main/java/com/kiraworld/sarahtravel/BookingImportActivity.java').read_text(encoding='utf-8')
-for phrase in ['Intent.ACTION_OPEN_DOCUMENT','application/pdf','pending review','clearBookingImports','Connect Gmail (setup required)','getCanonicalFile()','count = in.read(buffer)) != -1','target.delete()',
+for phrase in ['Intent.ACTION_OPEN_DOCUMENT','application/pdf','pending review','clearBookingImportsAndDerivatives','Connect Gmail (setup required)','getCanonicalFile()','count = in.read(buffer)) != -1','exact.delete()',
                'BookingImportTextPolicy.accepted', 'Review shared booking text',
                'Nothing has been saved or scheduled',
-               'launchedFromShare && !externalShareReviewed']:
+               'launchedFromShare && !externalShareReviewed',
+               'boundPersonId', 'profileImportDirectory',
+               'private quarantine item(s) remain for review',
+               'Nothing was cleared. Sarah restored',
+               'reviewExternallySharedFile(uri, declaredType)',
+               'Nothing has been copied, saved, sent to a service, or scheduled',
+               'MAX_SHARED_FILE_BYTES = 12_000_000',
+               'PrivateContentSnapshot.capture(',
+               'snapshot.approvedMimeType()',
+               'ProfileMigrationPolicy.isConfirmedDisplayName',
+               'requireConfirmedImportLease(ownerConfirmed)',
+               'Exact private residual requiring review:',
+               '".pending_image_" + UUID.randomUUID()',
+               'cleanupImportArtifacts(derivative, stagingDirectory)',
+               'derivative.getAbsolutePath()']:
     assert phrase in booking_import, phrase
+private_snapshot=(APP/'app/src/main/java/com/kiraworld/sarahtravel/PrivateContentSnapshot.java').read_text(encoding='utf-8')
+assert private_snapshot.count('resolver.openInputStream(uri)') == 1
+for phrase in ['output.getFD().sync()', 'target.setReadOnly()', 'maximumBytes',
+               'normalizeApprovedImageMime']:
+    assert phrase in private_snapshot, phrase
+clear_ui=booking_import.split('private void clearImports()',1)[1].split('private File profileImportDirectory',1)[0]
+assert 'result.localPaths' not in clear_ui and '.delete()' not in clear_ui
+assert 'clearBookingImportsAndReturnPaths' not in booking_import
 booking_text_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/BookingImportTextPolicy.java').read_text(encoding='utf-8')
 for phrase in ['MAX_CHARS = 16_384', 'MAX_UTF8_BYTES = 32_768',
                'StandardCharsets.UTF_8', 'clean.length() <= MAX_CHARS']:
@@ -244,10 +321,15 @@ for phrase in ['SarahModelConfig.backendUrl()','/search','Authorization','SarahM
 assert 'BuildConfig.SARAH_TAVILY_API_KEY' not in tavily
 assert 'MAX_RESPONSE_BYTES = 1_048_576' in tavily and 'c.disconnect()' in tavily
 worker=(REPO/'services/sarah-model-proxy/src/index.js').read_text(encoding='utf-8')
-for phrase in ['url.pathname === "/search"','runProtectedSearch','current_source_not_configured','body.search_query']:
+for phrase in ['url.pathname === "/search"','runProtectedSearch','current_source_not_configured','body.search_query',
+               'url.pathname === "/capabilities"',
+               'constantTimeEqual(suppliedToken, env.SARAH_BACKEND_TOKEN)']:
     assert phrase in worker, phrase
 workflow=(REPO/'.github/workflows/sarah-2.5-online-judge-build.yml').read_text(encoding='utf-8')
-for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R2 source and pure-policy acceptance','CURRENT_SOURCE_ACCEPTANCE_BLOCKED','SARAH_TAVILY_API_KEY: \'\'','sarah-contextual-chat-request.json','CANDIDATE_PENDING_OWNER_ACCEPTANCE','physical_galaxy_a17_acceptance','full_16_gate_owner_acceptance','physical_8gb_laptop_acceptance','media3_progressive_one_shot_post','protected_voice_route_receipt_required','first_network_byte','player_ready','response_complete','pending_physical_galaxy_a17_measurement','sarah-r2-${{ github.run_id }}-${{ github.run_attempt }}','id: signing_cache','steps.signing_cache.outputs.cache-hit','SARAH_R1_SIGNING_CERT_SHA256','SARAH_R1_APK_SHA256','apksigner verify --print-certs','BuildConfig.java','build/r2-apk-secret-scan','r1_signer_sha256','r2_signer_sha256','same-package-in-place-only']:
+for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R2 source and pure-policy acceptance','CURRENT_SOURCE_ACCEPTANCE_BLOCKED','SARAH_TAVILY_API_KEY: \'\'','sarah-contextual-chat-request.json','CANDIDATE_PENDING_OWNER_ACCEPTANCE','physical_galaxy_a17_acceptance','full_16_gate_owner_acceptance','physical_8gb_laptop_acceptance','media3_progressive_one_shot_post','protected_voice_route_receipt_required','first_network_byte','player_ready','response_complete','pending_physical_galaxy_a17_measurement','sarah-r2-${{ github.run_id }}-${{ github.run_attempt }}','id: signing_cache','steps.signing_cache.outputs.cache-hit','SARAH_R1_SIGNING_CERT_SHA256','SARAH_R1_APK_SHA256','apksigner verify --print-certs','BuildConfig.java','build/r2-apk-secret-scan','r1_signer_sha256','r2_signer_sha256','same-package-in-place-only',
+               'sarah-capabilities-absent.json','sarah-capabilities-wrong.json',
+               'sarah-capabilities-exact.json',
+               'Authenticated Sarah capability contract passed']:
     assert phrase in workflow, phrase
 assert 'strings Sarah-Morgan-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE.apk' not in workflow
 for phrase in ['d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c',
@@ -261,7 +343,7 @@ assert 'secrets.SARAH_R1_APK_SHA256' not in workflow
 
 backup=(APP/'app/src/main/res/xml/backup_rules.xml').read_text(encoding='utf-8')
 extraction=(APP/'app/src/main/res/xml/data_extraction_rules.xml').read_text(encoding='utf-8')
-for phrase in ['booking_imports/','sarah_event_trips.db','sarah_profile_vault.xml','sarah_voice_receipts.xml']:
+for phrase in ['booking_imports/','booking_import_quarantine/','sarah_event_trips.db','sarah_profile_vault.xml','sarah_voice_receipts.xml']:
     assert phrase in backup and extraction, phrase
 
 memory=(APP/'app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java').read_text(encoding='utf-8')
@@ -277,6 +359,72 @@ assert 'will retry' not in public_fallback.lower()
 owner_correction=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OwnerIdentityCorrectionActivity.java').read_text(encoding='utf-8')
 assert 'markOwnerMoveComplete' in owner_correction and 'if (!moved' in owner_correction
 assert 'mergePlaceholderSpeakers' not in owner_correction
+assert 'OwnerProfileDataMigrator.claimLegacyOwnerData' in owner_correction
+
+event_store=(APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripStore.java').read_text(encoding='utf-8')
+for phrase in [
+        'DB_VERSION = 2', 'LEGACY_OWNER_UNASSIGNED',
+        'migrateV1Losslessly', 'Event-trip v1 migration exact-row verification failed',
+        'migrationProjectionMissing',
+        'person_profile_key TEXT NOT NULL', 'monitor_enabled INTEGER NOT NULL DEFAULT 0',
+        'active=1 AND monitor_enabled=1', 'moveProfileKey',
+        'Event-trip profile move verification failed',
+        'clearBookingImportsAndDerivatives', 'SELECT id,local_path FROM booking_imports ',
+        'EventTripPreUpgradeBackupGate.ensure(appContext)',
+        'BOOKING_QUARANTINE_ROOT', 'TOMBSTONE.json',
+        'BOOKING_CLEAR_JOURNAL = "JOURNAL.jsonl"',
+        'reconcileBookingClearOperations',
+        'sarah-booking-clear-journal-v2',
+        'FILE_MOVE_INTENT', 'FILE_QUARANTINED',
+        'RECOVERY_FILE_RESTORE_INTENT', 'RECOVERY_FILE_RESTORED',
+        'root.put("booking_rows", rowItems)',
+        'bookingRowsMatchSnapshot(db, bookingRows)',
+        'BOOKING_RECOVERY_LEGACY_ROW_IDENTITY_INCOMPLETE_REVIEW_REQUIRED',
+        'BOOKING_RECOVERY_COMMITTED_PRIVATE_RESIDUAL_REVIEW_REQUIRED',
+        'FILES_QUARANTINED_DATABASE_NOT_COMMITTED',
+        'BOOKING_ROWS_CLEARED_RESIDUAL_PRIVATE_QUARANTINE',
+        'restoreQuarantinedDerivatives', 'checkedDeleteExactFile',
+        'isOwnedBookingFilePath', 'id=? AND person_profile_key=?']:
+    assert phrase in event_store, phrase
+assert event_store.count('person_profile_key TEXT NOT NULL') >= 3
+assert 'public EventTripStore(Context context)' not in event_store
+assert 'clearBookingImportsAndReturnPaths' not in event_store
+assert 'new Object[]{legacy}' in event_store
+assert event_store.count('countRows(db, "event_') >= 6
+event_constructor=event_store.split(
+    'private EventTripStore(Context context, String key, boolean alreadyNormalized)',1
+)[1].split('@Override',1)[0]
+assert event_constructor.index('EventTripPreUpgradeBackupGate.ensure(appContext)') < event_constructor.index('profileKey =')
+assert 'getWritableDatabase()' not in event_constructor and 'getReadableDatabase()' not in event_constructor
+clear_contract=event_store.split('public BookingClearResult clearBookingImportsAndDerivatives()',1)[1].split('/** Compatibility count',1)[0]
+assert clear_contract.index('PLANNED_BEFORE_FILE_MOVE') < clear_contract.index('checkedMoveToQuarantine')
+assert clear_contract.index('checkedMoveToQuarantine') < clear_contract.index('db.delete(')
+assert clear_contract.index('db.delete(') < clear_contract.index('db.setTransactionSuccessful()')
+assert clear_contract.index('FILE_MOVE_INTENT') < clear_contract.index('checkedMoveToQuarantine')
+assert clear_contract.index('checkedMoveToQuarantine') < clear_contract.index('FILE_QUARANTINED')
+recovery_contract=event_store.split('public BookingRecoveryResult reconcileBookingClearOperations()',1)[1].split('public BookingClearResult clearBookingImportsAndDerivatives()',1)[0]
+assert 'checkedDeleteExactFile' not in recovery_contract
+assert 'deleteCommittedQuarantine' not in recovery_contract
+sarah_application=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahApplication.java').read_text(encoding='utf-8')
+assert 'reconcileInterruptedBookingClearAtStartup();' in sarah_application
+assert sarah_application.index('reconcileInterruptedBookingClearAtStartup();') < sarah_application.index('ProtectedBackendCapabilities.refreshAsync(this)')
+
+event_intent=(APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java').read_text(encoding='utf-8')
+for forbidden in [
+        'new EventIntent(known.eventName, known.destination, true)',
+        'new EventIntent("CES", "Las Vegas", true)',
+        'monitor || looksLikeNamedEvent(event)']:
+    assert forbidden not in event_intent, forbidden
+assert '(?:for|about|of)' in event_intent
+event_intent_tests=(ROOT/'tests/EventTripIntentParserTest.java').read_text(encoding='utf-8')
+assert 'Cancel monitoring of Travel Hack NYC' in event_intent_tests
+assert 'cancel-monitoring-of must not retain the preposition' in event_intent_tests
+action_executor=(APP/'app/src/main/java/com/kiraworld/sarahtravel/AgenticActionExecutor.java').read_text(encoding='utf-8')
+assert 'EventTripMonitoringPolicy.canEnable(\n                            action.monitoringRequested' in action_executor
+booking_extraction=(APP/'app/src/main/java/com/kiraworld/sarahtravel/BookingExtractionCoordinator.java').read_text(encoding='utf-8')
+for phrase in ['store.isOwnedBookingFilePath', 'ownerLease.requireActive()',
+               '&& store.updateBookingExtraction(']:
+    assert phrase in booking_extraction, phrase
 
 location_turn=(APP/'app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java').read_text(encoding='utf-8')
 for phrase in ['pendingLocationPersonId','pendingLocationSpeaker','pendingLocationGeneration','sameActiveProfile','locationTurnActive','destroyed = true',
@@ -318,16 +466,22 @@ owner_ui=(APP/'app/src/main/res/layout/activity_settings.xml').read_text(encodin
 for forbidden in ['hackathon prototype','team-owned sources','protected team online mind','cloudflare workers ai','provider keys or model names']:
     assert forbidden not in owner_ui.lower(), forbidden
 settings_source=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SettingsActivity.java').read_text(encoding='utf-8')
-for phrase in ['BuildConfig.SARAH_BUILD_COMMIT','local/unbound build','TrustedDeviceStore.hasPeers','ElevenLabs Sarah voice ready']:
+for phrase in ['BuildConfig.SARAH_BUILD_COMMIT','local/unbound build','TrustedDeviceStore.hasPeers',
+               'ElevenLabs Sarah voice ready','R1 backup manifest SHA-256',
+               'Event-trip upgrade safety']:
     assert phrase in settings_source, phrase
 for phrase in ['KnowledgePackSchedulingPolicy.settingsCanEnable',
-               'KnowledgePackSchedulingPolicy.persistEnabled',
-               'autoResearch.setChecked(false)', 'autoResearch.setEnabled(canEnable)',
+                'KnowledgePackSchedulingPolicy.persistEnabled',
+                'autoResearch.setChecked(locationStore.backgroundResearchEnabled(activePersonId))',
+                'autoResearch.setEnabled(researchOwner && researchMemoryConsent)',
+                'your saved opt-in is preserved, but no background work can run now',
                'BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED',
-               '.putBoolean("deal_alerts_enabled", monitoringEnabled)']:
+               '.putBoolean("deal_alerts_enabled", monitoringOptIn)',
+               'hasEligibleEventMonitoringWork(TavilyClient.configured())',
+               'event.getOrDefault("monitor_enabled", "no")']:
     assert phrase in settings_source, phrase
 onboarding_source=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java').read_text(encoding='utf-8')
-assert 'ElevenLabs Sarah voice will be tried online' in onboarding_source
+assert 'verified ElevenLabs voice available online' in onboarding_source
 assert 'Robert' not in onboarding_source and 'Newark' not in onboarding_source
 hackathon_demo=(APP/'app/src/main/java/com/kiraworld/sarahtravel/HackathonDemoActivity.java').read_text(encoding='utf-8')
 assert 'Robert' not in hackathon_demo
@@ -345,6 +499,9 @@ for phrase in ['KnowledgePackSchedulingPolicy.canSchedule','markKnowledgePackSch
                'BackgroundResearchPolicy.monitoringCanRun',
                '(saved; automatic monitoring is off)']:
     assert phrase in action_executor, phrase
+official_event=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OfficialEventPageLookup.java').read_text(encoding='utf-8')
+assert 'saved the event for the active profile without turning on background monitoring' in official_event
+assert 'will watch the official page for the next announced dates' not in official_event
 deal_worker=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DealWatchWorker.java').read_text(encoding='utf-8')
 for phrase in ['TavilyClient.configured()', 'SettingsActivity.getConversationMode(context)',
                'BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED',
@@ -398,9 +555,19 @@ for workflow_name in [
         'sarah-2.5-online-judge-build.yml']:
     workflow_text=(REPO/'.github/workflows'/workflow_name).read_text(encoding='utf-8')
     assert 'TurnLifecyclePolicy.java' in workflow_text, workflow_name
+    assert 'EventTripPreUpgradeVersionPolicy.java' in workflow_text, workflow_name
+    assert 'EventTripPreUpgradeVersionPolicyTest.java' in workflow_text, workflow_name
 online_workflow=(REPO/'.github/workflows/sarah-2.5-online-judge-build.yml').read_text(encoding='utf-8')
 for dependency in ['KnownEventCatalog.java','GenericEventReference.java']:
     assert dependency in online_workflow, dependency
+build_apk_workflow=(REPO/'.github/workflows/build-apk.yml').read_text(encoding='utf-8')
+for dependency in ['EventTripProfilePolicy.java','EventTripMonitoringPolicy.java',
+                   'EventTripProfilePolicyTest.java',
+                   'ProtectedBackendCapabilityPolicy.java',
+                   'ProtectedBackendCapabilityPolicyTest.java',
+                   'EventTripPreUpgradeVersionPolicy.java',
+                   'EventTripPreUpgradeVersionPolicyTest.java']:
+    assert dependency in build_apk_workflow, dependency
 
 lan_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/TrustedLanEndpointPolicy.java').read_text(encoding='utf-8')
 for phrase in ['PORT = 8769','bytes[0] == 10','bytes[0] == 127','bytes[0] == 169 && bytes[1] == 254','bytes[0] == 192 && bytes[1] == 168','uniqueLocal','linkLocal']:
@@ -421,6 +588,60 @@ for unsupported in ['List.of(', 'List.copyOf(', 'Set.of(',
 assert re.search(
         r'getBoolean\(\s*"deal_alerts_enabled"\s*,\s*true\s*\)',
         all_android_java) is None
+
+capability_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java').read_text(encoding='utf-8')
+for phrase in ['provider.equals(health.provider)','model.equals(health.model)',
+               'health.routeRateLimitsReady','EXPECTED_DEPLOYMENT_IDENTITY_NOT_BOUND']:
+    assert phrase in capability_policy, phrase
+capabilities=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilities.java').read_text(encoding='utf-8')
+for phrase in ['tokenFingerprint(SarahModelConfig.backendToken())',
+               'route_rate_limits_ready','conversationReady(Context context)',
+               'FAILED_MAX_AGE_MS','isChecking()',
+               'CACHE_CONTRACT = "authenticated-capabilities-v1"',
+               'return base + "/capabilities"',
+               '"Authorization", "Bearer " + SarahModelConfig.backendToken()',
+               '"SarahMorganTravel/" + BuildConfig.VERSION_NAME',
+               '.putBoolean("contract_verified", decision != null && decision.contractVerified)']:
+    assert phrase in capabilities, phrase
+assert 'return base + "/health"' not in capabilities
+assert 'return SarahModelConfig.backendUrl().isEmpty()' in capabilities
+capability_tests=(ROOT/'tests/ProtectedBackendCapabilityPolicyTest.java').read_text(encoding='utf-8')
+assert 'HTTP 401/wrong-token response cannot create ready capability truth' in capability_tests
+voice_config=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ElevenLabsVoiceConfig.java').read_text(encoding='utf-8')
+for phrase in ['backendToken().equals(SarahModelConfig.backendToken())',
+               'protectedRoot(backendUrl()).equalsIgnoreCase',
+               'protectedRoot(SarahModelConfig.backendUrl())']:
+    assert phrase in voice_config, phrase
+model_config=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahModelConfig.java').read_text(encoding='utf-8')
+assert 'ProtectedBackendCapabilities.conversationReady(context)' in model_config
+assert 'return !backendUrl().isEmpty() || !openAiApiKey().isEmpty();' not in model_config
+event_backup=(APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeBackupGate.java').read_text(encoding='utf-8')
+for phrase in ['readSqliteUserVersion','"-wal"','verifyExistingBackup',
+               'expectedBytes','currentFiles.equals(seen)','sha256(current)',
+               'UNEXPECTED_DATABASE_VERSION_',
+               'R1_PRE_UPGRADE_BACKUP_HASH_VERIFIED','rollback_acceptance',
+               'output.getFD().sync()','sha256(output)']:
+    assert phrase in event_backup, phrase
+application=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahApplication.java').read_text(encoding='utf-8')
+assert 'jobs.cancelAll()' in application and 'eventTripUpgradeState()' in application
+assert 'repairEventMisclassification' not in application
+assert 'writable.delete(' not in application
+assert 'throw new IllegalStateException' not in application.split('eventTripUpgradeState = EventTripPreUpgradeBackupGate.ensure',1)[1].split('ProtectedBackendCapabilities.refreshAsync',1)[0]
+for phrase in ['showEventTripUpgradeBlocked','Sarah protected your existing travel data',
+               'No event-trip migration ran']:
+    assert phrase in main, phrase
+version_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java').read_text(encoding='utf-8')
+for phrase in ['existingVersion == 1','existingVersion == 2','existingVersion < 1','existingVersion > 2']:
+    assert phrase in version_policy, phrase
+settings_layout=(APP/'app/src/main/res/layout/activity_settings.xml').read_text(encoding='utf-8')
+assert 'Sarah Travel OS 2.5' not in settings_layout
+main_layout=(APP/'app/src/main/res/layout/activity_main.xml').read_text(encoding='utf-8')
+assert '@+id/bottomControls' in main_layout and 'android:minHeight="48dp"' in main_layout
+sponsor=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SponsorConnectionsActivity.java').read_text(encoding='utf-8')
+for phrase in ['Use my current location','locationCoordinator.resolve','SOURCE_DEVICE_RESOLVED',
+               'Connect Gmail · setup required',
+               'Disconnect Gmail · not connected','Clear Gmail-derived data · none stored']:
+    assert phrase in sponsor, phrase
 for activity_name in ['TravelNotebookActivity.java','SponsorConnectionsActivity.java','TrustedSyncActivity.java','TravelExplorerActivity.java','HackathonDemoActivity.java']:
     activity=(APP/'app/src/main/java/com/kiraworld/sarahtravel'/activity_name).read_text(encoding='utf-8')
     assert 'SafeAreaInsets.apply' in activity, activity_name

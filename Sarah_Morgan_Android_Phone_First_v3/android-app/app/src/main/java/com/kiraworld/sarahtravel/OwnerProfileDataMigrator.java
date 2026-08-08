@@ -35,12 +35,23 @@ public final class OwnerProfileDataMigrator {
             discoveries.close();
         }
 
+        if (!EventTripStore.moveProfile(context, oldPersonId, newPersonId)) return false;
+
         return TravelerNeedsStore.moveProfile(context, oldPersonId, newPersonId)
                 && LoyaltyVaultStore.moveProfile(context, oldPersonId, newPersonId)
                 && RoadTripProfileStore.moveProfile(context, oldPersonId, newPersonId)
                 && HotelSearchState.moveProfile(context, oldPersonId, newPersonId)
                 && ProactiveResearchReceiptStore.moveProfile(context, oldPersonId, newPersonId)
                 && VoiceReceiptStore.moveProfile(context, oldPersonId, newPersonId);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** Claim pre-profile EventTripStore v1 rows only during explicit owner correction. */
+    public static boolean claimLegacyOwnerData(Context context, String confirmedOwnerPersonId) {
+        try {
+            return EventTripStore.claimLegacyOwnerData(context, confirmedOwnerPersonId);
         } catch (Exception ignored) {
             return false;
         }

@@ -16,6 +16,7 @@ public final class AgenticTravelPlanner {
     public static final String UPDATE_DESTINATION_FOCUS = "update_destination_focus";
     public static final String SET_FLEXIBLE_DATES = "set_flexible_dates";
     public static final String CREATE_EVENT_TRIP = "create_event_trip";
+    public static final String CANCEL_EVENT_MONITOR = "cancel_event_monitor";
     public static final String SAVE_BOOKING_LINK = "save_booking_link";
     public static final String SAVE_JOURNEY_PLAN = "save_journey_plan";
     public static final String CREATE_MOBILITY_WATCH = "create_mobility_watch";
@@ -25,11 +26,21 @@ public final class AgenticTravelPlanner {
         public final String type;
         public final String destination;
         public final String detail;
+        public final boolean monitoringRequested;
 
         public Action(String type, String destination, String detail) {
+            this(type, destination, detail, false);
+        }
+
+        public Action(
+                String type,
+                String destination,
+                String detail,
+                boolean monitoringRequested) {
             this.type = type;
             this.destination = destination == null ? "" : destination;
             this.detail = detail == null ? "" : detail;
+            this.monitoringRequested = monitoringRequested;
         }
     }
 
@@ -83,16 +94,43 @@ public final class AgenticTravelPlanner {
 
         EventTripIntentParser.EventIntent eventIntent = EventTripIntentParser.parse(safe);
         JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(safe, profile, history);
+        if (eventIntent.monitoringCancellationRequested && eventIntent.recognized()) {
+            actions.add(new Action(
+                    CANCEL_EVENT_MONITOR,
+                    eventIntent.destination,
+                    eventIntent.eventName));
+            return new Plan(
+                    "I will resolve that exact event against this active profile and turn off only one unambiguous monitor. The saved event trip will remain.",
+                    actions);
+        }
         if (eventIntent.found()) {
-            actions.add(new Action(CREATE_EVENT_TRIP, eventIntent.destination, eventIntent.eventName));
+            boolean memoryConsent = "yes".equals(
+                    profile.getOrDefault("memory_consent", "no"));
+            if (eventIntent.monitoringCancellationRequested) {
+                actions.add(new Action(
+                        CANCEL_EVENT_MONITOR,
+                        eventIntent.destination,
+                        eventIntent.eventName));
+                return new Plan(
+                        "I’ll turn off the exact " + eventIntent.eventName
+                                + " monitor for this active profile without deleting the saved event trip.",
+                        actions);
+            }
+            actions.add(new Action(
+                    CREATE_EVENT_TRIP,
+                    eventIntent.destination,
+                    eventIntent.eventName,
+                    eventIntent.monitoringRequested));
             actions.add(new Action(
                     QUEUE_KNOWLEDGE_PACK,
                     eventIntent.destination,
                     eventIntent.eventName + " event-centered trip"));
-            actions.add(new Action(
-                    SAVE_WISH,
-                    eventIntent.destination,
-                    "Trip centered on " + eventIntent.eventName));
+            if (memoryConsent) {
+                actions.add(new Action(
+                        SAVE_WISH,
+                        eventIntent.destination,
+                        "Trip centered on " + eventIntent.eventName));
+            }
             if (journey.found()) {
                 actions.add(new Action(
                         SAVE_JOURNEY_PLAN,
@@ -107,7 +145,13 @@ public final class AgenticTravelPlanner {
             }
             StringBuilder reply = new StringBuilder();
             reply.append("I’ll treat ").append(eventIntent.eventName).append(" as the center of the ")
-                    .append(eventIntent.destination).append(" trip. I’ll monitor official dates, venue and schedule changes, transportation, accessibility information, and newly announced details. I’ll also build a nearby list for food and places worth checking out around the event area.");
+                    .append(eventIntent.destination).append(" trip. ");
+            if (eventIntent.monitoringRequested) {
+                reply.append("You explicitly asked for monitoring, so I’ll enable it only if the owner opt-in and source-route gates pass. ");
+            } else {
+                reply.append("I’ll save the event details without silently turning on background monitoring. ");
+            }
+            reply.append("I’ll also build a nearby list for food and places worth checking out around the event area.");
             if (journey.found()) {
                 reply.append(" I’ll save ").append(modeLabel(journey.modes))
                         .append(" from ").append(journey.origin).append(" as the travel method instead of assuming you are flying.");
@@ -188,7 +232,8 @@ public final class AgenticTravelPlanner {
             for (String destination : current) {
                 if (memoryConsent) actions.add(new Action(
                         QUEUE_KNOWLEDGE_PACK, destination, "Automatic destination research"));
-                if (saveRequested) actions.add(new Action(SAVE_WISH, destination, "Owner-requested wish-list destination"));
+                if (saveRequested && memoryConsent) actions.add(new Action(
+                        SAVE_WISH, destination, "Owner-requested wish-list destination"));
                 if (durablePlan) actions.add(new Action(
                         SAVE_PLANNED_TRIP,
                         destination,
@@ -208,8 +253,13 @@ public final class AgenticTravelPlanner {
             } else {
                 reply.append("I did not save a destination research request because memory is not enabled for this profile. ");
             }
-            if (saveRequested) reply.append("You asked me to save it to your wish list. ");
-            else reply.append("I have not added it to your permanent wish list. ");
+            if (saveRequested && memoryConsent) {
+                reply.append("You asked me to save it to your wish list. ");
+            } else if (saveRequested) {
+                reply.append("You asked me to save it, but I did not create a permanent wish because memory is not enabled for this profile. ");
+            } else {
+                reply.append("I have not added it to your permanent wish list. ");
+            }
             reply.append("I’ll use reversible planning defaults and let you correct them later.");
             return new Plan(reply.toString(), actions);
         }

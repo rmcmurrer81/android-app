@@ -21,6 +21,18 @@ public final class GmailTravelConnection {
     }
 
     public static String status() {
-        return "Gmail not connected - monitoring off - last sync never";
+        return "Gmail not connected · monitoring off · last sync never";
     }
+
+    public static String setupStatus() {
+        return "Setup required. No Google OAuth client, read-only scope grant, or supervised mailbox-read acceptance is installed.";
+    }
+
+    public static String privacySummary() {
+        return "Sarah cannot read Gmail. Only an exact booking email, link, text, image, or PDF you deliberately share is imported.";
+    }
+
+    public static boolean disconnectAvailable() { return false; }
+
+    public static boolean gmailDerivedDataExists() { return false; }
 }

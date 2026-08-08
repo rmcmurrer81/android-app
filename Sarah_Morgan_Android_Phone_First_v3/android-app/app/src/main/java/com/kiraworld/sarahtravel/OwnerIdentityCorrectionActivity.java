@@ -130,6 +130,10 @@ public final class OwnerIdentityCorrectionActivity extends Activity {
                 return;
             }
         }
+        if (!OwnerProfileDataMigrator.claimLegacyOwnerData(this, restoredPersonId)) {
+            error.setText("Sarah could not bind the preserved event and booking records to your confirmed profile. Reopen Sarah to retry; the preserved records remain hidden and unchanged.");
+            return;
+        }
         MindEventStore mind = new MindEventStore(this);
         try { mind.relabelPlaceholderSpeakers(name); }
         finally { mind.close(); }
@@ -148,7 +152,6 @@ public final class OwnerIdentityCorrectionActivity extends Activity {
             SarahLocationStore locations,
             Map<String, String> primaryProfile) {
         List<String> pendingIds = locations.pendingOwnerMoveIds();
-        if (pendingIds.isEmpty()) return true;
         PersonProfileStore people = new PersonProfileStore(this);
         Map<String, String> confirmed;
         try {
@@ -164,6 +167,7 @@ public final class OwnerIdentityCorrectionActivity extends Activity {
                     this, pendingId, confirmedId, confirmedName);
             if (!moved || !locations.markOwnerMoveComplete(pendingId)) return false;
         }
+        if (!OwnerProfileDataMigrator.claimLegacyOwnerData(this, confirmedId)) return false;
         if (locations.pendingOwnerMoveIds().isEmpty()) locations.clearPendingOwnerMove();
         return true;
     }

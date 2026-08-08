@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import dataclasses
 import hashlib
 import hmac
@@ -48,7 +49,15 @@ RUNTIME_CONFIG_KEYS = {
     "SARAH_ELEVENLABS_BACKEND_TOKEN",
     "SARAH_TAVILY_API_KEY",
 }
+RUNTIME_SECRET_KEYS = {
+    "SARAH_MODEL_BACKEND_TOKEN",
+    "SARAH_ELEVENLABS_API_KEY",
+    "SARAH_ELEVENLABS_BACKEND_TOKEN",
+    "SARAH_TAVILY_API_KEY",
+}
 BUNDLED_EVENT_CONFIG_NAME = "sarah-event-config.json"
+DPAPI_SECRET_PREFIX = "dpapi-v1:"
+LOCAL_SECRET_PREFIX = "local-aesgcm-v1:"
 
 
 def app_home() -> Path:
@@ -82,11 +91,34 @@ def load_runtime_config(root: Path | None = None) -> dict[str, str]:
         return {}
     if not isinstance(raw, dict):
         return {}
-    return {
-        key: safe_text(raw.get(key))
-        for key in RUNTIME_CONFIG_KEYS
-        if safe_text(raw.get(key))
-    }
+    runtime_root = root or app_home()
+    loaded: dict[str, str] = {}
+    legacy_plaintext_found = False
+    for key in RUNTIME_CONFIG_KEYS:
+        value = safe_text(raw.get(key))
+        if not value:
+            continue
+        if key in RUNTIME_SECRET_KEYS:
+            try:
+                value, legacy_plaintext = _unprotect_runtime_secret(
+                    key, value, runtime_root
+                )
+            except Exception:
+                # A secret that cannot be decrypted for this OS account must
+                # fail closed instead of being sent or displayed.
+                continue
+            legacy_plaintext_found = legacy_plaintext_found or legacy_plaintext
+        if value:
+            loaded[key] = value
+    if legacy_plaintext_found:
+        # Migrate an older per-user plaintext credential in place on first
+        # successful read. A failed migration leaves runtime truth available
+        # for this process but never changes the source or executable.
+        try:
+            _write_runtime_config(loaded, runtime_root)
+        except Exception:
+            pass
+    return loaded
 
 
 def bundled_event_config_path() -> Path:
@@ -109,7 +141,7 @@ def load_bundled_event_config(path: Path | None = None) -> dict[str, str]:
     return {
         key: safe_text(raw.get(key))
         for key in RUNTIME_CONFIG_KEYS
-        if safe_text(raw.get(key))
+        if key not in RUNTIME_SECRET_KEYS and safe_text(raw.get(key))
     }
 
 
@@ -130,7 +162,7 @@ def runtime_setting(
 
 
 def save_runtime_config(values: dict[str, Any], root: Path | None = None) -> Path:
-    """Atomically save only known settings outside source and built artifacts."""
+    """Atomically save known settings, protecting credentials outside the EXE."""
     cleaned = {
         key: safe_text(value)
         for key, value in values.items()
@@ -142,11 +174,20 @@ def save_runtime_config(values: dict[str, Any], root: Path | None = None) -> Pat
     if len(cleaned.get("SARAH_MODEL_BACKEND_TOKEN", "")) > 4096:
         raise ValueError("Sarah backend token is unexpectedly long")
 
+    return _write_runtime_config(cleaned, root or app_home())
+
+
+def _write_runtime_config(values: dict[str, str], root: Path) -> Path:
+    encoded = dict(values)
+    for key in RUNTIME_SECRET_KEYS:
+        value = safe_text(encoded.get(key))
+        if value:
+            encoded[key] = _protect_runtime_secret(key, value, root)
     path = runtime_config_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(6)}.tmp")
     try:
-        temporary.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+        temporary.write_text(json.dumps(encoded, indent=2), encoding="utf-8")
         try:
             temporary.chmod(0o600)
         except OSError:
@@ -156,6 +197,103 @@ def save_runtime_config(values: dict[str, Any], root: Path | None = None) -> Pat
         if temporary.exists():
             temporary.unlink()
     return path
+
+
+def _protect_runtime_secret(name: str, value: str, root: Path) -> str:
+    payload = value.encode("utf-8")
+    if os.name == "nt":
+        return DPAPI_SECRET_PREFIX + base64.b64encode(_dpapi_protect(payload)).decode("ascii")
+    key = _local_runtime_secret_key(root)
+    nonce = secrets.token_bytes(12)
+    encrypted = AESGCM(key).encrypt(nonce, payload, name.encode("utf-8"))
+    return LOCAL_SECRET_PREFIX + base64.b64encode(nonce + encrypted).decode("ascii")
+
+
+def _unprotect_runtime_secret(name: str, value: str, root: Path) -> tuple[str, bool]:
+    if value.startswith(DPAPI_SECRET_PREFIX):
+        if os.name != "nt":
+            raise ValueError("Windows DPAPI secret cannot be decrypted on this platform")
+        raw = base64.b64decode(value[len(DPAPI_SECRET_PREFIX):], validate=True)
+        return _dpapi_unprotect(raw).decode("utf-8"), False
+    if value.startswith(LOCAL_SECRET_PREFIX):
+        raw = base64.b64decode(value[len(LOCAL_SECRET_PREFIX):], validate=True)
+        if len(raw) < 13:
+            raise ValueError("Protected runtime secret is truncated")
+        decrypted = AESGCM(_local_runtime_secret_key(root)).decrypt(
+            raw[:12], raw[12:], name.encode("utf-8")
+        )
+        return decrypted.decode("utf-8"), False
+    return value, True
+
+
+def _local_runtime_secret_key(root: Path) -> bytes:
+    """Non-Windows source-test fallback; Windows release uses user-bound DPAPI."""
+    path = root / ".runtime-secrets.key"
+    try:
+        key = path.read_bytes()
+    except FileNotFoundError:
+        key = secrets.token_bytes(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("xb") as handle:
+                handle.write(key)
+            try:
+                path.chmod(0o600)
+            except OSError:
+                pass
+        except FileExistsError:
+            key = path.read_bytes()
+    if len(key) != 32:
+        raise ValueError("Local runtime secret key is invalid")
+    return key
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [("cbData", ctypes.c_ulong), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
+
+
+def _blob(data: bytes) -> tuple[_DataBlob, Any]:
+    buffer = ctypes.create_string_buffer(data)
+    pointer = ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))
+    return _DataBlob(len(data), pointer), buffer
+
+
+def _dpapi_protect(data: bytes) -> bytes:
+    source, keepalive = _blob(data)
+    result = _DataBlob()
+    if not ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(source),
+        "Sarah protected runtime access",
+        None,
+        None,
+        None,
+        0x1,
+        ctypes.byref(result),
+    ):
+        raise OSError(ctypes.get_last_error(), "Windows DPAPI could not protect Sarah's access code")
+    try:
+        return ctypes.string_at(result.pbData, result.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(result.pbData)
+
+
+def _dpapi_unprotect(data: bytes) -> bytes:
+    source, keepalive = _blob(data)
+    result = _DataBlob()
+    if not ctypes.windll.crypt32.CryptUnprotectData(
+        ctypes.byref(source),
+        None,
+        None,
+        None,
+        None,
+        0x1,
+        ctypes.byref(result),
+    ):
+        raise OSError(ctypes.get_last_error(), "Windows DPAPI could not open Sarah's access code")
+    try:
+        return ctypes.string_at(result.pbData, result.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(result.pbData)
 
 
 def now_ms() -> int:

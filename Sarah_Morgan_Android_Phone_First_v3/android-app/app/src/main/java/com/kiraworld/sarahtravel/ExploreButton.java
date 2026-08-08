@@ -128,7 +128,8 @@ public final class ExploreButton extends Button {
         }
 
         Map<String, String> storedEvent = unfamiliarEvent.isEmpty()
-                ? Collections.emptyMap() : findStoredEvent(context, unfamiliarEvent);
+                ? Collections.emptyMap() : findStoredEvent(
+                        context, unfamiliarEvent, profile.getOrDefault("person_id", ""));
         TravelMediaHelper.Tools tools = TravelMediaHelper.resolve(latest, profile, messages);
 
         String query;
@@ -248,8 +249,11 @@ public final class ExploreButton extends Button {
         }
     }
 
-    private static Map<String, String> findStoredEvent(Context context, String eventName) {
-        EventTripStore store = new EventTripStore(context.getApplicationContext());
+    private static Map<String, String> findStoredEvent(
+            Context context,
+            String eventName,
+            String personId) {
+        EventTripStore store = new EventTripStore(context.getApplicationContext(), personId);
         try {
             for (Map<String, String> event : store.listActiveEventTrips(50)) {
                 if (eventName.equalsIgnoreCase(event.getOrDefault("event_name", ""))) return event;

@@ -46,6 +46,59 @@ test("Workers AI health reports the configured provider without exposing secrets
   assert.equal(JSON.stringify(data).includes(TOKEN), false);
 });
 
+test("capability truth requires the exact Sarah bearer token", async () => {
+  const deploymentId = "d".repeat(40);
+  const sourceSha256 = "e".repeat(64);
+  const configSha256 = "f".repeat(64);
+  const env = {
+    AI: { run: async () => ({ response: "unused" }) },
+    MODEL_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    SEARCH_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    VOICE_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_MODEL_ID: "@cf/google/gemma-4-26b-a4b-it",
+    SARAH_DEPLOYMENT_ID: deploymentId,
+    SARAH_SOURCE_SHA256: sourceSha256,
+    SARAH_CONFIG_SHA256: configSha256,
+  };
+
+  const absent = await worker.fetch(
+    new Request("https://sarah.example/capabilities"), env);
+  assert.equal(absent.status, 401);
+  assert.deepEqual(await absent.json(), { error: "unauthorized" });
+
+  const wrong = await worker.fetch(new Request("https://sarah.example/capabilities", {
+    headers: { Authorization: "Bearer wrong-token" },
+  }), env);
+  assert.equal(wrong.status, 401);
+  assert.deepEqual(await wrong.json(), { error: "unauthorized" });
+
+  const exact = await worker.fetch(new Request("https://sarah.example/capabilities", {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }), env);
+  const data = await exact.json();
+  assert.equal(exact.status, 200);
+  assert.equal(data.ok, true);
+  assert.equal(data.deployment_ready, true);
+  assert.equal(data.deployment_id, deploymentId);
+  assert.equal(data.source_sha256, sourceSha256);
+  assert.equal(data.config_sha256, configSha256);
+  assert.equal(data.route_rate_limits_ready, true);
+  assert.equal(JSON.stringify(data).includes(TOKEN), false);
+});
+
+test("capability route fails closed when the server token is not configured", async () => {
+  const response = await worker.fetch(new Request("https://sarah.example/capabilities", {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }), {
+    AI: { run: async () => ({ response: "unused" }) },
+    SARAH_MODEL_PROVIDER: "workers-ai",
+  });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "server_not_configured" });
+});
+
 test("route rate limit rejection is explicit and prevents provider work", async () => {
   let providerRuns = 0;
   const env = {

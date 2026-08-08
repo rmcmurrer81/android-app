@@ -16,22 +16,16 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
+  # Release artifacts receive public route/model identity only. Reusable
+  # credentials are activated after installation or remain server-side.
   SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
-  SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
   SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
-  SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
   SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
-  SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
-  SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
   SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
   SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
   SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
-  SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
-  SARAH_TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
   SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
   SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
-  SARAH_STAY22_BACKEND_TOKEN: ${{ secrets.SARAH_STAY22_BACKEND_TOKEN }}
 
 jobs:
   android:
@@ -50,6 +44,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Run Android package and runtime privacy contracts
+        run: |
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/validate_package.py
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
       - name: Test Sarah core and approval-gated sync
         working-directory: windows-companion
         run: |
@@ -75,25 +75,41 @@ jobs:
         run: |
           set -euo pipefail
           gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
-          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.5-event-ready.apk
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.5-R2-owner-repair.apk
           python - <<'PY'
           import json
+          import re
           from pathlib import Path
+          gradle = Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle').read_text(encoding='utf-8')
+          code_match = re.search(r'^\s*versionCode\s+(\d+)\s*$', gradle, re.MULTILINE)
+          name_match = re.search(r"^\s*versionName\s+['\"]([^'\"]+)['\"]\s*$", gradle, re.MULTILINE)
+          suffix_match = re.search(r"^\s*versionNameSuffix\s+['\"]([^'\"]+)['\"]\s*$", gradle, re.MULTILINE)
+          if code_match is None or name_match is None:
+              raise SystemExit('Could not derive Android version identity from app/build.gradle.')
+          source_code = int(code_match.group(1))
+          source_name = name_match.group(1)
+          expected_variant_name = source_name + (suffix_match.group(1) if suffix_match else '')
+          if source_code != 26 or source_name != '2.5-r2-owner-repair':
+              raise SystemExit(
+                  f'Final R2 release requires source 26/2.5-r2-owner-repair, found {source_code}/{source_name}.'
+              )
           metadata = json.loads(Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json').read_text(encoding='utf-8'))
           element = metadata['elements'][0]
           name = str(element.get('versionName', ''))
           code = int(element.get('versionCode', 0))
-          if not name.startswith('2.5-event-ready') or code != 25:
-              raise SystemExit(f'Wrong internal Android build: {name} / {code}')
+          if name != expected_variant_name or code != source_code:
+              raise SystemExit(
+                  f'Built Android identity differs from source: expected {expected_variant_name}/{source_code}, found {name}/{code}.'
+              )
           print('Verified internal Android build:', name, code)
           PY
-          unzip -t Sarah-Morgan-2.5-event-ready.apk >/dev/null
-          test -s Sarah-Morgan-2.5-event-ready.apk
-          sha256sum Sarah-Morgan-2.5-event-ready.apk
+          unzip -t Sarah-Morgan-2.5-R2-owner-repair.apk >/dev/null
+          test -s Sarah-Morgan-2.5-R2-owner-repair.apk
+          sha256sum Sarah-Morgan-2.5-R2-owner-repair.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-2.5-Android
-          path: Sarah-Morgan-2.5-event-ready.apk
+          name: Sarah-Morgan-2.5-R2-Android
+          path: Sarah-Morgan-2.5-R2-owner-repair.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -164,7 +180,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: Sarah-Morgan-2.5-Android
+          name: Sarah-Morgan-2.5-R2-Android
           path: release
       - uses: actions/download-artifact@v4
         with:
@@ -175,18 +191,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -s release/Sarah-Morgan-2.5-event-ready.apk
+          test -s release/Sarah-Morgan-2.5-R2-owner-repair.apk
           test -s release/SarahMorganTravelOS-Setup.exe
-          sha256sum release/Sarah-Morgan-2.5-event-ready.apk release/SarahMorganTravelOS-Setup.exe > release/SHA256SUMS.txt
+          sha256sum release/Sarah-Morgan-2.5-R2-owner-repair.apk release/SarahMorganTravelOS-Setup.exe > release/SHA256SUMS.txt
           TAG='sarah-travel-os-v2.5-event-ready'
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
           cat > release/README.txt <<'EOF'
           Sarah Travel OS 2.5 — event-ready physical test
 
-          Android phone: Sarah-Morgan-2.5-event-ready.apk
+          Android phone: Sarah-Morgan-2.5-R2-owner-repair.apk
           Windows desktop/laptop: SarahMorganTravelOS-Setup.exe
 
-          Install only the file for that device. The Android package is a debug-signed physical-test build with version code 25 and a 2.5-event-ready build identifier. The Windows file is a genuine self-installing PE executable that passed its installer self-test.
+          Install only the file for that device. The Android package is a debug-signed physical-test build whose exact version is derived from and matched to source version code 26 / 2.5-r2-owner-repair. The Windows file is a genuine self-installing PE executable that passed its installer self-test.
 
           Start Sarah on Windows and allow Private network access if Windows Firewall asks. Open Sarah on the Android phone while both devices use the same private Wi-Fi. Sarah can discover the computer, but no details move until the computer displays the same six-digit code and you approve the named phone. The first approved synchronization moves permitted details in both directions.
           EOF
@@ -196,7 +212,7 @@ jobs:
             --title 'Sarah Travel OS 2.5 — Event Ready' \
             --notes-file release/README.txt \
             --prerelease \
-            release/Sarah-Morgan-2.5-event-ready.apk \
+            release/Sarah-Morgan-2.5-R2-owner-repair.apk \
             release/SarahMorganTravelOS-Setup.exe \
             release/SHA256SUMS.txt \
             release/README.txt

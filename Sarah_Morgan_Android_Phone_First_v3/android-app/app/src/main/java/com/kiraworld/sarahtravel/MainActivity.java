@@ -90,6 +90,7 @@ public final class MainActivity extends Activity {
     private volatile boolean internetAvailable;
     private volatile boolean lastSmartCallFailed;
     private volatile boolean connectedRouteProven;
+    private volatile boolean reconnecting;
     private volatile String lastTurnRoute = TurnRoute.UNKNOWN_LEGACY;
     private final ExecutorService conversationExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService backgroundResearchExecutor = Executors.newSingleThreadExecutor();
@@ -109,6 +110,7 @@ public final class MainActivity extends Activity {
     private String pendingLocationSpeaker = "";
     private long pendingLocationGeneration;
     private final AtomicLong lifecycleGeneration = new AtomicLong(1L);
+    private final AtomicLong voiceRequestSequence = new AtomicLong();
     private volatile boolean turnInFlight;
     private volatile boolean destroyed;
     private final Runnable deferredKnowledgeRefresh = new Runnable() {
@@ -125,6 +127,12 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        EventTripPreUpgradeBackupGate.Result upgradeState =
+                SarahApplication.eventTripUpgradeState();
+        if (upgradeState != null && !upgradeState.mayOpenV2) {
+            showEventTripUpgradeBlocked(upgradeState);
+            return;
+        }
         if (state != null) {
             pendingLocationMessage = state.getString(STATE_PENDING_LOCATION_MESSAGE, "");
             pendingLocationPersonId = state.getString(STATE_PENDING_LOCATION_PERSON, "");
@@ -146,6 +154,7 @@ public final class MainActivity extends Activity {
         }
         PersonProfileStore ownerProfiles = new PersonProfileStore(this);
         Map<String, String> ownerRecord;
+        Map<String, String> activeRecord;
         try {
             if (db.isPlaceholderOwner()) {
                 startActivity(new Intent(this, OwnerIdentityCorrectionActivity.class));
@@ -153,29 +162,44 @@ public final class MainActivity extends Activity {
                 return;
             }
             ownerRecord = ownerProfiles.ensureOwner(db.getProfile());
+            activeRecord = ownerProfiles.getActiveProfile();
         } finally {
             ownerProfiles.close();
+        }
+        LegacyEventTripOwnerClaimGate.Result legacyClaim =
+                LegacyEventTripOwnerClaimGate.ensure(this, ownerRecord, activeRecord);
+        if (!legacyClaim.mayProceed) {
+            showLegacyEventClaimBlocked(legacyClaim.status);
+            return;
         }
         db.repairPlaceholderOwnerLabels();
         DealNotificationManager.createChannel(this);
         SharedPreferences startupPreferences = getSharedPreferences(
                 SettingsActivity.PREFS, MODE_PRIVATE);
-        boolean dealMonitoringAllowed = BackgroundResearchPolicy.monitoringCanRun(
+        String ownerPersonId = ownerRecord.getOrDefault(
+                "person_id", ownerRecord.getOrDefault("name", "unknown_profile"));
+        String activePersonId = activeRecord.getOrDefault(
+                "person_id", activeRecord.getOrDefault("name", ""));
+        boolean activeConfirmedOwner = "yes".equals(
+                    activeRecord.getOrDefault("is_owner", "no"))
+                && EventTripProfilePolicy.profileKey(ownerPersonId).equals(
+                    EventTripProfilePolicy.profileKey(activePersonId));
+        boolean dealMonitoringAllowed = activeConfirmedOwner
+                && BackgroundResearchPolicy.monitoringCanRun(
                 startupPreferences.getBoolean(
                         "deal_alerts_enabled",
                         BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED),
                 TravelCommerceConfig.isConfigured(),
                 !db.listActiveDealWatches(1).isEmpty());
-        if (dealMonitoringAllowed) {
+        if (dealMonitoringAllowed
+                && ConfirmedOwnerLease.isExactActiveOwner(this, ownerPersonId)) {
             DealWatchScheduler.ensureScheduled(this);
         } else {
             DealWatchScheduler.cancel(this);
         }
-        String ownerPersonId = ownerRecord.getOrDefault(
-                "person_id", ownerRecord.getOrDefault("name", "unknown_profile"));
         boolean proactiveAllowed = KnowledgePackSchedulingPolicy.canSchedule(
-                    "yes".equals(ownerRecord.getOrDefault("is_owner", "no")),
-                    "yes".equals(ownerRecord.getOrDefault("memory_consent", "no")),
+                    activeConfirmedOwner,
+                    "yes".equals(activeRecord.getOrDefault("memory_consent", "no")),
                     ConnectivityMonitor.hasValidatedInternet(this),
                     SarahModelConfig.fullConversationAvailable(),
                     TavilyClient.configured(),
@@ -183,8 +207,21 @@ public final class MainActivity extends Activity {
                 && startupPreferences.getBoolean("web_search", true)
                 && SettingsActivity.getConversationMode(this)
                     != ConversationModePolicy.MODE_LOCAL_ONLY;
-        if (proactiveAllowed) ProactiveDiscoveryScheduler.ensureScheduled(this);
+        if (proactiveAllowed
+                && ConfirmedOwnerLease.isExactActiveOwner(this, ownerPersonId)) {
+            ProactiveDiscoveryScheduler.ensureScheduled(this);
+        }
         else ProactiveDiscoveryScheduler.cancel(this);
+        boolean eventMonitoringAllowed = activeConfirmedOwner
+                && startupPreferences.getBoolean(
+                    "deal_alerts_enabled",
+                    BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED)
+                && hasEligiblePersistedEventMonitor(ownerPersonId);
+        if (eventMonitoringAllowed
+                && ConfirmedOwnerLease.isExactActiveOwner(this, ownerPersonId)) {
+            EventMonitorScheduler.ensureScheduled(this);
+        }
+        else EventMonitorScheduler.cancel(this);
         setContentView(R.layout.activity_main);
         chat = findViewById(R.id.chatContainer);
         scroll = findViewById(R.id.chatScroll);
@@ -193,8 +230,9 @@ public final class MainActivity extends Activity {
         SafeAreaInsets.apply(
                 this,
                 findViewById(R.id.mainRoot),
-                findViewById(R.id.bottomNavigation),
-                scroll);
+                findViewById(R.id.bottomControls),
+                scroll,
+                findViewById(R.id.bottomNavigation));
         speakerContext = new SpeakerContext(db.getProfile());
         locationStore = new SarahLocationStore(this);
         locationCoordinator = new ApproximateLocationCoordinator(this);
@@ -213,17 +251,21 @@ public final class MainActivity extends Activity {
             if (changed) connectedRouteProven = false;
             runOnUiThread(() -> {
                 applyProactiveResearchSchedule(connected);
-                updateSpeakerStatus(null);
                 if (changed) {
                     String message = connected
-                            ? (SarahModelConfig.fullConversationAvailable()
-                                ? "Internet is back. Sarah will reconnect automatically."
-                                : "Internet is back. Sarah can use connected public information when a verified source is available.")
+                            ? "Internet is back. Sarah is checking the protected connection."
                             : "Connection lost. Sarah is continuing locally.";
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
                 }
-                if (connected) scheduleDeferredKnowledgeRefresh();
-                else mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+                if (connected) {
+                    reconnecting = changed;
+                    refreshProtectedCapabilities();
+                    scheduleDeferredKnowledgeRefresh();
+                } else {
+                    reconnecting = false;
+                    mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+                    updateSpeakerStatus(null);
+                }
             });
         });
         internetAvailable = connectivityMonitor.currentValidatedInternet();
@@ -258,7 +300,6 @@ public final class MainActivity extends Activity {
                 findViewById(R.id.tripContextPanel).setVisibility(View.GONE);
                 ((TextView) findViewById(R.id.tripContextToggle))
                         .setText("Trip context and calm tools ▾");
-                scroll.postDelayed(() -> scroll.fullScroll(View.FOCUS_DOWN), 180L);
             }
         });
 
@@ -290,6 +331,7 @@ public final class MainActivity extends Activity {
         findViewById(R.id.connectionsNavButton).setOnClickListener(
                 v -> startActivity(new Intent(this, SponsorConnectionsActivity.class)));
         updateSpeakerStatus(null);
+        if (internetAvailable) refreshProtectedCapabilities();
     }
 
     @Override
@@ -304,7 +346,10 @@ public final class MainActivity extends Activity {
         if (tts != null) tts.setRate(currentSpeechRate());
         if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         if (speakerContext != null) updateSpeakerStatus(null);
-        if (internetAvailable) scheduleDeferredKnowledgeRefresh();
+        if (internetAvailable) {
+            refreshProtectedCapabilities();
+            scheduleDeferredKnowledgeRefresh();
+        }
     }
 
     @Override
@@ -312,6 +357,75 @@ public final class MainActivity extends Activity {
         mainHandler.removeCallbacks(deferredKnowledgeRefresh);
         if (connectivityMonitor != null) connectivityMonitor.stop();
         super.onStop();
+    }
+
+    private void showEventTripUpgradeBlocked(EventTripPreUpgradeBackupGate.Result state) {
+        ScrollView blockedScroll = new ScrollView(this);
+        LinearLayout blocked = new LinearLayout(this);
+        blocked.setOrientation(LinearLayout.VERTICAL);
+        int padding = Math.round(24 * getResources().getDisplayMetrics().density);
+        blocked.setPadding(padding, padding, padding, padding);
+        TextView heading = new TextView(this);
+        heading.setText("Sarah protected your existing travel data");
+        heading.setTextSize(24f);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        blocked.addView(heading);
+        TextView explanation = new TextView(this);
+        explanation.setText("Sarah did not open or upgrade the existing event-trip database because its R1 recovery copy could not be verified. No event-trip migration ran.\n\nStatus: "
+                + state.status
+                + "\n\nClose Sarah and keep this build installed until the recovery evidence can be inspected.");
+        explanation.setTextSize(16f);
+        explanation.setPadding(0, padding / 2, 0, padding / 2);
+        blocked.addView(explanation);
+        android.widget.Button close = new android.widget.Button(this);
+        close.setText("Close Sarah");
+        close.setAllCaps(false);
+        close.setOnClickListener(v -> finish());
+        blocked.addView(close);
+        blockedScroll.addView(blocked);
+        setContentView(blockedScroll);
+        SafeAreaInsets.apply(this, blockedScroll, null, blockedScroll);
+    }
+
+    private void showLegacyEventClaimBlocked(String status) {
+        ScrollView blockedScroll = new ScrollView(this);
+        LinearLayout blocked = new LinearLayout(this);
+        blocked.setOrientation(LinearLayout.VERTICAL);
+        int padding = Math.round(24 * getResources().getDisplayMetrics().density);
+        blocked.setPadding(padding, padding, padding, padding);
+        TextView heading = new TextView(this);
+        heading.setText("Sarah preserved your earlier event and booking records");
+        heading.setTextSize(24f);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        blocked.addView(heading);
+        TextView explanation = new TextView(this);
+        explanation.setText("Sarah could not yet bind the preserved R1 records to the exact confirmed owner profile. No hidden row was discarded. Close and reopen Sarah to retry.\n\nStatus: "
+                + status);
+        explanation.setTextSize(16f);
+        explanation.setPadding(0, padding / 2, 0, padding / 2);
+        blocked.addView(explanation);
+        android.widget.Button close = new android.widget.Button(this);
+        close.setText("Close Sarah");
+        close.setOnClickListener(v -> finish());
+        blocked.addView(close);
+        blockedScroll.addView(blocked);
+        setContentView(blockedScroll);
+    }
+
+    private void refreshProtectedCapabilities() {
+        if (!internetAvailable || destroyed) {
+            reconnecting = false;
+            updateSpeakerStatus(null);
+            return;
+        }
+        updateSpeakerStatus(null);
+        ProtectedBackendCapabilities.refreshAsync(this, decision -> {
+            if (destroyed || isFinishing()) return;
+            reconnecting = false;
+            SettingsActivity.ensureAutomaticModeDefault(this);
+            applyProactiveResearchSchedule(internetAvailable);
+            updateSpeakerStatus(null);
+        });
     }
 
     private void showConversationModeMenu() {
@@ -327,7 +441,9 @@ public final class MainActivity extends Activity {
                 internetAvailable,
                 SarahModelConfig.fullConversationAvailable(),
                 lastSmartCallFailed,
-                connectedRouteProven);
+                connectedRouteProven,
+                ProtectedBackendCapabilities.isChecking(),
+                reconnecting);
 
         new AlertDialog.Builder(this)
                 .setTitle("Choose how Sarah connects")
@@ -465,7 +581,7 @@ public final class MainActivity extends Activity {
         String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
         String speakerBefore = speakerContext.activeName();
         SpeakerContext.Result speakerResult = speakerContext.handle(display);
-        if (speakerResult.speakerChanged) invalidatePriorSpeakerWork();
+        if (speakerResult.speakerChanged && !invalidatePriorSpeakerWork()) return;
         String turnSpeaker = speakerResult.messageBelongsToActiveSpeaker
                 ? speakerContext.activeName() : speakerBefore;
         addBubble(turnSpeaker, display + (pendingPhoto != null ? "\n[Photo attached]" : ""), true);
@@ -479,7 +595,7 @@ public final class MainActivity extends Activity {
                     replySpeaker,
                     SarahChannelResponse.spokenOnly(
                             speakerResult.reply,
-                            "Sarah returned a local identity, profile, consent, or calm-support response. No booking or external action was completed.")
+                                    "Sarah returned a local identity, profile, consent, or calm-support response. No booking or external action was completed.")
                             .withFactualAudit(TextTurnReceipt.build(
                                     turnId,
                                     TurnRoute.LOCAL_TOOL_RESULT,
@@ -487,7 +603,7 @@ public final class MainActivity extends Activity {
                                     "SpeakerContext",
                                     turnSubmittedAt,
                                     completedAt)),
-                    "local-profile");
+                    TurnRoute.LOCAL_TOOL_RESULT);
             lastTurnRoute = TurnRoute.LOCAL_TOOL_RESULT;
             db.addMessage("assistant", speakerResult.reply, replySpeaker, lastTurnRoute);
             addBubble("Sarah", speakerResult.reply, false, lastTurnRoute);
@@ -578,7 +694,9 @@ public final class MainActivity extends Activity {
             String sourceDetails = "No current-source lookup was used for this reply.";
             try {
                 PublicSourceResult sourceBackedEvent = sourceFirstEvent
-                        ? PublicOnlineFallback.answerResult(getApplicationContext(), display, history)
+                        ? PublicOnlineFallback.answerResult(
+                                getApplicationContext(), display, history,
+                                profile.getOrDefault("person_id", ""))
                         : null;
                 if (sourceBackedEvent != null && !sourceBackedEvent.reply.isEmpty()) {
                     reply = sourceBackedEvent.reply;
@@ -618,9 +736,11 @@ public final class MainActivity extends Activity {
                                     display, profile, image != null, history, memories,
                                     trips, wishes, knowledgePacks, dealWatches, TurnRoute.OFFLINE_LOCAL)
                             : plannerReply;
-                    actualTurnRoute = TurnRoute.OFFLINE_LOCAL;
+                    actualTurnRoute = plannerReply.isEmpty()
+                            ? TurnRoute.OFFLINE_LOCAL : TurnRoute.LOCAL_TOOL_RESULT;
                     actualProvider = "on-device";
-                    actualModel = "DemoSarah";
+                    actualModel = plannerReply.isEmpty()
+                            ? "DemoSarah" : "AgenticTravelPlanner";
                 }
             } catch (Exception e) {
                 reply = plannerReply.isEmpty()
@@ -644,6 +764,15 @@ public final class MainActivity extends Activity {
                     actionResult.hasDurableBackgroundWork(),
                     actionResult.receiptSummary(),
                     actionResult.pendingSummary());
+            if (actionResult.hasFailedForegroundAction()) {
+                guardedChannels = guardedChannels.withGroundingCorrection(
+                        actionResult.failedForegroundSummary(),
+                        "The planner's requested foreground change did not match saved active-profile state; exact execution truth replaced the proposed wording.");
+            } else if (actionResult.hasCompletedForegroundAction()) {
+                guardedChannels = guardedChannels.withGroundingCorrection(
+                        actionResult.completedForegroundSummary(),
+                        "The displayed response is the exact completed foreground-action receipt, not a background-work claim.");
+            }
             String exactTuringAnswer = OfflineTuringPolicy.answer(
                     display,
                     profile,
@@ -760,18 +889,30 @@ public final class MainActivity extends Activity {
             backgroundResearchThread = Thread.currentThread();
             SarahDatabase backgroundDb = new SarahDatabase(getApplicationContext());
             try {
+                ConfirmedOwnerLease ownerLease = ConfirmedOwnerLease.capture(
+                        getApplicationContext());
+                if (ownerLease == null) {
+                    throw new IllegalStateException(
+                            "FOREGROUND_RESEARCH_CONFIRMED_OWNER_LEASE_REQUIRED");
+                }
+                ownerLease.requireActive();
                 int refreshed = DestinationKnowledgeCoordinator.refreshPending(
                         backgroundDb,
                         KnowledgeProfileKey.forProfile(researchProfile),
                         SarahModelConfig.PROVIDER_ID,
                         key,
                         SarahModelConfig.MODEL_ID,
-                            BackgroundResearchPolicy.MAX_PACKS_PER_RUN);
+                        BackgroundResearchPolicy.MAX_PACKS_PER_RUN,
+                        ownerLease);
+                ownerLease.requireActive();
                 try {
                     ProactiveDiscoveryCoordinator.refresh(
                             getApplicationContext(),
                             researchProfile,
-                            researchTrips);
+                            researchTrips,
+                            "profile_opted_in_foreground",
+                            ownerLease);
+                    ownerLease.requireActive();
                 } catch (Exception proactiveFailure) {
                     Log.e(TAG,
                             "Proactive discovery failed; its append-only failure receipt was retained",
@@ -876,8 +1017,9 @@ public final class MainActivity extends Activity {
                 "person_id", profile.getOrDefault("name", "unknown_profile"));
         SharedPreferences preferences = getSharedPreferences(
                 SettingsActivity.PREFS, MODE_PRIVATE);
+        boolean exactOwner = ConfirmedOwnerLease.isExactActiveOwner(this, personId);
         boolean runnable = KnowledgePackSchedulingPolicy.canSchedule(
-                    isOwner(profile),
+                    exactOwner,
                     "yes".equals(profile.getOrDefault("memory_consent", "no")),
                     validatedInternet,
                     SarahModelConfig.fullConversationAvailable(),
@@ -886,7 +1028,10 @@ public final class MainActivity extends Activity {
                 && preferences.getBoolean("web_search", true)
                 && SettingsActivity.getConversationMode(this)
                     != ConversationModePolicy.MODE_LOCAL_ONLY;
-        if (runnable) ProactiveDiscoveryScheduler.ensureScheduled(this);
+        if (runnable
+                && ConfirmedOwnerLease.isExactActiveOwner(this, personId)) {
+            ProactiveDiscoveryScheduler.ensureScheduled(this);
+        }
         else ProactiveDiscoveryScheduler.cancel(this);
     }
 
@@ -926,16 +1071,43 @@ public final class MainActivity extends Activity {
                 && !isFinishing();
     }
 
-    private void invalidatePriorSpeakerWork() {
+    private boolean invalidatePriorSpeakerWork() {
         recordActiveVoiceCancellation("profile_switch_cancelled");
+        voiceRequestSequence.incrementAndGet();
         lifecycleGeneration.incrementAndGet();
         CloudVoiceClient.cancel();
         if (tts != null) tts.stop();
         mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        pauseBackgroundResearchForOwnerTurn();
         photoRequestSequence.incrementAndGet();
         pendingLocationGeneration++;
         clearPendingLocationTurn();
         discardPendingPhoto();
+        // Background jobs may contain the confirmed owner's private travel
+        // state. A speaker change revokes their lease immediately; an owner
+        // startup or explicit Settings save can re-establish it later.
+        DealWatchScheduler.cancel(this);
+        EventMonitorScheduler.cancel(this);
+        ProactiveDiscoveryScheduler.cancel(this);
+        PersonProfileStore profiles = new PersonProfileStore(this);
+        LegacyEventTripOwnerClaimGate.Result claim;
+        try {
+            Map<String, String> owner = profiles.ensureOwner(db.getProfile());
+            Map<String, String> active = profiles.getActiveProfile();
+            claim = LegacyEventTripOwnerClaimGate.ensure(this, owner, active);
+        } finally {
+            profiles.close();
+        }
+        if (!claim.mayProceed) {
+            showLegacyEventClaimBlocked(claim.status);
+            return false;
+        }
+        return true;
+    }
+
+    /** Revoke the current speaker's work before ProfileButton changes identity. */
+    boolean prepareForProfileSwitch() {
+        return invalidatePriorSpeakerWork();
     }
 
     private void runOnUiThreadIfActive(long requestGeneration, Runnable action) {
@@ -954,7 +1126,9 @@ public final class MainActivity extends Activity {
                     internetAvailable,
                     SarahModelConfig.fullConversationAvailable(),
                     lastSmartCallFailed,
-                    connectedRouteProven);
+                    connectedRouteProven,
+                    ProtectedBackendCapabilities.isChecking(),
+                    reconnecting);
             label = TurnRoute.UNKNOWN_LEGACY.equals(lastTurnRoute)
                     ? nextRoute + " • tap to switch"
                     : "Last reply: " + TurnRoute.sourceLabel(lastTurnRoute)
@@ -1168,12 +1342,39 @@ public final class MainActivity extends Activity {
                 || lower.contains("show the route");
     }
 
+    private boolean hasEligiblePersistedEventMonitor(String personId) {
+        EventTripStore store = null;
+        try {
+            store = new EventTripStore(this, personId);
+            for (Map<String, String> event : store.listActiveEventTrips(100)) {
+                if (!"yes".equals(event.getOrDefault("monitor_enabled", "no"))) continue;
+                if (TavilyClient.configured()
+                        || KnownEventCatalog.findByEventName(
+                                event.getOrDefault("event_name", "")) != null) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            return false;
+        } finally {
+            if (store != null) store.close();
+        }
+        return false;
+    }
+
     private void speak(String text) {
         speak(text, "voice-" + System.currentTimeMillis() + "-"
                 + UUID.randomUUID().toString().replace("-", ""));
     }
 
     private void speak(String text, String turnId) {
+        final long voiceRequest = voiceRequestSequence.incrementAndGet();
+        // Every new voice request owns both possible playback engines. This
+        // closes cloud-to-local and local-to-cloud overlap, while the sequence
+        // lease suppresses obsolete fallback callbacks.
+        recordActiveVoiceCancellation("superseded_by_new_voice_request");
+        CloudVoiceClient.cancel();
+        if (tts != null) tts.stop();
         final long voiceGeneration = lifecycleGeneration.get();
         Map<String, String> voiceProfile = currentProfile();
         final String expectedSpeaker = speakerContext.activeName();
@@ -1183,11 +1384,16 @@ public final class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         if (!prefs.getBoolean("auto_speak", true)) return;
         tts.setRate(currentSpeechRate());
-        int voiceMode = prefs.getInt("voice_mode", ElevenLabsVoiceConfig.isConfigured() ? 1 : 0);
+        boolean verifiedProtectedVoice = ElevenLabsVoiceConfig.backendConfigured()
+                && ProtectedBackendCapabilities.voiceReady(this);
+        boolean verifiedDirectVoice = !ElevenLabsVoiceConfig.backendConfigured()
+                && ElevenLabsVoiceConfig.directConfigured();
+        int voiceMode = prefs.getInt(
+                "voice_mode", verifiedProtectedVoice || verifiedDirectVoice ? 1 : 0);
         boolean validatedInternet = connectivityMonitor != null
                 ? connectivityMonitor.currentValidatedInternet() : internetAvailable;
-        boolean protectedBackend = ElevenLabsVoiceConfig.backendConfigured();
-        boolean directCredential = ElevenLabsVoiceConfig.directConfigured();
+        boolean protectedBackend = verifiedProtectedVoice;
+        boolean directCredential = verifiedDirectVoice;
         boolean attemptPremium = VoiceRoutePolicy.shouldAttemptPremium(
                 voiceMode, validatedInternet, protectedBackend, directCredential);
         String attemptedVoiceRoute = attemptPremium
@@ -1195,9 +1401,12 @@ public final class MainActivity extends Activity {
                 : (voiceMode == 1 ? "elevenlabs_approved_route" : "android_tts");
         markActiveVoice(personId, turnId, text.length(), attemptedVoiceRoute);
         if (attemptPremium) {
+            updateSpeakerStatus("Generating Sarah’s online voice…");
             CloudVoiceClient.speak(this, "", text, receipt -> {
+                if (voiceRequest != voiceRequestSequence.get()) return;
                 if (!requestMayApplyToSpeaker(
                         voiceGeneration, personId, expectedSpeaker)) return;
+                runOnUiThreadIfActive(voiceGeneration, () -> updateSpeakerStatus(null));
                 if (receipt.completed) {
                     recordVoiceReceipt(personId, turnId, text.length(), receipt, "");
                     clearActiveVoice(personId, turnId);
@@ -1212,7 +1421,7 @@ public final class MainActivity extends Activity {
                     runOnUiThreadIfActive(voiceGeneration, () -> speakLocallyWithReceipt(
                             personId, expectedSpeaker, turnId, text,
                             receipt.attemptedRoute, receipt.failureReason, receipt,
-                            voiceGeneration));
+                            voiceGeneration, voiceRequest));
                 }
             });
             return;
@@ -1226,7 +1435,8 @@ public final class MainActivity extends Activity {
                 VoiceRoutePolicy.fallbackReason(
                         voiceMode, validatedInternet, protectedBackend, directCredential),
                 null,
-                voiceGeneration);
+                voiceGeneration,
+                voiceRequest);
     }
 
     private void speakLocallyWithReceipt(
@@ -1237,14 +1447,17 @@ public final class MainActivity extends Activity {
             String attemptedRoute,
             String fallbackReason,
             CloudVoiceClient.Receipt failedPremium,
-            long voiceGeneration) {
+            long voiceGeneration,
+            long voiceRequest) {
+        if (voiceRequest != voiceRequestSequence.get()) return;
         if (!requestMayApplyToSpeaker(
                 voiceGeneration, personId, expectedSpeaker)) return;
         long requestedAt = System.currentTimeMillis();
         AtomicLong playbackStarted = new AtomicLong(0L);
         tts.speak(text, new SarahTts.SpeechListener() {
             @Override public void onStart(long startedAt) {
-                if (requestMayApplyToSpeaker(
+                if (voiceRequest == voiceRequestSequence.get()
+                        && requestMayApplyToSpeaker(
                         voiceGeneration, personId, expectedSpeaker)) {
                     playbackStarted.set(startedAt);
                 } else if (tts != null) {
@@ -1253,7 +1466,8 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onDone(long completedAt) {
-                if (!requestMayApplyToSpeaker(
+                if (voiceRequest != voiceRequestSequence.get()
+                        || !requestMayApplyToSpeaker(
                         voiceGeneration, personId, expectedSpeaker)) return;
                 recordLocalVoiceReceipt(
                         personId, turnId, text.length(), attemptedRoute, fallbackReason,
@@ -1262,7 +1476,8 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onError(long failedAt, String reason) {
-                if (!requestMayApplyToSpeaker(
+                if (voiceRequest != voiceRequestSequence.get()
+                        || !requestMayApplyToSpeaker(
                         voiceGeneration, personId, expectedSpeaker)) return;
                 recordLocalVoiceReceipt(
                         personId, turnId, text.length(), attemptedRoute,
@@ -1549,6 +1764,16 @@ public final class MainActivity extends Activity {
         } else if (requestCode == REQ_PHOTO) {
             Uri uri = data.getData();
             if (uri == null) return;
+            final String approvedPhotoMime =
+                    PrivateContentSnapshot.normalizeApprovedImageMime(
+                            getContentResolver().getType(uri));
+            if (approvedPhotoMime.isEmpty()) {
+                Toast.makeText(
+                        this,
+                        "Choose a JPEG, PNG, or WebP photo.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
             final long photoGeneration = lifecycleGeneration.get();
             final long photoRequest = photoRequestSequence.incrementAndGet();
             Map<String, String> photoProfile = currentProfile();
@@ -1557,9 +1782,24 @@ public final class MainActivity extends Activity {
             final String photoSpeaker = speakerContext.activeName();
             updateSpeakerStatus("Cleaning the selected photo…");
             mediaExecutor.submit(() -> {
+                final ImageSanitizer.Result[] prepared = new ImageSanitizer.Result[1];
                 try {
-                    ImageSanitizer.Result result = ImageSanitizer.sanitize(
-                            getContentResolver(), uri, new File(getFilesDir(), "photos"));
+                    File photoDirectory = new File(getFilesDir(), "photos");
+                    ImageSanitizer.Result result;
+                    try (PrivateContentSnapshot snapshot = PrivateContentSnapshot.capture(
+                            getContentResolver(),
+                            uri,
+                            getFilesDir(),
+                            photoDirectory,
+                            PrivateContentSnapshot.MAX_IMAGE_BYTES,
+                            "chat_photo",
+                            approvedPhotoMime)) {
+                        result = ImageSanitizer.sanitize(
+                                snapshot.file(),
+                                photoDirectory,
+                                snapshot.approvedMimeType());
+                        prepared[0] = result;
+                    }
                     runOnUiThread(() -> {
                         if (photoRequestSequence.get() != photoRequest
                                 || !requestMayApplyToSpeaker(
@@ -1577,13 +1817,21 @@ public final class MainActivity extends Activity {
                                 Toast.LENGTH_LONG).show();
                     });
                 } catch (Exception e) {
+                    String residual = cleanupSanitizedDerivative(
+                            prepared[0] == null ? null : prepared[0].file);
+                    String detail = "The photo could not be prepared: " + e.getMessage();
+                    if (!residual.isEmpty()) {
+                        detail += ". A private residual requires owner cleanup at " + residual;
+                    }
+                    Log.e(TAG, detail, e);
+                    final String failure = detail;
                     runOnUiThread(() -> {
                         if (photoRequestSequence.get() == photoRequest
                                 && requestMayApplyToSpeaker(
                                     photoGeneration, photoPersonId, photoSpeaker)) {
                             Toast.makeText(
                                     this,
-                                    "The photo could not be prepared: " + e.getMessage(),
+                                    failure,
                                     Toast.LENGTH_LONG).show();
                         }
                     });
@@ -1600,14 +1848,28 @@ public final class MainActivity extends Activity {
     }
 
     private void discardSanitizedDerivative(File file) {
-        if (file == null) return;
+        String residual = cleanupSanitizedDerivative(file);
+        if (!residual.isEmpty()) {
+            Log.e(TAG, "Private sanitized photo cleanup failed at " + residual);
+        }
+    }
+
+    private String cleanupSanitizedDerivative(File file) {
+        if (file == null || !file.exists()) return "";
         try {
             File photoRoot = new File(getFilesDir(), "photos").getCanonicalFile();
             File exactFile = file.getCanonicalFile();
-            if (exactFile.getPath().startsWith(photoRoot.getPath() + File.separator)) {
-                exactFile.delete();
+            if (!exactFile.getPath().startsWith(photoRoot.getPath() + File.separator)
+                    || !exactFile.isFile()) {
+                return exactFile.getCanonicalPath();
             }
-        } catch (Exception ignored) { }
+            if (!exactFile.delete() || exactFile.exists()) {
+                return exactFile.getCanonicalPath();
+            }
+            return "";
+        } catch (Exception e) {
+            return file.getAbsolutePath();
+        }
     }
 
     @Override
@@ -1639,18 +1901,19 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         recordActiveVoiceCancellation("activity_destroyed_or_profile_recreated");
         destroyed = true;
+        voiceRequestSequence.incrementAndGet();
         lifecycleGeneration.incrementAndGet();
         photoRequestSequence.incrementAndGet();
         turnInFlight = false;
         pendingLocationGeneration++;
         clearPendingLocationTurn();
         mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        pauseBackgroundResearchForOwnerTurn();
         if (connectivityMonitor != null) connectivityMonitor.stop();
         conversationExecutor.shutdownNow();
         backgroundResearchExecutor.shutdownNow();
         mediaExecutor.shutdownNow();
         networkAttemptExecutor.shutdownNow();
-        TavilyClient.cancel(backgroundResearchThread);
         CloudVoiceClient.cancel();
         if (tts != null) tts.shutdown();
         discardPendingPhoto();

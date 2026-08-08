@@ -71,11 +71,26 @@ public final class ProactiveDiscoveryCoordinator {
             Map<String, String> profile,
             List<Map<String, String>> trips,
             String trigger) throws Exception {
-        if (!"ready".equals(availabilityStatus(context, profile, trips))) return 0;
-        if (!RUNNING.compareAndSet(false, true)) return 0;
+        return refresh(
+                context,
+                profile,
+                trips,
+                trigger,
+                ConfirmedOwnerLease.capture(context));
+    }
 
+    public static int refresh(
+            Context context,
+            Map<String, String> profile,
+            List<Map<String, String>> trips,
+            String trigger,
+            ConfirmedOwnerLease ownerLease) throws Exception {
+        if (!"ready".equals(availabilityStatus(context, profile, trips))) return 0;
         String personId = profile.getOrDefault(
                 "person_id", profile.getOrDefault("name", "unknown_profile"));
+        requireActiveLease(ownerLease, personId);
+        if (!RUNNING.compareAndSet(false, true)) return 0;
+
         String speaker = profile.getOrDefault("name", "Traveler");
         SarahLocationStore locations = new SarahLocationStore(context);
         List<AdaptiveResearchPlan.Query> plans = plans(
@@ -83,22 +98,24 @@ public final class ProactiveDiscoveryCoordinator {
         long startedAt = System.currentTimeMillis();
         int sourceCount = 0;
         int savedCount = 0;
-        ProactiveResearchReceiptStore.started(
-                context, personId, trigger, plans.size(), startedAt);
         try {
+            requireActiveLease(ownerLease, personId);
+            ProactiveResearchReceiptStore.started(
+                    context, personId, trigger, plans.size(), startedAt);
             ProactiveDiscoveryStore store = new ProactiveDiscoveryStore(context);
             try {
+                requireActiveLease(ownerLease, personId);
                 store.claimLegacyProfile(personId, speaker);
                 for (AdaptiveResearchPlan.Query plan : plans) {
-                    requireActiveLease(context, personId);
+                    requireActiveLease(ownerLease, personId);
                     List<TavilyClient.Result> results = TavilyClient.search(
                             plan.text,
                             BackgroundResearchPolicy.MAX_DISCOVERIES_PER_QUERY,
-                            () -> !activeLease(context, personId));
-                    requireActiveLease(context, personId);
+                            () -> !activeLease(ownerLease, personId));
+                    requireActiveLease(ownerLease, personId);
                     sourceCount += results.size();
                     for (TavilyClient.Result result : results) {
-                        requireActiveLease(context, personId);
+                        requireActiveLease(ownerLease, personId);
                         if (store.add(
                                 personId, speaker, result, plan.text, plan.category)) {
                             savedCount++;
@@ -108,17 +125,20 @@ public final class ProactiveDiscoveryCoordinator {
             } finally {
                 store.close();
             }
-            requireActiveLease(context, personId);
+            requireActiveLease(ownerLease, personId);
             ProactiveResearchReceiptStore.succeeded(
                     context, personId, trigger, plans.size(), sourceCount, savedCount,
                     startedAt, System.currentTimeMillis());
-            requireActiveLease(context, personId);
+            requireActiveLease(ownerLease, personId);
             if (savedCount > 0) notify(context, speaker, savedCount);
             return savedCount;
         } catch (Exception failure) {
-            ProactiveResearchReceiptStore.failed(
-                    context, personId, trigger, plans.size(), sourceCount, savedCount,
-                    startedAt, System.currentTimeMillis(), failure);
+            if (activeLease(ownerLease, personId)) {
+                requireActiveLease(ownerLease, personId);
+                ProactiveResearchReceiptStore.failed(
+                        context, personId, trigger, plans.size(), sourceCount, savedCount,
+                        startedAt, System.currentTimeMillis(), failure);
+            }
             throw failure;
         } finally {
             RUNNING.set(false);
@@ -154,32 +174,27 @@ public final class ProactiveDiscoveryCoordinator {
                 && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
     }
 
-    private static boolean activeLease(Context context, String expectedPersonId) {
-        PersonProfileStore people = new PersonProfileStore(context.getApplicationContext());
+    private static boolean activeLease(
+            ConfirmedOwnerLease ownerLease,
+            String expectedPersonId) {
         try {
-            Map<String, String> active = people.getActiveProfile();
-            String currentPersonId = active.getOrDefault(
-                    "person_id", active.getOrDefault("name", ""));
-            boolean enabled = new SarahLocationStore(context)
-                    .backgroundResearchEnabled(expectedPersonId);
-            return BackgroundResearchPolicy.leaseStillValid(
-                    expectedPersonId,
-                    currentPersonId,
-                    enabled,
-                    "yes".equals(active.getOrDefault("is_owner", "no")),
-                    "yes".equals(active.getOrDefault("memory_consent", "no")),
-                    Thread.currentThread().isInterrupted());
-        } finally {
-            people.close();
+            if (ownerLease == null
+                    || !expectedPersonId.equals(ownerLease.personId())) return false;
+            ownerLease.requireActive();
+            return true;
+        } catch (IllegalStateException failure) {
+            return false;
         }
     }
 
-    private static void requireActiveLease(Context context, String expectedPersonId)
-            throws InterruptedException {
-        if (!activeLease(context, expectedPersonId)) {
-            throw new InterruptedException(
-                    "Automatic research stopped because its exact-profile consent lease ended");
+    private static void requireActiveLease(
+            ConfirmedOwnerLease ownerLease,
+            String expectedPersonId) {
+        if (ownerLease == null || !expectedPersonId.equals(ownerLease.personId())) {
+            throw new IllegalStateException(
+                    "PROACTIVE_RESEARCH_CONFIRMED_OWNER_LEASE_REQUIRED");
         }
+        ownerLease.requireActive();
     }
 
     private static void notify(Context context, String speaker, int count) {

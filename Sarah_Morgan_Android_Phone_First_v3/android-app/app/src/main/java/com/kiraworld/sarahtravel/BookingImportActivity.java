@@ -17,19 +17,55 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Owner-selected booking import and truthful fail-closed Gmail connection surface. */
 public final class BookingImportActivity extends Activity {
     private static final int REQUEST_DOCUMENT = 801;
+    private static final int MAX_SHARED_FILE_BYTES = 12_000_000;
     private boolean launchedFromShare;
     private EditText sharedText;
+    private String boundPersonId = "";
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        EventTripPreUpgradeBackupGate.Result upgradeState =
+                SarahApplication.eventTripUpgradeState();
+        if (upgradeState == null) {
+            upgradeState = EventTripPreUpgradeBackupGate.ensure(this);
+        }
+        if (!upgradeState.mayOpenV2) {
+            Toast.makeText(
+                    this,
+                    "Booking imports are unavailable because Sarah could not verify the protected event-trip backup. Status: "
+                            + upgradeState.status,
+                    Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
         Intent intent = getIntent();
         launchedFromShare = intent != null && Intent.ACTION_SEND.equals(intent.getAction());
+        boundPersonId = EventTripStore.activePersonId(this);
+        if (launchedFromShare && !hasConfirmedActiveProfileLease()) {
+            finishWithMessage("Choose and confirm the active phone profile before importing booking material. Nothing was copied, saved, sent, or scheduled.");
+            return;
+        }
+        EventTripStore recoveryStore = new EventTripStore(this, boundPersonId);
+        try {
+            EventTripStore.BookingRecoveryResult recovery =
+                    recoveryStore.reconcileBookingClearOperations();
+            if (!recovery.ready) {
+                finishWithMessage("Booking imports are paused because a prior private clear needs review. Status: "
+                        + recovery.status + ". Residual path(s): "
+                        + joinPaths(recovery.residualPaths));
+                return;
+            }
+        } finally {
+            recoveryStore.close();
+        }
         if (launchedFromShare) handleShared(intent);
         else showConnectionsUi();
     }
@@ -108,29 +144,63 @@ public final class BookingImportActivity extends Activity {
         if (requestCode != REQUEST_DOCUMENT || resultCode != RESULT_OK || data == null) return;
         Uri uri = data.getData();
         if (uri == null) return;
-        String type = getContentResolver().getType(uri);
+        String type = approvedMime(uri, "");
+        if (type.isEmpty()) {
+            finishWithMessage("Choose a PNG, JPEG, WebP screenshot, or PDF no larger than 12 MB.");
+            return;
+        }
         new Thread(() -> {
-            if ("application/pdf".equalsIgnoreCase(type)) importPdf(uri);
-            else importScreenshot(uri);
+            if ("application/pdf".equals(type)) importPdf(uri, true);
+            else importScreenshot(uri, type, true);
         }, "SarahBookingDocumentImport").start();
     }
 
     private void handleShared(Intent intent) {
-        String type = intent.getType() == null ? "" : intent.getType();
-        if (type.startsWith("image/") || "application/pdf".equalsIgnoreCase(type)) {
+        String declaredType = intent.getType() == null ? "" : intent.getType();
+        if (declaredType.startsWith("image/")
+                || "application/pdf".equalsIgnoreCase(declaredType)) {
             Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
             if (uri == null) {
                 finishWithMessage("The shared booking file could not be opened.");
                 return;
             }
-            new Thread(() -> {
-                if ("application/pdf".equalsIgnoreCase(type)) importPdf(uri);
-                else importScreenshot(uri);
-            }, "SarahBookingImport").start();
+            if (!"content".equalsIgnoreCase(uri.getScheme())) {
+                finishWithMessage("The external share was rejected. Sarah accepts only a content URI containing a PNG, JPEG, WebP screenshot, or PDF no larger than 12 MB.");
+                return;
+            }
+            reviewExternallySharedFile(uri, declaredType);
             return;
         }
         CharSequence shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
         reviewExternallySharedText(shared == null ? "" : shared.toString());
+    }
+
+    private void reviewExternallySharedFile(Uri uri, String declaredType) {
+        String kind = "application/pdf".equalsIgnoreCase(declaredType) ? "PDF" : "image";
+        new AlertDialog.Builder(this)
+                .setTitle("Review shared booking " + kind)
+                .setMessage("Another app shared a booking " + kind
+                        + ". Nothing has been copied, saved, sent to a service, or scheduled. "
+                        + "Choose Import only if you want Sarah to sanitize and hold this exact item for private booking review.")
+                .setPositiveButton("Import for review", (dialog, which) ->
+                        new Thread(() -> {
+                            String approvedType = approvedMime(uri, declaredType);
+                            if (approvedType.isEmpty()) {
+                                runOnUiThread(() -> finishWithMessage(
+                                        "The confirmed external share was rejected because its resolved content type is not PNG, JPEG, WebP, or PDF."));
+                                return;
+                            }
+                            if ("application/pdf".equals(approvedType)) {
+                                importPdf(uri, true);
+                            } else {
+                                importScreenshot(uri, approvedType, true);
+                            }
+                        }, "SarahConfirmedBookingImport").start())
+                .setNegativeButton("Cancel", (dialog, which) ->
+                        finishWithMessage("Shared booking file was not copied, saved, sent, or scheduled."))
+                .setOnCancelListener(dialog ->
+                        finishWithMessage("Shared booking file was not copied, saved, sent, or scheduled."))
+                .show();
     }
 
     private void reviewExternallySharedText(String text) {
@@ -173,45 +243,112 @@ public final class BookingImportActivity extends Activity {
             finishWithMessage("Externally shared booking text requires your review before import.");
             return;
         }
+        if (!hasConfirmedActiveProfileLease()) {
+            finishWithMessage("Choose and confirm the active phone profile before importing booking text. Nothing was saved or scheduled.");
+            return;
+        }
         BookingLinkParser.BookingLink link = BookingLinkParser.parse(clean);
-        EventTripStore store = new EventTripStore(this);
+        EventTripStore store = new EventTripStore(this, boundPersonId);
+        long saved;
         try {
-            if (link.found()) store.addBookingLink(link.provider, link.bookingType, link.url, clean);
-            else store.addBookingText(clean);
+            saved = link.found()
+                    ? store.addBookingLink(link.provider, link.bookingType, link.url, clean)
+                    : store.addBookingText(clean);
         } finally { store.close(); }
-        EventMonitorScheduler.ensureScheduled(this);
-        EventMonitorScheduler.runSoon(this);
+        if (saved < 0) {
+            finishWithMessage("Choose the active phone profile and try again. Nothing was saved or scheduled.");
+            return;
+        }
+        boolean refreshQueued = queueExactOwnerEventRefresh();
         if (sharedText != null) sharedText.setText("");
-        finishWithMessage("Shared booking material saved as pending review. No trip was changed.");
+        finishWithMessage("Shared booking material saved as pending review. No trip was changed. "
+                + (refreshQueued
+                        ? "One immediate review refresh was queued."
+                        : "No immediate review refresh was queued."));
     }
 
-    private void importScreenshot(Uri uri) {
+    private void importScreenshot(
+            Uri uri,
+            String approvedResolverMimeType,
+            boolean ownerConfirmed) {
         String message;
-        EventTripStore store = new EventTripStore(getApplicationContext());
+        EventTripStore store = new EventTripStore(
+                getApplicationContext(), boundPersonId);
+        File derivative = null;
+        File stagingDirectory = null;
+        boolean rowSaved = false;
         try {
-            File directory = new File(getFilesDir(), "booking_imports");
-            ImageSanitizer.Result result = ImageSanitizer.sanitize(
-                    getContentResolver(), uri, directory);
-            store.addBookingScreenshot(result.file.getAbsolutePath(), "User-shared booking screenshot");
-            EventMonitorScheduler.ensureScheduled(this);
-            EventMonitorScheduler.runSoon(this);
-            message = "Booking screenshot saved as pending review. No trip was changed.";
+            requireConfirmedImportLease(ownerConfirmed);
+            requireBookingRecoveryReady(store);
+            File directory = profileImportDirectory(store);
+            stagingDirectory = createPrivateImageStagingDirectory(directory);
+            File importRoot = new File(getFilesDir(), "booking_imports").getCanonicalFile();
+            ImageSanitizer.Result result;
+            try (PrivateContentSnapshot snapshot = PrivateContentSnapshot.capture(
+                    getContentResolver(),
+                    uri,
+                    importRoot,
+                    stagingDirectory,
+                    MAX_SHARED_FILE_BYTES,
+                    "booking_image",
+                    approvedResolverMimeType)) {
+                result = ImageSanitizer.sanitize(
+                        snapshot.file(),
+                        stagingDirectory,
+                        snapshot.approvedMimeType());
+            }
+            derivative = createPrivateImageTarget(directory);
+            promoteSanitizedImage(
+                    directory, stagingDirectory, result.file, derivative);
+            removeEmptyImageStaging(stagingDirectory);
+            stagingDirectory = null;
+            requireConfirmedImportLease(ownerConfirmed);
+            if (store.addBookingScreenshot(
+                    derivative.getAbsolutePath(), "User-shared booking screenshot") < 0) {
+                throw new IllegalStateException(
+                        "the confirmed active profile changed before the import was saved");
+            }
+            rowSaved = true;
+            boolean refreshQueued = queueExactOwnerEventRefresh();
+            message = "Booking screenshot saved as pending review. No trip was changed. "
+                    + (refreshQueued
+                            ? "One immediate review refresh was queued."
+                            : "No immediate review refresh was queued.");
         } catch (Exception e) {
-            message = "The booking screenshot could not be prepared: " + e.getMessage();
+            if (rowSaved) {
+                message = "Booking screenshot was saved as pending review, but the immediate review refresh failed: "
+                        + e.getMessage() + ". The private derivative was preserved with its row.";
+            } else {
+                String residual = cleanupImportArtifacts(derivative, stagingDirectory);
+                message = "The booking screenshot could not be prepared: " + e.getMessage()
+                        + residualMessage(residual);
+            }
         } finally { store.close(); }
         String finalMessage = message;
         runOnUiThread(() -> finishWithMessage(finalMessage));
     }
 
-    private void importPdf(Uri uri) {
+    private void importPdf(Uri uri, boolean ownerConfirmed) {
         String message;
         File target = null;
-        EventTripStore store = new EventTripStore(getApplicationContext());
+        boolean rowSaved = false;
+        EventTripStore store = new EventTripStore(
+                getApplicationContext(), boundPersonId);
         try {
-            File directory = new File(getFilesDir(), "booking_imports");
-            if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("Import folder unavailable");
-            target = new File(directory, "booking_" + System.currentTimeMillis() + ".pdf");
+            requireConfirmedImportLease(ownerConfirmed);
+            requireBookingRecoveryReady(store);
+            File directory = profileImportDirectory(store);
+            target = new File(
+                    directory, "booking_" + UUID.randomUUID() + ".pdf").getCanonicalFile();
+            if (target.getParentFile() == null
+                    || !target.getParentFile().getCanonicalFile()
+                            .equals(directory.getCanonicalFile())
+                    || target.exists()) {
+                throw new IllegalStateException("Private PDF target was rejected");
+            }
             int total = 0;
+            byte[] signature = new byte[5];
+            int signatureCount = 0;
             byte[] buffer = new byte[8192];
             try (InputStream in = getContentResolver().openInputStream(uri);
                  FileOutputStream out = new FileOutputStream(target)) {
@@ -219,21 +356,262 @@ public final class BookingImportActivity extends Activity {
                 int count;
                 while ((count = in.read(buffer)) != -1) {
                     total += count;
-                    if (total > 12_000_000) throw new IllegalArgumentException("The selected PDF exceeds 12 MB");
+                    if (total > MAX_SHARED_FILE_BYTES) throw new IllegalArgumentException("The selected PDF exceeds 12 MB");
+                    for (int i = 0; i < count && signatureCount < signature.length; i++) {
+                        signature[signatureCount++] = buffer[i];
+                    }
                     out.write(buffer, 0, count);
                 }
+                out.flush();
+                out.getFD().sync();
             }
-            if (total < 5) throw new IllegalArgumentException("The selected PDF is empty");
-            store.addBookingDocument(target.getAbsolutePath(), "User-shared booking PDF");
-            EventMonitorScheduler.ensureScheduled(this);
-            EventMonitorScheduler.runSoon(this);
-            message = "Booking PDF saved as pending review. No trip was changed.";
+            if (signatureCount != 5
+                    || signature[0] != '%'
+                    || signature[1] != 'P'
+                    || signature[2] != 'D'
+                    || signature[3] != 'F'
+                    || signature[4] != '-') {
+                throw new IllegalArgumentException("The selected file does not contain a PDF signature");
+            }
+            requireConfirmedImportLease(ownerConfirmed);
+            if (store.addBookingDocument(
+                    target.getAbsolutePath(), "User-shared booking PDF") < 0) {
+                throw new IllegalStateException(
+                        "the confirmed active profile changed before the import was saved");
+            }
+            rowSaved = true;
+            boolean refreshQueued = queueExactOwnerEventRefresh();
+            message = "Booking PDF saved as pending review. No trip was changed. "
+                    + (refreshQueued
+                            ? "One immediate review refresh was queued."
+                            : "No immediate review refresh was queued.");
         } catch (Exception e) {
-            if (target != null && target.isFile()) target.delete();
-            message = "The booking PDF could not be prepared: " + e.getMessage();
+            if (rowSaved) {
+                message = "Booking PDF was saved as pending review, but the immediate review refresh failed: "
+                        + e.getMessage() + ". The private derivative was preserved with its row.";
+            } else {
+                String residual = cleanupPrivateDerivative(target);
+                message = "The booking PDF could not be prepared: " + e.getMessage()
+                        + residualMessage(residual);
+            }
         } finally { store.close(); }
         String finalMessage = message;
         runOnUiThread(() -> finishWithMessage(finalMessage));
+    }
+
+    private String approvedMime(Uri uri, String declaredType) {
+        if (uri == null || !"content".equalsIgnoreCase(uri.getScheme())) return "";
+        String declared = declaredType == null ? "" : declaredType.trim().toLowerCase();
+        String resolved = getContentResolver().getType(uri);
+        resolved = resolved == null ? "" : resolved.trim().toLowerCase();
+        boolean ownerSelected = declared.isEmpty();
+        if ((ownerSelected || "application/pdf".equals(declared))
+                && "application/pdf".equals(resolved)) return resolved;
+        if ((ownerSelected || declared.startsWith("image/") || "image/*".equals(declared))
+                && ("image/jpeg".equals(resolved)
+                        || "image/png".equals(resolved)
+                        || "image/webp".equals(resolved))) {
+            return resolved;
+        }
+        return "";
+    }
+
+    private boolean hasConfirmedActiveProfileLease() {
+        if (boundPersonId == null || boundPersonId.trim().isEmpty()) return false;
+        PersonProfileStore people = new PersonProfileStore(getApplicationContext());
+        try {
+            Map<String, String> active = people.getActiveProfile();
+            return boundPersonId.equals(active.getOrDefault("person_id", "").trim())
+                    && "yes".equals(active.getOrDefault("active", ""))
+                    && ProfileMigrationPolicy.isConfirmedDisplayName(
+                            active.getOrDefault("name", ""));
+        } finally {
+            people.close();
+        }
+    }
+
+    private boolean queueExactOwnerEventRefresh() {
+        ConfirmedOwnerLease ownerLease = ConfirmedOwnerLease.capture(this);
+        if (ownerLease == null
+                || boundPersonId == null
+                || !boundPersonId.equals(ownerLease.personId())) {
+            return false;
+        }
+        try {
+            ownerLease.requireActive();
+        } catch (IllegalStateException e) {
+            return false;
+        }
+        return EventMonitorScheduler.runSoon(this);
+    }
+
+    private void requireConfirmedImportLease(boolean ownerConfirmed) {
+        if (!ownerConfirmed) {
+            throw new IllegalStateException(
+                    "Visible owner confirmation is required before this external share is copied");
+        }
+        if (!hasConfirmedActiveProfileLease()) {
+            throw new IllegalStateException(
+                    "The confirmed active profile changed before the import began");
+        }
+    }
+
+    private static void requireBookingRecoveryReady(EventTripStore store) {
+        EventTripStore.BookingRecoveryResult recovery =
+                store.reconcileBookingClearOperations();
+        if (!recovery.ready) {
+            throw new IllegalStateException(
+                    "a prior private clear needs review (" + recovery.status + ") at "
+                            + joinPaths(recovery.residualPaths));
+        }
+    }
+
+    private String cleanupPrivateDerivative(File derivative) {
+        if (derivative == null || !derivative.exists()) return "";
+        try {
+            File exact = derivative.getCanonicalFile();
+            File root = new File(getFilesDir(), "booking_imports").getCanonicalFile();
+            if (!exact.getCanonicalPath().startsWith(
+                        root.getCanonicalPath() + File.separator)
+                    || !exact.isFile()
+                    || !exact.delete()
+                    || exact.exists()) {
+                return exact.getCanonicalPath();
+            }
+            return "";
+        } catch (Exception ignored) {
+            return derivative.getAbsolutePath();
+        }
+    }
+
+    private File createPrivateImageStagingDirectory(File profileDirectory) throws Exception {
+        File exactProfile = profileDirectory.getCanonicalFile();
+        File staging = new File(
+                exactProfile, ".pending_image_" + UUID.randomUUID()).getCanonicalFile();
+        if (staging.getParentFile() == null
+                || !staging.getParentFile().getCanonicalFile().equals(exactProfile)
+                || !staging.mkdir()
+                || !staging.isDirectory()) {
+            throw new IllegalStateException("Private image staging directory unavailable");
+        }
+        return staging;
+    }
+
+    private File createPrivateImageTarget(File profileDirectory) throws Exception {
+        File exactProfile = profileDirectory.getCanonicalFile();
+        File target = new File(
+                exactProfile,
+                "booking_screenshot_" + UUID.randomUUID() + ".jpg").getCanonicalFile();
+        if (target.getParentFile() == null
+                || !target.getParentFile().getCanonicalFile().equals(exactProfile)
+                || target.exists()) {
+            throw new IllegalStateException("Private image target was rejected");
+        }
+        return target;
+    }
+
+    private void promoteSanitizedImage(
+            File profileDirectory,
+            File stagingDirectory,
+            File stagedFile,
+            File target) throws Exception {
+        File exactProfile = profileDirectory.getCanonicalFile();
+        File exactStaging = stagingDirectory.getCanonicalFile();
+        File exactStaged = stagedFile.getCanonicalFile();
+        File exactTarget = target.getCanonicalFile();
+        if (exactStaging.getParentFile() == null
+                || !exactStaging.getParentFile().getCanonicalFile().equals(exactProfile)
+                || exactStaged.getParentFile() == null
+                || !exactStaged.getParentFile().getCanonicalFile().equals(exactStaging)
+                || !exactStaged.isFile()
+                || exactTarget.getParentFile() == null
+                || !exactTarget.getParentFile().getCanonicalFile().equals(exactProfile)
+                || exactTarget.exists()) {
+            throw new IllegalStateException("Sanitized image staging scope was rejected");
+        }
+        if (!exactStaged.renameTo(exactTarget)
+                || exactStaged.exists()
+                || !exactTarget.isFile()
+                || exactTarget.length() < 1) {
+            throw new IllegalStateException("Sanitized booking image could not be promoted");
+        }
+    }
+
+    private static void removeEmptyImageStaging(File stagingDirectory) throws Exception {
+        File exactStaging = stagingDirectory.getCanonicalFile();
+        File[] remaining = exactStaging.listFiles();
+        if (remaining == null
+                || remaining.length != 0
+                || !exactStaging.delete()
+                || exactStaging.exists()) {
+            throw new IllegalStateException(
+                    "Private image staging cleanup failed at "
+                            + exactStaging.getCanonicalPath());
+        }
+    }
+
+    private String cleanupImportArtifacts(File derivative, File stagingDirectory) {
+        List<String> residuals = new ArrayList<>();
+        try {
+            File exactStaging = stagingDirectory == null
+                    ? null
+                    : stagingDirectory.getCanonicalFile();
+            File exactDerivative = derivative == null
+                    ? null
+                    : derivative.getCanonicalFile();
+            boolean derivativeInsideStaging = exactStaging != null
+                    && exactDerivative != null
+                    && exactDerivative.getParentFile() != null
+                    && exactDerivative.getParentFile().getCanonicalFile().equals(exactStaging);
+            if (!derivativeInsideStaging) {
+                String derivativeResidual = cleanupPrivateDerivative(exactDerivative);
+                if (!derivativeResidual.isEmpty()) residuals.add(derivativeResidual);
+            }
+            if (exactStaging != null && exactStaging.exists()) {
+                File[] children = exactStaging.listFiles();
+                if (children == null || children.length > 8) {
+                    residuals.add(exactStaging.getCanonicalPath());
+                } else {
+                    for (File child : children) {
+                        String childResidual = cleanupPrivateDerivative(child);
+                        if (!childResidual.isEmpty()) residuals.add(childResidual);
+                    }
+                    File[] after = exactStaging.listFiles();
+                    if (after == null
+                            || after.length != 0
+                            || !exactStaging.delete()
+                            || exactStaging.exists()) {
+                        residuals.add(exactStaging.getCanonicalPath());
+                    }
+                }
+            }
+        } catch (Exception failure) {
+            if (stagingDirectory != null) residuals.add(stagingDirectory.getAbsolutePath());
+            else if (derivative != null) residuals.add(derivative.getAbsolutePath());
+        }
+        StringBuilder out = new StringBuilder();
+        for (String path : residuals) {
+            if (path == null || path.trim().isEmpty()) continue;
+            if (out.length() > 0) out.append(", ");
+            out.append(path);
+        }
+        return out.toString();
+    }
+
+    private static String residualMessage(String residual) {
+        return residual == null || residual.trim().isEmpty()
+                ? ""
+                : ". Exact private residual requiring review: " + residual;
+    }
+
+    private static String joinPaths(java.util.List<String> paths) {
+        if (paths == null || paths.isEmpty()) return "none recorded";
+        StringBuilder out = new StringBuilder();
+        for (String path : paths) {
+            if (out.length() > 0) out.append(", ");
+            out.append(path);
+        }
+        return out.toString();
     }
 
     private void confirmClearImports() {
@@ -246,25 +624,52 @@ public final class BookingImportActivity extends Activity {
     }
 
     private void clearImports() {
-        EventTripStore store = new EventTripStore(this);
+        EventTripStore store = null;
         try {
-            List<Map<String, String>> imports = store.listBookings(1000);
-            File allowed = new File(getFilesDir(), "booking_imports").getCanonicalFile();
-            String allowedPath = allowed.getCanonicalPath() + File.separator;
-            for (Map<String, String> row : imports) {
-                String path = row.getOrDefault("local_path", "");
-                if (path.isEmpty()) continue;
-                File candidate = new File(path).getCanonicalFile();
-                if (candidate.isFile() && candidate.getCanonicalPath().startsWith(allowedPath)) {
-                    candidate.delete();
-                }
+            store = new EventTripStore(this, boundPersonId);
+            EventTripStore.BookingClearResult result =
+                    store.clearBookingImportsAndDerivatives();
+            String message;
+            if (result.success) {
+                message = "Cleared " + result.deletedCount
+                        + " imported booking record(s) and their private derivative file(s).";
+            } else if (result.rowsCleared) {
+                message = "The booking records were cleared, but "
+                        + result.residualPaths.size()
+                        + " private quarantine item(s) remain for review. Status: "
+                        + result.status;
+            } else if (result.rollbackComplete) {
+                message = "Nothing was cleared. Sarah restored the imported booking files "
+                        + "and records. Status: " + result.status;
+            } else {
+                message = "The clear did not complete and needs review. "
+                        + result.residualPaths.size()
+                        + " private item(s) remain unresolved. Status: " + result.status;
             }
-            int count = store.clearBookingImports();
-            Toast.makeText(this, "Cleared " + count + " imported booking record(s).", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         } catch (Exception error) {
             Toast.makeText(this, "Imported booking data could not be cleared safely: "
                     + error.getMessage(), Toast.LENGTH_LONG).show();
-        } finally { store.close(); }
+        } finally {
+            if (store != null) store.close();
+        }
+    }
+
+    private File profileImportDirectory(EventTripStore store) throws Exception {
+        String child = store.profileDirectoryName();
+        if (child.isEmpty() || !store.isActiveProfile()) {
+            throw new IllegalStateException("Choose the active phone profile before importing a booking");
+        }
+        File root = new File(getFilesDir(), "booking_imports").getCanonicalFile();
+        File directory = new File(root, child).getCanonicalFile();
+        String rootPrefix = root.getCanonicalPath() + File.separator;
+        if (!directory.getCanonicalPath().startsWith(rootPrefix)) {
+            throw new IllegalStateException("Import profile folder was rejected");
+        }
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IllegalStateException("Import folder unavailable");
+        }
+        return directory;
     }
 
     private void finishWithMessage(String message) {

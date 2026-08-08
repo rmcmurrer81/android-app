@@ -11,22 +11,42 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Optional team-owned secrets. People installing Sarah never enter these.
-      SARAH_OPENAI_API_KEY: ${{ secrets.SARAH_OPENAI_API_KEY }}
+      # Only non-secret route/model identity reaches the artifact build.
       SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
-      SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
+      SARAH_EXPECTED_DEPLOYMENT_ID: ${{ secrets.SARAH_EXPECTED_DEPLOYMENT_ID }}
+      SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ secrets.SARAH_EXPECTED_WORKER_SOURCE_SHA256 }}
+      SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ secrets.SARAH_EXPECTED_WORKER_CONFIG_SHA256 }}
       SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
-      SARAH_TRAVEL_COMMERCE_TOKEN: ${{ secrets.SARAH_TRAVEL_COMMERCE_TOKEN }}
       SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
-      SARAH_VOICE_CONCIERGE_TOKEN: ${{ secrets.SARAH_VOICE_CONCIERGE_TOKEN }}
-      SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
       SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
       SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
       SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
-      SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
     steps:
       - name: Check out Sarah source
         uses: actions/checkout@v4
+
+      - name: Fail closed on a partially bound protected backend
+        shell: bash
+        run: |
+          fields=(
+            SARAH_MODEL_BACKEND_URL
+            SARAH_EXPECTED_DEPLOYMENT_ID
+            SARAH_EXPECTED_WORKER_SOURCE_SHA256
+            SARAH_EXPECTED_WORKER_CONFIG_SHA256
+          )
+          present=0
+          for field in "${fields[@]}"; do
+            if [ -n "${!field}" ]; then present=$((present + 1)); fi
+          done
+          if [ "$present" -ne 0 ] && [ "$present" -ne "${#fields[@]}" ]; then
+            echo 'Protected backend configuration is partial. Refusing to publish an APK that can never pass its authenticated identity contract.'
+            exit 1
+          fi
+          if [ "$present" -eq "${#fields[@]}" ]; then
+            echo 'Protected backend URL, deployment ID, source digest, and config digest are all bound; runtime owner activation remains required.'
+          else
+            echo 'No protected backend is bound; this artifact will remain honestly local/offline.'
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -41,6 +61,18 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java
           java -cp build/pure-java-test ConversationModePolicyTest
+
+      - name: Test protected backend capability truth
+        run: |
+          rm -rf build/protected-capability-test
+          mkdir -p build/protected-capability-test
+          javac -encoding UTF-8 -d build/protected-capability-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ProtectedBackendCapabilityPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPreUpgradeVersionPolicyTest.java
+          java -cp build/protected-capability-test com.kiraworld.sarahtravel.ProtectedBackendCapabilityPolicyTest
+          java -cp build/protected-capability-test com.kiraworld.sarahtravel.EventTripPreUpgradeVersionPolicyTest
 
       - name: Test all four hackathon track capabilities
         run: |
@@ -70,6 +102,8 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
@@ -87,6 +121,8 @@ jobs:
 
       - name: Test event discovery timed trips and agentic planning
         run: |
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
           rm -rf build/agentic-test
           mkdir -p build/agentic-test
           javac -encoding UTF-8 -d build/agentic-test \
@@ -95,17 +131,23 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelPlanningConversationPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TripWindowParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CityVisitPlanner.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticGlobalActionPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationPackResponder.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelMediaHelper.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripProfilePolicyTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/BookingLinkParserTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPlannerTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/KnownEventCatalogTest.java \
@@ -114,6 +156,7 @@ jobs:
           java -cp build/agentic-test AgenticTravelPlannerTest
           java -cp build/agentic-test DestinationPackResponderTest
           java -cp build/agentic-test EventTripIntentParserTest
+          java -cp build/agentic-test com.kiraworld.sarahtravel.EventTripProfilePolicyTest
           java -cp build/agentic-test BookingLinkParserTest
           java -cp build/agentic-test EventTripPlannerTest
           java -cp build/agentic-test KnownEventCatalogTest
@@ -128,17 +171,29 @@ jobs:
             exit 1
           fi
 
+      - name: Prove release artifacts cannot inherit reusable credentials
+        run: python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
+
       - name: Report optional team integrations without printing secrets
         run: |
-          test -n "$SARAH_OPENAI_API_KEY$SARAH_MODEL_BACKEND_URL" && echo 'OpenAI conversation: configured' || echo 'OpenAI conversation: public/local fallback build'
+          if [ -n "$SARAH_MODEL_BACKEND_URL" ] \
+             && [ -n "$SARAH_EXPECTED_DEPLOYMENT_ID" ] \
+             && [ -n "$SARAH_EXPECTED_WORKER_SOURCE_SHA256" ] \
+             && [ -n "$SARAH_EXPECTED_WORKER_CONFIG_SHA256" ]; then
+            echo 'Protected online conversation: public identity present; owner activation required after install'
+          else
+            echo 'Protected online conversation: not identity-bound; local/offline routes only'
+          fi
           echo 'ElevenLabs voice ID: Sarah Morgan source default selected'
-          test -n "$SARAH_ELEVENLABS_API_KEY$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs service: configured' || echo 'ElevenLabs service: Android TTS fallback build'
+          test -n "$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs protected route identity present; owner activation required' || echo 'ElevenLabs service: Android TTS fallback build'
           test -n "$SARAH_TRAVEL_COMMERCE_URL" && echo 'Travel commerce: configured' || echo 'Travel commerce: external links only'
           echo 'Offline flight companion: bundled and network independent'
 
       - name: Validate Sarah Morgan ElevenLabs voice
+        env:
+          SARAH_ELEVENLABS_VALIDATION_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
         run: |
-          if [ -z "$SARAH_ELEVENLABS_API_KEY" ]; then
+          if [ -z "$SARAH_ELEVENLABS_VALIDATION_API_KEY" ]; then
             echo 'Direct ElevenLabs validation skipped because this build uses no direct service key.'
             exit 0
           fi
@@ -147,7 +202,7 @@ jobs:
           printf '{"text":"Sarah voice connection test.","model_id":"%s","voice_settings":{"stability":0.5,"similarity_boost":0.75,"style":0.0,"use_speaker_boost":true,"speed":1.0}}' "$MODEL_ID" > /tmp/sarah-elevenlabs-request.json
           HTTP_CODE=$(curl -sS -o /tmp/sarah-elevenlabs-response.bin -w '%{http_code}' \
             -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream?output_format=mp3_44100_128" \
-            -H "xi-api-key: ${SARAH_ELEVENLABS_API_KEY}" \
+            -H "xi-api-key: ${SARAH_ELEVENLABS_VALIDATION_API_KEY}" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/sarah-elevenlabs-request.json)
           if [ "$HTTP_CODE" != '200' ]; then

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class SarahTts implements TextToSpeech.OnInitListener {
     public interface Listener {
@@ -34,6 +35,7 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
     private String pendingText = "";
     private SpeechListener pendingSpeechListener;
     private final Map<String, SpeechListener> speechListeners = new ConcurrentHashMap<>();
+    private final AtomicLong replyUtteranceSequence = new AtomicLong();
     private OfflineSongCatalog.Song pendingSong;
     private Runnable pendingSongComplete;
     private List<OfflineSongCatalog.Line> songLines = Collections.emptyList();
@@ -56,6 +58,16 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
     public void onInit(int status) {
         ready = status == TextToSpeech.SUCCESS;
         if (!ready) {
+            SpeechListener failedSpeech = pendingSpeechListener;
+            pendingText = "";
+            pendingSpeechListener = null;
+            pendingSong = null;
+            pendingSongComplete = null;
+            if (failedSpeech != null) {
+                failedSpeech.onError(
+                        System.currentTimeMillis(),
+                        "android_tts_initialization_failed");
+            }
             if (listener != null) listener.onUnavailable();
             return;
         }
@@ -152,7 +164,7 @@ public final class SarahTts implements TextToSpeech.OnInitListener {
             return;
         }
         restoreNormalVoice();
-        String utteranceId = "sarah_reply_" + System.currentTimeMillis();
+        String utteranceId = "sarah_reply_" + replyUtteranceSequence.incrementAndGet();
         if (progress != null) speechListeners.put(utteranceId, progress);
         int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
         if (result == TextToSpeech.ERROR) {

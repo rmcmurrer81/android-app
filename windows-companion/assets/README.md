@@ -1,10 +1,9 @@
 # Sarah Windows portrait assets
 
-`sarah_adult_portrait_r2.png` is an inactive, replaceable owner-review
-candidate for the Sarah Morgan Windows companion. It does not define Sarah's
+`sarah_adult_portrait_r2.png` is Robert's approved visual source for the Sarah
+Morgan Windows companion. It remains replaceable without changing Sarah's
 identity, age record, memories, personality, voice, or travel data. The
-existing code-drawn avatar remains the rollback path until the asset is
-connected, packaged, tested, and accepted by Robert.
+existing code-drawn avatar remains the missing/corrupt/drift rollback path.
 
 ## Candidate evidence
 
@@ -12,7 +11,7 @@ connected, packaged, tested, and accepted by Robert.
 - Bytes: `1784755`
 - SHA-256: `a675dcadc4be7e1bc949b40ee19cf362df6ba38870fecd49977623bf5a746ebe`
 - Generator path: Codex built-in image generation
-- Status: `INACTIVE_OWNER_REVIEW_CANDIDATE_NOT_APPROVED`
+- Status: `OWNER_APPROVED_VISUAL_SOURCE_2026-08-08`
 
 The bounded runtime derivative is
 `sarah_adult_portrait_r2_runtime_512.png` (`294551` bytes, SHA-256
@@ -20,11 +19,15 @@ The bounded runtime derivative is
 It is a 512-by-512 Lanczos downscale of the master, saved as an optimized RGB
 PNG. The master remains unchanged for review and later derivatives.
 
-The R2 Windows source now resolves and validates only this bounded derivative,
-loads it once into the 180-by-175 corner presence, and retains the original
-code-drawn avatar as the missing/corrupt/drift fallback. Its outline pulse is
-cosmetic only; it is not lip-sync or full character animation. The master is
-not bundled. A new Windows build and Robert's visual acceptance remain pending.
+The R2 Windows source resolves and validates only this bounded derivative,
+loads it once into a 20 FPS CPU-only layered renderer for the 180-by-175 corner
+presence, and retains the original code-drawn avatar as the
+missing/corrupt/drift fallback. The renderer adds bounded eyelid, gaze, head,
+and mouth layers without overwriting either PNG. Mouth opening follows the
+locally decoded exact ElevenLabs audio envelope; Windows System.Speech and
+decoder failures are labeled as speaking-activity animation, not lip sync.
+The master is not bundled. Physical motion, synchronization, and resource-use
+acceptance on Robert's 8 GB no-GPU laptop remain pending.
 
 ## Generation brief
 
@@ -44,7 +47,8 @@ Any later integration must:
 - load this asset through a packaged-resource resolver, not a developer-only
   absolute path;
 - retain a clean fallback when the asset cannot be loaded;
-- avoid claiming that a static portrait is a fully animated character;
+- distinguish the implemented bounded live 2D portrait from a 3D body or full
+  facial-performance rig;
 - keep animation cosmetic and separate from Sarah's conversation and state;
 - pass the Windows installer self-test on the 8 GB, no-GPU target laptop; and
 - remain prerelease until Robert visually accepts it.

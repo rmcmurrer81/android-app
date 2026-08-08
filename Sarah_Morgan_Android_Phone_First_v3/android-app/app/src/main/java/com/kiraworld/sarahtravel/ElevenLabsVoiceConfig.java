@@ -3,9 +3,8 @@ package com.kiraworld.sarahtravel;
 /**
  * Team-owned ElevenLabs configuration for Sarah's premium online voice.
  *
- * The person installing Sarah is never asked for an ElevenLabs key. For a
- * private hackathon APK the build may inject a tightly restricted key. A
- * public release should use the protected backend fields instead.
+ * Provider keys are never accepted by the app or compiled into an artifact.
+ * Voice uses the same owner-activated, revocable Sarah backend access as text.
  */
 public final class ElevenLabsVoiceConfig {
     /** Voice Design ID for the original Sarah Morgan voice. Voice IDs are not credentials. */
@@ -23,7 +22,7 @@ public final class ElevenLabsVoiceConfig {
     private ElevenLabsVoiceConfig() { }
 
     public static String apiKey() {
-        return clean(BuildConfig.SARAH_ELEVENLABS_API_KEY);
+        return "";
     }
 
     public static String voiceId() {
@@ -37,11 +36,12 @@ public final class ElevenLabsVoiceConfig {
     }
 
     public static String backendUrl() {
-        return clean(BuildConfig.SARAH_ELEVENLABS_BACKEND_URL);
+        String root = protectedRoot(SarahModelConfig.backendUrl());
+        return root.isEmpty() ? "" : root + "/voice";
     }
 
     public static String backendToken() {
-        return clean(BuildConfig.SARAH_ELEVENLABS_BACKEND_TOKEN);
+        return SarahModelConfig.backendToken();
     }
 
     public static boolean directConfigured() {
@@ -49,7 +49,12 @@ public final class ElevenLabsVoiceConfig {
     }
 
     public static boolean backendConfigured() {
-        return backendUrl().startsWith("https://") && !voiceId().isEmpty();
+        return backendUrl().startsWith("https://")
+                && !backendToken().isEmpty()
+                && !voiceId().isEmpty()
+                && backendToken().equals(SarahModelConfig.backendToken())
+                && protectedRoot(backendUrl()).equalsIgnoreCase(
+                        protectedRoot(SarahModelConfig.backendUrl()));
     }
 
     public static boolean isConfigured() {
@@ -72,5 +77,17 @@ public final class ElevenLabsVoiceConfig {
 
     private static String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String protectedRoot(String value) {
+        String root = clean(value);
+        while (root.endsWith("/")) root = root.substring(0, root.length() - 1);
+        for (String suffix : new String[]{"/voice", "/chat", "/search"}) {
+            if (root.endsWith(suffix)) {
+                root = root.substring(0, root.length() - suffix.length());
+                break;
+            }
+        }
+        return root;
     }
 }

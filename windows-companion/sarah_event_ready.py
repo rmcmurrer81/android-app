@@ -12,12 +12,20 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 import webbrowser
 
+from PIL import Image
+
+from sarah_live_avatar import AudioEnvelope, AvatarMotionModel, PortraitFrameRenderer
 from sarah_core import (
     SarahDatabase, bundled_event_config_path, load_bundled_event_config,
     runtime_setting, sync_decrypt, sync_encrypt, sync_signature,
 )
 from sarah_sync_server import SarahSyncServer
-from sarah_windows import SarahApp, portrait_packaged_self_test
+from sarah_windows import (
+    SARAH_PORTRAIT_DISPLAY_SIZE,
+    SarahApp,
+    portrait_packaged_self_test,
+    resolve_sarah_portrait,
+)
 
 
 class SarahEventReadyApp(SarahApp):
@@ -267,13 +275,41 @@ class SarahEventReadyApp(SarahApp):
 
 def self_test() -> int:
     portrait_packaged_self_test()
+    portrait_path = resolve_sarah_portrait()
+    if portrait_path is None:
+        raise RuntimeError("Approved Sarah portrait did not resolve for live-animation self-test")
+    with Image.open(portrait_path) as portrait:
+        portrait.load()
+        renderer = PortraitFrameRenderer(portrait, SARAH_PORTRAIT_DISPLAY_SIZE)
+    motion = AvatarMotionModel(seed=0x53415241, clock=lambda: 0.0)
+    idle_frame = renderer.render(motion.pose_at(0.0))
+    motion.start_audio(
+        AudioEnvelope((0.0, 0.92), 0.1, 0.2, True, "packaged_self_test_pcm"),
+        generation=1,
+        now=0.0,
+    )
+    speaking_frame = renderer.render(motion.pose_at(0.1))
+    if idle_frame.tobytes() == speaking_frame.tobytes():
+        raise RuntimeError("Packaged Sarah live-avatar renderer produced no visible motion")
+    if not motion.stop_speaking(1):
+        raise RuntimeError("Packaged Sarah live-avatar generation stop failed")
     bundled_path = bundled_event_config_path()
     if bundled_path.is_file():
+        raw_bundled = json.loads(bundled_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_bundled, dict):
+            raise RuntimeError("Bundled event configuration is not an object")
+        forbidden = sorted(
+            str(key) for key in raw_bundled
+            if any(marker in str(key) for marker in ("TOKEN", "API_KEY", "PASSWORD", "SECRET"))
+        )
+        if forbidden:
+            raise RuntimeError(
+                "Bundled event configuration contains reusable credential fields: "
+                + ", ".join(forbidden)
+            )
         bundled = load_bundled_event_config(bundled_path)
         if not bundled.get("SARAH_MODEL_BACKEND_URL", "").startswith("https://"):
             raise RuntimeError("Bundled event model backend URL is absent or is not HTTPS")
-        if not bundled.get("SARAH_MODEL_BACKEND_TOKEN"):
-            raise RuntimeError("Bundled event model backend token is absent")
         if not bundled.get("SARAH_MODEL_PROVIDER") or not bundled.get("SARAH_MODEL_ID"):
             raise RuntimeError("Bundled event model provider configuration is incomplete")
     with tempfile.TemporaryDirectory(prefix="sarah-event-ready-", ignore_cleanup_errors=True) as folder:

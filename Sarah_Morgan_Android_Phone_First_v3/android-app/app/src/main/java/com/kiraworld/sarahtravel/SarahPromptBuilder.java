@@ -143,7 +143,8 @@ public final class SarahPromptBuilder {
         b.append("CAPABILITIES THIS TURN\n");
         b.append("- Photo included: ").append(photoIncluded).append("\n");
         b.append("- Live web search enabled: ").append(webEnabled).append("\n");
-        b.append("- Team model connection included in build: ").append(SarahModelConfig.fullConversationAvailable()).append("\n");
+        b.append("- Connected model route recently verified and eligible to attempt: ").append(SarahModelConfig.fullConversationAvailable()).append("\n");
+        b.append("- Cached eligibility is not proof that the current turn succeeded; only the returned turn receipt can establish the actual route.\n");
         b.append("- Team travel-commerce backend configured: ").append(TravelCommerceConfig.isConfigured()).append("\n");
         b.append("- Team voice-concierge backend configured: ").append(VoiceConciergeConfig.isConfigured()).append("\n\n");
 

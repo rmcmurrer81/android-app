@@ -35,29 +35,51 @@ public final class DestinationKnowledgeCoordinator {
             String apiKey,
             String model,
             int limit) throws Exception {
+        return refreshPending(
+                db, personKey, providerId, apiKey, model, limit, null);
+    }
+
+    public static int refreshPending(
+            SarahDatabase db,
+            String personKey,
+            String providerId,
+            String apiKey,
+            String model,
+            int limit,
+            ConfirmedOwnerLease ownerLease) throws Exception {
+        requireActive(ownerLease);
+        if (ownerLease != null
+                && !personKey.equals(KnowledgeProfileKey.forProfile(
+                        ownerLease.capturedProfile()))) {
+            throw new IllegalStateException("CONFIRMED_OWNER_KNOWLEDGE_KEY_MISMATCH");
+        }
         if (!SarahModelConfig.fullConversationAvailable()
                 && (apiKey == null || apiKey.trim().isEmpty())) return 0;
         if (!RUNNING.compareAndSet(false, true)) return 0;
         try {
             int refreshed = 0;
+            requireActive(ownerLease);
             Map<String, String> profile = db.getProfile();
+            requireActive(ownerLease);
             List<Map<String, String>> memories = db.listMemories(100);
+            requireActive(ownerLease);
             for (String destination : db.listPendingKnowledgeRequests(
                     personKey, Math.max(1, limit))) {
                 long startedAt = System.currentTimeMillis();
                 int sourceCount = 0;
                 String sourceReceipt = "";
+                requireActive(ownerLease);
                 db.recordKnowledgeAttempt(
                         personKey, destination, SarahDatabase.KNOWLEDGE_RUNNING,
                         providerId, 0, "", "", startedAt, 0);
                 try {
-                    if (Thread.currentThread().isInterrupted()) {
-                        throw new InterruptedException("Destination refresh cancelled");
-                    }
+                requireActive(ownerLease);
                 long sourceTime = System.currentTimeMillis();
+                requireActive(ownerLease);
                 List<TavilyClient.Result> sources = TavilyClient.search(
                         destination + " official visitor transport accessibility museums local culture",
                         BackgroundResearchPolicy.MAX_DISCOVERIES_PER_QUERY);
+                requireActive(ownerLease);
                 List<String> sourceUrls = new ArrayList<>();
                 StringBuilder sourceMaterial = new StringBuilder();
                 for (TavilyClient.Result source : sources) {
@@ -92,6 +114,7 @@ public final class DestinationKnowledgeCoordinator {
                         + "Saved trip focus: " + (focus.isEmpty() ? "none" : focus) + "\n"
                         + "Source capture time (Unix ms): " + sourceTime + "\n"
                         + sourceMaterial;
+                requireActive(ownerLease);
                 ConnectedModelResponse structured = ConnectedModelGateway.respondDetailed(
                         providerId,
                         apiKey,
@@ -101,11 +124,10 @@ public final class DestinationKnowledgeCoordinator {
                         message,
                         false,
                         null);
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new InterruptedException("Destination refresh cancelled");
-                }
+                requireActive(ownerLease);
                 JSONObject json = new JSONObject(stripCodeFence(structured.reply));
                 long now = System.currentTimeMillis();
+                requireActive(ownerLease);
                 db.upsertKnowledgePack(
                         personKey,
                         value(json, "destination", destination),
@@ -118,6 +140,7 @@ public final class DestinationKnowledgeCoordinator {
                         sourceReceipt,
                         now,
                         now + PACK_LIFETIME_MS);
+                requireActive(ownerLease);
                 db.recordKnowledgeAttempt(
                         personKey, destination, "SUCCEEDED",
                         structured.provider, sourceCount, sourceReceipt, "",
@@ -125,6 +148,7 @@ public final class DestinationKnowledgeCoordinator {
                 refreshed++;
                 } catch (Exception failure) {
                     try {
+                        requireActive(ownerLease);
                         db.recordKnowledgeAttempt(
                                 personKey, destination, SarahDatabase.KNOWLEDGE_FAILED,
                                 providerId, sourceCount, sourceReceipt,
@@ -140,6 +164,14 @@ public final class DestinationKnowledgeCoordinator {
         } finally {
             RUNNING.set(false);
         }
+    }
+
+    private static void requireActive(ConfirmedOwnerLease ownerLease)
+            throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Destination refresh cancelled");
+        }
+        if (ownerLease != null) ownerLease.requireActive();
     }
 
     private static String interestContext(

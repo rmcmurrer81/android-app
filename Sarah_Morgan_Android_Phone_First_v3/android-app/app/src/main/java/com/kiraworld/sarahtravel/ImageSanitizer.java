@@ -1,16 +1,17 @@
 package com.kiraworld.sarahtravel;
 
-import android.content.ContentResolver;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.net.Uri;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
+import java.nio.file.Files;
+import java.util.UUID;
 
 public final class ImageSanitizer {
+    private static final long MAX_SOURCE_PIXELS = 100_000_000L;
+    private static final long MAX_DECODE_PIXELS = 3_000_000L;
     public static final class Result {
         public final byte[] jpeg;
         public final File file;
@@ -19,26 +20,104 @@ public final class ImageSanitizer {
 
     private ImageSanitizer() { }
 
-    public static Result sanitize(ContentResolver resolver, Uri uri, File directory) throws Exception {
+    /** Decode only one already-fsynced, read-only private snapshot. */
+    public static Result sanitize(
+            File snapshot,
+            File directory,
+            String approvedResolverMimeType) throws Exception {
+        File exactDirectory = directory.getCanonicalFile();
+        File exactSnapshot = snapshot.getCanonicalFile();
+        if (!exactDirectory.isDirectory()
+                || exactSnapshot.getParentFile() == null
+                || !exactSnapshot.getParentFile().getCanonicalFile().equals(exactDirectory)
+                || !exactSnapshot.isFile()
+                || exactSnapshot.length() < 1
+                || exactSnapshot.length() > PrivateContentSnapshot.MAX_IMAGE_BYTES
+                || exactSnapshot.canWrite()) {
+            throw new IllegalArgumentException("The private image snapshot boundary was rejected.");
+        }
+        // Read the exact sealed file once. Both bounds and pixel decoding use
+        // this same immutable byte array; no content URI is reopened.
+        byte[] source = Files.readAllBytes(exactSnapshot.toPath());
+        if (source.length < 1
+                || source.length != exactSnapshot.length()
+                || source.length > PrivateContentSnapshot.MAX_IMAGE_BYTES) {
+            throw new IllegalArgumentException("The private image snapshot changed while reading.");
+        }
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
-        try (InputStream in = resolver.openInputStream(uri)) { BitmapFactory.decodeStream(in, null, bounds); }
+        BitmapFactory.decodeByteArray(source, 0, source.length, bounds);
+        String approvedMime = PrivateContentSnapshot.normalizeApprovedImageMime(
+                approvedResolverMimeType);
+        String decodedMime = PrivateContentSnapshot.normalizeApprovedImageMime(
+                bounds.outMimeType);
+        if (bounds.outWidth < 1
+                || bounds.outHeight < 1
+                || bounds.outWidth > 32_768
+                || bounds.outHeight > 32_768
+                || (long) bounds.outWidth * (long) bounds.outHeight > MAX_SOURCE_PIXELS) {
+            throw new IllegalArgumentException("The selected image dimensions were rejected.");
+        }
+        if (approvedMime.isEmpty() || !approvedMime.equals(decodedMime)) {
+            throw new IllegalArgumentException(
+                    "The selected image pixels do not match the approved content type.");
+        }
         int sample = 1;
         int max = Math.max(bounds.outWidth, bounds.outHeight);
         while (max / sample > 1600) sample *= 2;
+        long sampledWidth = (bounds.outWidth + (long) sample - 1L) / sample;
+        long sampledHeight = (bounds.outHeight + (long) sample - 1L) / sample;
+        if (sampledWidth * sampledHeight > MAX_DECODE_PIXELS) {
+            throw new IllegalArgumentException("The selected image decode allocation was rejected.");
+        }
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = sample;
-        Bitmap bitmap;
-        try (InputStream in = resolver.openInputStream(uri)) { bitmap = BitmapFactory.decodeStream(in, null, opts); }
+        Bitmap bitmap = BitmapFactory.decodeByteArray(source, 0, source.length, opts);
         if (bitmap == null) throw new IllegalArgumentException("The selected image could not be read.");
+        if ((long) bitmap.getWidth() * (long) bitmap.getHeight() > MAX_DECODE_PIXELS) {
+            bitmap.recycle();
+            throw new IllegalArgumentException("The decoded image exceeded its pixel limit.");
+        }
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, buffer);
-        bitmap.recycle();
+        try {
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 88, buffer)) {
+                throw new IllegalArgumentException("The selected image could not be sanitized.");
+            }
+        } finally {
+            bitmap.recycle();
+        }
         byte[] bytes = buffer.toByteArray();
-        directory.mkdirs();
-        File file = new File(directory, "trip_photo_" + System.currentTimeMillis() + ".jpg");
-        try (FileOutputStream out = new FileOutputStream(file)) { out.write(bytes); }
-        return new Result(bytes, file);
+        if (bytes.length < 1) {
+            throw new IllegalArgumentException("The sanitized image was empty.");
+        }
+        File file = new File(
+                exactDirectory, "sanitized_image_" + UUID.randomUUID() + ".jpg")
+                .getCanonicalFile();
+        if (file.getParentFile() == null
+                || !file.getParentFile().getCanonicalFile().equals(exactDirectory)
+                || file.exists()
+                || !file.createNewFile()) {
+            throw new IllegalStateException("Sanitized image target was rejected.");
+        }
+        boolean complete = false;
+        try {
+            try (FileOutputStream out = new FileOutputStream(file, false)) {
+                out.write(bytes);
+                out.flush();
+                out.getFD().sync();
+            }
+            if (file.length() != bytes.length) {
+                throw new IllegalStateException("Sanitized image write was incomplete.");
+            }
+            complete = true;
+            return new Result(bytes, file);
+        } finally {
+            if (!complete && file.exists() && (!file.delete() || file.exists())) {
+                throw new IllegalStateException(
+                        "Incomplete sanitized image cleanup failed at "
+                                + file.getCanonicalPath());
+            }
+        }
     }
 
     /** Re-decodes pixels and re-encodes a bounded JPEG; EXIF and location metadata are not copied. */

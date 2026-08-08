@@ -26,8 +26,10 @@ public final class TavilyClient {
     }
     private TavilyClient() { }
     public static boolean configured() {
-        return SarahModelConfig.backendUrl().startsWith("https://")
-                && !SarahModelConfig.backendToken().isEmpty();
+        android.content.Context context = SarahApplication.appContext();
+        return SarahModelConfig.protectedBackendConfigured()
+                && context != null
+                && ProtectedBackendCapabilities.currentSourceReady(context);
     }
     public static List<Result> search(String query, int limit) throws Exception {
         return search(query, limit, () -> Thread.currentThread().isInterrupted());

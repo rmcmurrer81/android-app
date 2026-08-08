@@ -1,11 +1,11 @@
 package com.kiraworld.sarahtravel;
 
 /**
- * Build-owned conversation model configuration.
+ * Public build identity plus owner-activated protected-route configuration.
  *
- * End users do not choose a provider, model, or API key in Sarah's Settings.
- * The hackathon team controls those choices here, through build variables,
- * and in ConnectedModelGateway.
+ * The team selects a provider/model and may include a non-secret suggested
+ * HTTPS route. A confirmed owner supplies the separate revocable Sarah access
+ * code after installation; no reusable credential is compiled into the APK.
  */
 public final class SarahModelConfig {
     /** Provider selected by the team build; ordinary users never enter provider keys. */
@@ -21,16 +21,16 @@ public final class SarahModelConfig {
 
     private SarahModelConfig() { }
 
-    /** Actual direct OpenAI credential, if a private test build injects one. */
+    /** Direct provider credentials are intentionally unsupported in artifacts. */
     public static String openAiApiKey() {
-        return clean(BuildConfig.SARAH_OPENAI_API_KEY);
+        return "";
     }
 
     /**
      * Compatibility accessor retained for existing activity code.
      *
-     * It returns the real OpenAI key when present. If only Sarah's ElevenLabs
-     * voice is configured, it returns a harmless non-secret marker so the
+     * If Sarah's protected voice is configured, this returns a harmless
+     * non-secret marker so the
      * legacy voice branch runs. SecureStore deliberately uses openAiApiKey()
      * instead, so this marker is never sent to the conversation model.
      */
@@ -41,20 +41,61 @@ public final class SarahModelConfig {
     }
 
     /**
-     * Optional protected Sarah backend. When configured, the team routes the
-     * selected provider through server-side bindings instead of embedding a key.
+     * Owner-activated protected Sarah backend. The encrypted runtime route wins
+     * over an optional non-secret address suggested by the build.
      */
     public static String backendUrl() {
+        android.content.Context context = SarahApplication.appContext();
+        String activated = context == null ? "" : SecureStore.loadSarahBackendUrl(context);
+        if (!activated.isEmpty()) return activated;
         return clean(BuildConfig.SARAH_MODEL_BACKEND_URL);
     }
 
-    /** Optional build-owned bearer token used by SarahBackendClient. */
+    /** Revocable app access code loaded only from Android Keystore storage. */
     public static String backendToken() {
-        return clean(BuildConfig.SARAH_MODEL_BACKEND_TOKEN);
+        android.content.Context context = SarahApplication.appContext();
+        return context == null ? "" : SecureStore.loadSarahBackendToken(context);
     }
 
+    public static String expectedDeploymentId() {
+        return clean(BuildConfig.SARAH_EXPECTED_DEPLOYMENT_ID);
+    }
+
+    public static String expectedWorkerSourceSha256() {
+        return clean(BuildConfig.SARAH_EXPECTED_WORKER_SOURCE_SHA256).toLowerCase(java.util.Locale.US);
+    }
+
+    public static String expectedWorkerConfigSha256() {
+        return clean(BuildConfig.SARAH_EXPECTED_WORKER_CONFIG_SHA256).toLowerCase(java.util.Locale.US);
+    }
+
+    public static String buildCommit() {
+        return clean(BuildConfig.SARAH_BUILD_COMMIT);
+    }
+
+    /** Build configuration exists, but this does not claim that the route is healthy. */
+    public static boolean conversationConfigured() {
+        if (!backendUrl().isEmpty()) return protectedBackendConfigured();
+        return directOpenAiConfigured();
+    }
+
+    public static boolean protectedBackendConfigured() {
+        return backendUrl().startsWith("https://") && !backendToken().isEmpty();
+    }
+
+    public static boolean directOpenAiConfigured() {
+        return false;
+    }
+
+    /** A route is available only after the exact protected contract is verified. */
     public static boolean fullConversationAvailable() {
-        return !backendUrl().isEmpty() || !openAiApiKey().isEmpty();
+        if (!backendUrl().isEmpty()) {
+            android.content.Context context = SarahApplication.appContext();
+            return protectedBackendConfigured()
+                    && context != null
+                    && ProtectedBackendCapabilities.conversationReady(context);
+        }
+        return directOpenAiConfigured();
     }
 
     public static String providerLabel() {

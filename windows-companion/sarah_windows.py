@@ -13,7 +13,15 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 import webbrowser
 
-from PIL import Image, ImageDraw, ImageOps, ImageTk
+from PIL import Image, ImageDraw, ImageTk
+
+from sarah_live_avatar import (
+    AvatarMotionModel,
+    HIDDEN_AVATAR_POLL_INTERVAL_MS,
+    LIVE_AVATAR_FRAME_INTERVAL_MS,
+    PortraitFrameRenderer,
+    decode_audio_envelope,
+)
 
 from sarah_core import (
     ChannelResponse, ElevenLabsVoice, ModelClient, SarahDatabase, TavilyResearch,
@@ -164,7 +172,14 @@ class SarahApp:
         self.next_background_research_at = self.last_interaction_at + 120.0
         self._portrait_load_attempted = False
         self._portrait_photo = None
+        self._portrait_base_image = None
+        self._portrait_renderer = None
         self._portrait_asset_path: Path | None = None
+        self._avatar_motion = AvatarMotionModel()
+        self._avatar_lip_sync_receipt: dict[str, object] = {
+            "mode": "idle",
+            "physical_visual_acceptance": "pending",
+        }
         self.tray = None
         self.corner: tk.Toplevel | None = None
         self._build_ui()
@@ -419,6 +434,9 @@ class SarahApp:
             self.voice_generation = previous + 1
             process = self._active_voice_process
         self._terminate_exact_voice_process(process)
+        avatar_motion = getattr(self, "_avatar_motion", None)
+        if avatar_motion is not None:
+            avatar_motion.stop_speaking(previous)
         return int(self.voice_generation)
 
     def stop_voice(self) -> None:
@@ -492,28 +510,68 @@ class SarahApp:
                     self._active_voice_generation = None
 
     def _play_audio_file(self, audio_path: Path | str, generation: int) -> tuple[bool, str]:
-        if sys.platform.startswith("win"):
-            escaped = str(Path(audio_path).resolve()).replace("'", "''")
-            script = (
-                "$ErrorActionPreference='Stop';"
-                "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
-                "public static class SarahMci { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode)] "
-                "public static extern int mciSendString(string command, System.Text.StringBuilder result, "
-                "int resultLength, IntPtr callback); }';"
-                f"$p='{escaped}';$a='sarahvoice';"
-                "$o=[SarahMci]::mciSendString(('open \"'+$p+'\" alias '+$a),$null,0,[IntPtr]::Zero);"
-                "if($o -ne 0){exit 21};"
-                "try{$r=[SarahMci]::mciSendString(('play '+$a+' wait'),$null,0,[IntPtr]::Zero);"
-                "if($r -ne 0){exit 22}}finally{[void][SarahMci]::mciSendString(('close '+$a),$null,0,[IntPtr]::Zero)}"
-            )
-            return self._run_cancellable_voice_process(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                generation,
-            )
-        if playsound:
-            playsound(str(audio_path), block=True)
-            return True, ""
-        return False, ""
+        self._begin_avatar_audio_file(audio_path, generation)
+        try:
+            if sys.platform.startswith("win"):
+                escaped = str(Path(audio_path).resolve()).replace("'", "''")
+                script = (
+                    "$ErrorActionPreference='Stop';"
+                    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; "
+                    "public static class SarahMci { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode)] "
+                    "public static extern int mciSendString(string command, System.Text.StringBuilder result, "
+                    "int resultLength, IntPtr callback); }';"
+                    f"$p='{escaped}';$a='sarahvoice';"
+                    "$o=[SarahMci]::mciSendString(('open \"'+$p+'\" alias '+$a),$null,0,[IntPtr]::Zero);"
+                    "if($o -ne 0){exit 21};"
+                    "try{$r=[SarahMci]::mciSendString(('play '+$a+' wait'),$null,0,[IntPtr]::Zero);"
+                    "if($r -ne 0){exit 22}}finally{[void][SarahMci]::mciSendString(('close '+$a),$null,0,[IntPtr]::Zero)}"
+                )
+                return self._run_cancellable_voice_process(
+                    ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                    generation,
+                )
+            if playsound:
+                playsound(str(audio_path), block=True)
+                return True, ""
+            return False, ""
+        finally:
+            self._stop_avatar_speaking(generation)
+
+    def _ensure_avatar_motion(self) -> AvatarMotionModel:
+        motion = getattr(self, "_avatar_motion", None)
+        if motion is None:
+            motion = AvatarMotionModel()
+            self._avatar_motion = motion
+        return motion
+
+    def _begin_avatar_audio_file(self, audio_path: Path | str, generation: int) -> None:
+        started = time.monotonic()
+        envelope = decode_audio_envelope(audio_path)
+        self._ensure_avatar_motion().start_audio(envelope, generation)
+        self._avatar_lip_sync_receipt = {
+            "mode": "decoded_audio_envelope" if envelope.decoded else "speaking_activity_fallback",
+            "decoder_route": envelope.route,
+            "decode_reason": envelope.reason,
+            "envelope_frames": len(envelope.values),
+            "envelope_duration_ms": int(envelope.duration_seconds * 1000),
+            "analysis_ms": int((time.monotonic() - started) * 1000),
+            "physical_visual_acceptance": "pending",
+        }
+
+    def _begin_avatar_fallback_speaking(self, generation: int) -> None:
+        self._ensure_avatar_motion().start_speaking_fallback(generation)
+        self._avatar_lip_sync_receipt = {
+            "mode": "speaking_activity_fallback",
+            "decoder_route": "no_audio_file",
+            "decode_reason": "windows_system_speech_exposes_no_pcm_to_sarah",
+            "envelope_frames": 0,
+            "envelope_duration_ms": 0,
+            "analysis_ms": 0,
+            "physical_visual_acceptance": "pending",
+        }
+
+    def _stop_avatar_speaking(self, generation: int) -> None:
+        self._ensure_avatar_motion().stop_speaking(generation)
 
     def _speak(
         self,
@@ -580,6 +638,10 @@ class SarahApp:
         route_identity = ""
         response_content_type = ""
         route_receipt = ""
+        self._avatar_lip_sync_receipt = {
+            "mode": "not_started",
+            "physical_visual_acceptance": "pending",
+        }
         try:
             if self.voice.configured and (sys.platform.startswith("win") or playsound):
                 attempted = "ELEVENLABS"
@@ -722,6 +784,7 @@ class SarahApp:
             "route_identity": route_identity,
             "response_content_type": response_content_type,
             "route_receipt": route_receipt,
+            "avatar_animation": dict(getattr(self, "_avatar_lip_sync_receipt", {})),
             "person_id": person_id or "",
             "turn_id": turn_id,
             "recorded_at": int(time.time() * 1000),
@@ -747,14 +810,17 @@ class SarahApp:
         if not sys.platform.startswith("win"):
             return False, ""
         escaped = text.replace("'", "''")
-        return self._run_cancellable_voice_process(
-            [
-                "powershell", "-NoProfile", "-NonInteractive", "-Command",
-                f"Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate=-1; $s.Speak('{escaped}')",
-            ],
-            generation,
-        )
-        return result.returncode == 0
+        self._begin_avatar_fallback_speaking(generation)
+        try:
+            return self._run_cancellable_voice_process(
+                [
+                    "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                    f"Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate=-1; $s.Speak('{escaped}')",
+                ],
+                generation,
+            )
+        finally:
+            self._stop_avatar_speaking(generation)
 
     def _build_discoveries(self):
         bar=ttk.Frame(self.discovery_tab);bar.pack(fill="x",padx=8,pady=8);ttk.Button(bar,text="Research now",command=self.research_now).pack(side="left");ttk.Button(bar,text="Nearby permission",command=self.set_nearby_permission).pack(side="left",padx=5);self.background_research_button=ttk.Button(bar,command=self.toggle_background_research);self.background_research_button.pack(side="left",padx=5);ttk.Button(bar,text="Connection status",command=self.show_sponsors).pack(side="left",padx=5)
@@ -1016,9 +1082,9 @@ class SarahApp:
     def _drag_start(self,e):self._dx=e.x;self._dy=e.y
     def _drag_move(self,e):self.corner.geometry(f"+{self.corner.winfo_x()+e.x-self._dx}+{self.corner.winfo_y()+e.y-self._dy}")
     def _load_portrait_once(self):
-        """Load one immutable PhotoImage; later ticks redraw only the cosmetic outline."""
+        """Load the exact immutable source portrait into the CPU-only live renderer."""
         if self._portrait_load_attempted:
-            return self._portrait_photo is not None
+            return self._portrait_renderer is not None
         self._portrait_load_attempted = True
         resolved = resolve_sarah_portrait()
         if resolved is None:
@@ -1026,17 +1092,17 @@ class SarahApp:
         try:
             with Image.open(resolved) as image:
                 image.load()
-                fitted = ImageOps.fit(
-                    image.convert("RGB"),
-                    SARAH_PORTRAIT_DISPLAY_SIZE,
-                    method=Image.Resampling.LANCZOS,
-                    centering=(0.5, 0.48),
-                )
-            self._portrait_photo = ImageTk.PhotoImage(fitted, master=self.canvas)
+                self._portrait_base_image = image.convert("RGB").copy()
+            self._portrait_renderer = PortraitFrameRenderer(
+                self._portrait_base_image,
+                SARAH_PORTRAIT_DISPLAY_SIZE,
+            )
             self._portrait_asset_path = resolved
             return True
         except Exception:
             self._portrait_photo = None
+            self._portrait_base_image = None
+            self._portrait_renderer = None
             self._portrait_asset_path = None
             return False
 
@@ -1051,17 +1117,30 @@ class SarahApp:
         self.canvas.create_polygon(42,107,138,107,165,171,15,171,fill="#2f7897",outline="#6eb1ca")
 
     def _animate_avatar(self):
-        """Cosmetic presence only: a static portrait plus a subtle breathing/speaking outline.
-
-        This is deliberately not lip-sync and not a claim of full character animation.
-        """
+        """Continuously render bounded idle motion, blinks, and voice-bound mouth motion."""
         if not self.corner:return
+        try:
+            viewable = bool(self.corner.winfo_viewable())
+        except (AttributeError, tk.TclError):
+            viewable = True
+        if not viewable:
+            # Keep the live loop responsive to Show without spending CPU on
+            # frames that cannot be seen in the notification area.
+            self.root.after(HIDDEN_AVATAR_POLL_INTERVAL_MS,self._animate_avatar)
+            return
         self.canvas.delete("all")
-        if self._portrait_photo is not None:
-            self.canvas.create_image(0,0,anchor="nw",image=self._portrait_photo)
+        renderer = getattr(self, "_portrait_renderer", None)
+        if renderer is not None:
+            try:
+                pose = self._ensure_avatar_motion().pose_at()
+                frame = renderer.render(pose)
+                self._portrait_photo = ImageTk.PhotoImage(frame, master=self.canvas)
+                self.canvas.create_image(0,0,anchor="nw",image=self._portrait_photo)
+            except Exception:
+                self._draw_vector_avatar()
         else:
             self._draw_vector_avatar()
-        pulse=int(time.monotonic()*2)%2
+        pulse=int(time.monotonic()*4)%2
         if self.speaking:
             outline="#ffe19a" if pulse else "#69e7ee"
             width=3
@@ -1069,7 +1148,7 @@ class SarahApp:
             outline="#5bc4cf" if pulse else "#397c8a"
             width=2
         self.canvas.create_rectangle(2,2,177,172,outline=outline,width=width)
-        self.root.after(450,self._animate_avatar)
+        self.root.after(LIVE_AVATAR_FRAME_INTERVAL_MS,self._animate_avatar)
     def _start_tray(self):
         if not pystray:return
         image=Image.new("RGB",(64,64),"#183448");d=ImageDraw.Draw(image);d.ellipse((14,8,50,44),fill="#e2ad86");d.polygon((10,62,54,62,46,38,18,38),fill="#2f7897")

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secure_preferences.xml" />
         <exclude domain="sharedpref" path="sarah_profile_vault.xml" />
         <exclude domain="sharedpref" path="sarah_voice_receipts.xml" />
@@ -8,8 +10,12 @@
         <exclude domain="database" path="sarah.db" />
         <exclude domain="database" path="sarah_event_trips.db" />
         <exclude domain="file" path="booking_imports/" />
+        <exclude domain="file" path="booking_import_quarantine/" />
+        <exclude domain="file" path="recovery/event_trip_v1_pre_v2/" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
         <exclude domain="sharedpref" path="secure_preferences.xml" />
         <exclude domain="sharedpref" path="sarah_profile_vault.xml" />
         <exclude domain="sharedpref" path="sarah_voice_receipts.xml" />
@@ -17,5 +23,7 @@
         <exclude domain="database" path="sarah.db" />
         <exclude domain="database" path="sarah_event_trips.db" />
         <exclude domain="file" path="booking_imports/" />
+        <exclude domain="file" path="booking_import_quarantine/" />
+        <exclude domain="file" path="recovery/event_trip_v1_pre_v2/" />
     </device-transfer>
 </data-extraction-rules>

@@ -66,24 +66,28 @@ public final class OpenAIClient {
         payload.put("input", input);
         if (webSearch) payload.put("tools", new JSONArray().put(new JSONObject().put("type", "web_search")));
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(ENDPOINT).openConnection();
         Thread worker = Thread.currentThread();
+        requireActive(worker);
+        HttpURLConnection connection = (HttpURLConnection) new URL(ENDPOINT).openConnection();
         ACTIVE_CONNECTIONS.put(worker, connection);
-        connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Authorization", "Bearer " + apiKey);
-        connection.setRequestProperty("Content-Type", "application/json");
         int code;
         String response;
         try {
+            requireActive(worker);
+            connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+            connection.setRequestProperty("Content-Type", "application/json");
             byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+            requireActive(worker);
             try (OutputStream out = connection.getOutputStream()) { out.write(body); }
+            requireActive(worker);
             code = connection.getResponseCode();
             InputStream stream = code >= 200 && code < 300
                     ? connection.getInputStream() : connection.getErrorStream();
-            response = readAll(stream);
+            response = readAll(stream, worker);
         } finally {
             ACTIVE_CONNECTIONS.remove(worker, connection);
             connection.disconnect();
@@ -178,12 +182,21 @@ public final class OpenAIClient {
         return b.length() == 0 ? "I received a response, but I could not read its text." : b.toString().trim();
     }
 
-    private static String readAll(InputStream stream) throws Exception {
+    private static void requireActive(Thread worker) throws InterruptedException {
+        if (worker == null || worker.isInterrupted()) {
+            throw new InterruptedException("OpenAI request cancelled");
+        }
+    }
+
+    private static String readAll(InputStream stream, Thread worker) throws Exception {
         if (stream == null) return "";
         try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             StringBuilder b = new StringBuilder();
             String line;
-            while ((line = r.readLine()) != null) b.append(line);
+            while ((line = r.readLine()) != null) {
+                requireActive(worker);
+                b.append(line);
+            }
             return b.toString();
         }
     }

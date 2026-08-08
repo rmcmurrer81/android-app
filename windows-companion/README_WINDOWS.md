@@ -4,7 +4,9 @@ Sarah on Windows is another embodiment of the same continuing Sarah used on Andr
 
 ## Included
 
-- movable, always-on-top adult Sarah portrait window with a lightweight idle pulse;
+- movable, always-on-top adult Sarah portrait window with continuous CPU-only
+  2D rendering, naturalized blinks, restrained eye/head idle motion, and
+  decoded-audio mouth motion while ElevenLabs audio plays;
 - full dashboard for chat, discoveries, trips, photos, trusted devices, backups and factual activity;
 - optional notification-area/hidden-icons operation;
 - Sarah Morgan ElevenLabs voice with an identity-bound, owner-managed local cache;
@@ -43,13 +45,34 @@ SARAH_OLLAMA_MODEL=qwen3.5:9b
 
 Do not put provider credentials into source. Use Windows environment variables, a local `.env` loader outside source control, or a protected backend. The online-judge workflow uses one repository Actions secret named `SARAH_MODEL_BACKEND_TOKEN` as the event app-to-Worker credential; it is not a provider key.
 
-The event-ready UI also has an **Online setup** button. The R2 candidate writes only to `%APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json`. Its installer, executable, shortcuts, registry entry, and writable data root are side-by-side with the preserved R1 Windows artifact. R2 does not start or advertise the legacy plain-HTTP LAN sync service; **Devices** shows `Setup required`. The online-judge CI build additionally bundles a workflow-generated `sarah-event-config.json` inside the application so the event laptop works without manually copying a token. Resolution order is environment variable, then R2 per-user runtime config, then bundled event config. The config is generated only inside CI and is never committed or uploaded separately.
+The event-ready UI has a **Connection** button. The R2 candidate writes settings
+only to `%APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json`; on Windows,
+credential values in that file are protected for the current Windows account
+with DPAPI and are never stored as plaintext. Its installer, executable,
+shortcuts, registry entry, and writable data root are side-by-side with the
+preserved R1 Windows artifact. R2 does not start or advertise the legacy
+plain-HTTP LAN sync service; **Devices** shows `Setup required`. The online-judge
+CI build bundles a workflow-generated `sarah-event-config.json` containing only
+non-secret URL/model/voice defaults. Resolution order is environment variable,
+then R2 per-user runtime config, then those non-secret bundled defaults.
 
-The bundled event app token is deliberately revocable but is extractable from the APK or EXE by a determined person. Keeping it out of source, logs, and manifests does not make a client-held token secret. Candidate Worker route limits reduce ordinary abuse but are per Cloudflare location, not a hard global spending cap. Rotate `SARAH_MODEL_BACKEND_TOKEN`, redeploy the Worker, and rebuild/reinstall the event clients after the event or whenever a binary leaves the intended team; use provider/account budget controls where available. Do not commit, email, or distribute the per-user runtime file either; it can contain an override token or direct ElevenLabs key. Use **CLEAR** in a secret prompt to remove a saved value.
+No app token or provider key is bundled in the APK or EXE. The event build may
+include a public Worker URL, provider/model identity, and approved voice IDs;
+Robert activates the revocable Sarah access code after installation through
+**Connection**. Candidate Worker limits reduce ordinary abuse but are not a
+hard global spending cap. Rotate the Worker access code if its private transfer
+or per-user installation is exposed. Never commit, email, or distribute the
+per-user runtime configuration. Type **CLEAR** in the access-code prompt to
+remove the saved activation.
 
 The Windows model client uses the same provider-neutral request and `{ "reply": "..." }` response contract as Android. This is required for one deployed Worker to serve both embodiments.
 
-When the protected model backend is configured, Windows Sarah automatically derives its voice URL as `<backend>/voice` and reuses the revocable Sarah app token. This enables ElevenLabs without storing its provider key in the EXE or local runtime file. A separately configured voice-backend URL/token may override that derivation.
+When the protected model backend is configured, Windows Sarah automatically
+derives its voice URL as `<backend>/voice` and reuses the DPAPI-protected,
+owner-activated Sarah access code. This enables ElevenLabs without storing its
+provider key in the EXE or as plaintext in the local runtime file. A separately
+configured voice-backend URL/token may override that derivation and is protected
+by the same per-user storage boundary.
 
 The voice-cache key includes route, approved voice ID, model, voice settings, output format, and exact normalized text. Protected responses must carry `X-Sarah-Voice-Route: elevenlabs-protected`, identify an audio MIME type, and contain a minimum viable payload before they are cached or played. The cache has a documented 256 MiB owner-managed maximum; Sarah never deletes it automatically. **Devices & backup → Voice cache status / cleanup** reports its size and, after confirmation, removes only regenerable `.mp3` derivatives—not voice configuration, models, references, profiles, or memories.
 
@@ -73,6 +96,25 @@ the first audible sample; `playback_start_semantics` and
 `audible_start_confirmed=false` preserve that distinction. A physical owner
 hearing run is required for real first-audio latency.
 
+Sarah's approved portrait remains the exact hash-validated source image. The
+Windows corner window now renders it at 20 frames per second with small
+parameterized deformations; it does not cycle through saved still images and
+does not require a GPU. When the corner window is hidden, Sarah stops rendering
+invisible frames and uses a low-cost 250 ms visibility poll until it is shown
+again. ElevenLabs MP3 is decoded locally to a bounded 40 ms
+RMS envelope using `miniaudio`, and that exact envelope drives mouth opening
+during the matching cancellable voice generation. Decoding is capped at ten
+minutes. If the exact audio cannot be decoded, or Windows System.Speech is the
+active offline route, the UI uses a separately labeled speaking-activity cue
+instead of falsely calling it audio lip sync. Sending a new turn or pressing
+**Stop voice** also stops only the matching avatar speech generation.
+
+Automated tests prove continuous frame differences, blink scheduling, exact
+generation cancellation, real PCM energy following, renderer bounds, and
+portrait-hash preservation. They do not prove that blink placement, mouth
+shape, audio/video alignment, motion comfort, or CPU use looks acceptable on
+Robert's physical 8 GB Windows laptop; that owner-visible run remains required.
+
 ## Android/Windows transfer boundary
 
 Do not attempt phone pairing in R2. **Devices & backup** reports `Setup
@@ -90,4 +132,9 @@ and voice endpoints remain HTTPS-only.
 
 A source card, link, accommodation handoff or rewards link is not a booking. Sarah does not claim she purchased, reserved, called, confirmed, notified or completed anything unless a verified tool result proves it.
 
-The adult portrait asset is implemented and hash-validated, but full facial animation, body animation, and lip synchronization are not. The idle pulse must not be described as a completed animated-person acceptance. The R2 installer remains pending physical operation on Robert's 8 GB no-GPU laptop.
+The owner-approved adult portrait asset is implemented and hash-validated.
+Bounded 2D facial presence animation and decoded-audio-driven mouth motion are
+implemented and covered by automated tests. This is not a 3D body or full
+facial-performance rig, and it has not passed physical owner visual/hearing
+acceptance. The R2 installer remains pending physical operation on Robert's
+8 GB no-GPU laptop.

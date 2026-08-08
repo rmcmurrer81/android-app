@@ -105,26 +105,29 @@ public final class SarahBackendClient {
             request.put("image_jpeg_base64", Base64.encodeToString(imageJpeg, Base64.NO_WRAP));
         }
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(safeEndpoint).openConnection();
         Thread worker = Thread.currentThread();
+        requireActive(worker);
+        HttpURLConnection connection = (HttpURLConnection) new URL(safeEndpoint).openConnection();
         ACTIVE_CONNECTIONS.put(worker, connection);
-        connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.5");
-        String token = SarahModelConfig.backendToken();
-        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
-
         int status;
         String response;
         try {
+            requireActive(worker);
+            connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "SarahMorganTravel/" + BuildConfig.VERSION_NAME);
+            String token = SarahModelConfig.backendToken();
+            if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
             byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
+            requireActive(worker);
             try (OutputStream out = connection.getOutputStream()) {
                 out.write(body);
             }
+            requireActive(worker);
             status = connection.getResponseCode();
             if (connection.getContentLength() > MAX_RESPONSE_CHARS) {
                 throw new IllegalStateException("Sarah backend response exceeded the bounded response limit");
@@ -132,7 +135,7 @@ public final class SarahBackendClient {
             InputStream stream = status >= 200 && status < 300
                     ? connection.getInputStream()
                     : connection.getErrorStream();
-            response = read(stream);
+            response = read(stream, worker);
         } finally {
             ACTIVE_CONNECTIONS.remove(worker, connection);
             connection.disconnect();
@@ -173,13 +176,20 @@ public final class SarahBackendClient {
                 responseCompletedAt);
     }
 
-    private static String read(InputStream stream) throws Exception {
+    private static void requireActive(Thread worker) throws InterruptedException {
+        if (worker == null || worker.isInterrupted()) {
+            throw new InterruptedException("Sarah backend request cancelled");
+        }
+    }
+
+    private static String read(InputStream stream, Thread worker) throws Exception {
         if (stream == null) return "";
         StringBuilder out = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             char[] buffer = new char[4096];
             int count;
             while ((count = reader.read(buffer)) >= 0) {
+                requireActive(worker);
                 out.append(buffer, 0, count);
                 if (out.length() > MAX_RESPONSE_CHARS) {
                     throw new IllegalStateException("Sarah backend response exceeded the bounded response limit");

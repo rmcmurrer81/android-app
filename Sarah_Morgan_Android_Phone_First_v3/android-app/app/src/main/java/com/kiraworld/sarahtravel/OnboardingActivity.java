@@ -78,9 +78,15 @@ public final class OnboardingActivity extends Activity {
         tts = new SarahTts(this, new SarahTts.Listener() {
             @Override
             public void onReady(String voiceName) {
-                runOnUiThread(() -> status.setText(ElevenLabsVoiceConfig.isConfigured()
-                        ? "Phone voice ready as fallback · ElevenLabs Sarah voice will be tried online"
-                        : "Phone voice ready for offline use"));
+                runOnUiThread(() -> {
+                    boolean protectedReady = ElevenLabsVoiceConfig.backendConfigured()
+                            && ProtectedBackendCapabilities.voiceReady(OnboardingActivity.this);
+                    boolean directReady = !ElevenLabsVoiceConfig.backendConfigured()
+                            && ElevenLabsVoiceConfig.directConfigured();
+                    status.setText(protectedReady || directReady
+                            ? "Phone voice ready as fallback · verified ElevenLabs voice available online"
+                            : "Phone voice ready for offline use");
+                });
             }
 
             @Override

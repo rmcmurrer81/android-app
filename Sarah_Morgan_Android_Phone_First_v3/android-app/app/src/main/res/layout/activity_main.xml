@@ -148,6 +148,12 @@
     </ScrollView>
 
     <LinearLayout
+        android:id="@+id/bottomControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+    <LinearLayout
         android:id="@+id/composerBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -229,34 +235,39 @@
         <Button
             android:id="@+id/chatNavButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:minHeight="48dp"
             android:text="Chat"
             android:textAllCaps="false" />
 
         <Button
             android:id="@+id/tripNavButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:minHeight="48dp"
             android:text="Trip"
             android:textAllCaps="false" />
 
         <Button
             android:id="@+id/discoverNavButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:minHeight="48dp"
             android:text="Discover"
             android:textAllCaps="false" />
 
         <Button
             android:id="@+id/connectionsNavButton"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:minHeight="48dp"
             android:text="Connections"
             android:textAllCaps="false"
             android:textSize="12sp" />
+    </LinearLayout>
     </LinearLayout>
 </LinearLayout>

@@ -16,7 +16,8 @@ public final class PublicOnlineFallback {
     public static PublicSourceResult answerResult(
             Context context,
             String message,
-            List<Map<String, String>> history) {
+            List<Map<String, String>> history,
+            String personId) {
         if (context == null) return null;
         if (SettingsActivity.getConversationMode(context) == ConversationModePolicy.MODE_LOCAL_ONLY) return null;
 
@@ -28,14 +29,16 @@ public final class PublicOnlineFallback {
             try {
                 OfficialEventPageLookup.Result result = OfficialEventPageLookup.lookup(knownEvent);
                 if (result.found) {
-                    EventTripStore store = new EventTripStore(context.getApplicationContext());
+                    EventTripStore store = new EventTripStore(
+                            context.getApplicationContext(), personId);
+                    long savedId;
                     try {
-                        OfficialEventPageLookup.apply(store, knownEvent, result);
+                        savedId = OfficialEventPageLookup.apply(store, knownEvent, result);
                     } finally {
                         store.close();
                     }
                     return PublicSourceResult.verified(
-                            OfficialEventPageLookup.conversationalReply(result),
+                            OfficialEventPageLookup.conversationalReply(result, savedId > 0),
                             result.officialUrl);
                 }
             } catch (Exception ignored) { }
@@ -45,7 +48,8 @@ public final class PublicOnlineFallback {
         }
 
         if (!GenericEventReference.recentEvent(history, message).isEmpty()) {
-            PublicSourceResult discovered = PublicEventDiscoveryGateway.answerResult(context, message, history);
+            PublicSourceResult discovered = PublicEventDiscoveryGateway.answerResult(
+                    context, message, history, personId);
             if (discovered != null && !discovered.reply.isEmpty()) return discovered;
             if (SarahModelConfig.fullConversationAvailable()) {
                 // Let the connected model use its current-source tools rather than
@@ -64,11 +68,19 @@ public final class PublicOnlineFallback {
                 ? null : PublicSourceResult.unavailable(publicKnowledge.trim());
     }
 
+    public static PublicSourceResult answerResult(
+            Context context,
+            String message,
+            List<Map<String, String>> history) {
+        return answerResult(context, message, history, EventTripStore.activePersonId(context));
+    }
+
     public static String answer(
             Context context,
             String message,
             List<Map<String, String>> history) {
-        PublicSourceResult result = answerResult(context, message, history);
+        PublicSourceResult result = answerResult(
+                context, message, history, EventTripStore.activePersonId(context));
         return result == null ? null : result.reply;
     }
 

@@ -9,11 +9,20 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Reads basic verified details from a known event's official public page without a model key. */
 public final class OfficialEventPageLookup {
+    private static final ConcurrentHashMap<Thread, HttpURLConnection> ACTIVE_CONNECTIONS =
+            new ConcurrentHashMap<>();
+
+    public static void cancel(Thread worker) {
+        if (worker == null) return;
+        HttpURLConnection active = ACTIVE_CONNECTIONS.remove(worker);
+        if (active != null) active.disconnect();
+    }
     public static final class Result {
         public final boolean found;
         public final String eventName;
@@ -68,23 +77,31 @@ public final class OfficialEventPageLookup {
 
     public static Result lookup(KnownEventCatalog.Entry entry) throws Exception {
         if (entry == null || entry.officialUrl.isEmpty()) return empty(entry);
+        Thread worker = Thread.currentThread();
+        requireActive(worker);
         HttpURLConnection connection = (HttpURLConnection) new URL(entry.officialUrl).openConnection();
-        connection.setConnectTimeout(12000);
-        connection.setReadTimeout(16000);
-        connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.4 (private prototype; official event lookup)");
-        connection.setRequestProperty("Accept", "text/html,application/xhtml+xml");
-        int status = connection.getResponseCode();
-        if (status < 200 || status >= 400) {
-            connection.disconnect();
-            return empty(entry);
-        }
-        String html;
-        try (InputStream in = connection.getInputStream()) {
-            html = read(in);
+        ACTIVE_CONNECTIONS.put(worker, connection);
+        String html = "";
+        int status;
+        try {
+            requireActive(worker);
+            connection.setConnectTimeout(12000);
+            connection.setReadTimeout(16000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.4 (private prototype; official event lookup)");
+            connection.setRequestProperty("Accept", "text/html,application/xhtml+xml");
+            status = connection.getResponseCode();
+            requireActive(worker);
+            if (status >= 200 && status < 400) {
+                try (InputStream in = connection.getInputStream()) {
+                    html = read(in, worker);
+                }
+            }
         } finally {
+            ACTIVE_CONNECTIONS.remove(worker, connection);
             connection.disconnect();
         }
+        if (status < 200 || status >= 400) return empty(entry);
         String text = htmlToText(html);
         String start = "";
         String end = "";
@@ -136,12 +153,20 @@ public final class OfficialEventPageLookup {
     }
 
     public static long apply(EventTripStore store, KnownEventCatalog.Entry entry, Result result) {
+        return apply(store, entry, result, false);
+    }
+
+    public static long apply(
+            EventTripStore store,
+            KnownEventCatalog.Entry entry,
+            Result result,
+            boolean keepMonitoring) {
         if (store == null || entry == null || result == null || !result.found) return -1;
-        long id = store.upsertEventTrip(entry.eventName, entry.destination, true);
+        long id = store.upsertEventTrip(entry.eventName, entry.destination, keepMonitoring);
         if (id <= 0) return id;
         long now = System.currentTimeMillis();
         String dateSummary = dateSummary(result);
-        store.updateEventResearch(
+        if (!store.updateEventResearch(
                 id,
                 result.eventName,
                 result.destination,
@@ -155,7 +180,7 @@ public final class OfficialEventPageLookup {
                 result.address.isEmpty() ? "" : "Venue address: " + result.address,
                 result.sourceNote,
                 now,
-                now + 24L * 60L * 60L * 1000L);
+                now + 24L * 60L * 60L * 1000L)) return -1;
         if (!result.startDate.isEmpty()) {
             store.addEventUpdate(
                     id,
@@ -170,6 +195,10 @@ public final class OfficialEventPageLookup {
     }
 
     public static String conversationalReply(Result result) {
+        return conversationalReply(result, false);
+    }
+
+    public static String conversationalReply(Result result, boolean savedForActiveProfile) {
         if (result == null || !result.found) return null;
         StringBuilder reply = new StringBuilder();
         reply.append("I found the official event page. ")
@@ -186,11 +215,15 @@ public final class OfficialEventPageLookup {
             try {
                 LocalDate end = LocalDate.parse(result.endDate.isEmpty() ? result.startDate : result.endDate);
                 if (end.isBefore(LocalDate.now())) {
-                    reply.append(" Those dates have already passed, so I saved the event and will watch the official page for the next announced dates.");
+                    reply.append(savedForActiveProfile
+                            ? " Those dates have already passed, so I saved the event for the active profile without turning on background monitoring."
+                            : " Those dates have already passed. I did not attach the event to a profile.");
                 }
             } catch (Exception ignored) { }
         } else {
-            reply.append(" I could not extract a verified date from the page yet, so I saved the official source without inventing one.");
+            reply.append(savedForActiveProfile
+                    ? " I could not extract a verified date from the page yet, so I saved the official source for the active profile without inventing one."
+                    : " I could not extract a verified date from the page yet, and I did not attach the source to a profile.");
         }
         reply.append(" Use Explore for the map, public photos, videos, and route options.");
         return reply.toString();
@@ -231,12 +264,19 @@ public final class OfficialEventPageLookup {
                 "Official event page could not be read.");
     }
 
-    private static String read(InputStream input) throws Exception {
+    private static void requireActive(Thread worker) throws InterruptedException {
+        if (worker == null || worker.isInterrupted()) {
+            throw new InterruptedException("Official event lookup cancelled");
+        }
+    }
+
+    private static String read(InputStream input, Thread worker) throws Exception {
         StringBuilder out = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
             char[] buffer = new char[4096];
             int count;
             while ((count = reader.read(buffer)) >= 0) {
+                requireActive(worker);
                 out.append(buffer, 0, count);
                 if (out.length() > 1_500_000) break;
             }

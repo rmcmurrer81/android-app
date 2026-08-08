@@ -65,6 +65,9 @@ jobs:
         run: |
           set -euo pipefail
           python Sarah_Morgan_Android_Phone_First_v3/tests/validate_package.py
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
           rm -rf build/sarah25-r2 && mkdir -p build/sarah25-r2
           javac -encoding UTF-8 -d build/sarah25-r2 \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
@@ -94,6 +97,8 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingImportTextPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TripWindowParser.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CityVisitPlanner.java \
@@ -106,9 +111,19 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SyncPhotoPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/VoiceFallbackPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedLanEndpointPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnLifecyclePolicy.java \
-            Sarah_Morgan_Android_Phone_First_v3/tests/SarahR2PolicyTest.java
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahR2PolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ProtectedBackendCapabilityPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPreUpgradeVersionPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripProfilePolicyTest.java
           java -cp build/sarah25-r2 com.kiraworld.sarahtravel.SarahR2PolicyTest
+          java -cp build/sarah25-r2 com.kiraworld.sarahtravel.ProtectedBackendCapabilityPolicyTest
+          java -cp build/sarah25-r2 com.kiraworld.sarahtravel.EventTripPreUpgradeVersionPolicyTest
+          java -cp build/sarah25-r2 EventTripIntentParserTest
+          java -cp build/sarah25-r2 com.kiraworld.sarahtravel.EventTripProfilePolicyTest
 
       - name: Require the R2 owner-repair Android version identity
         id: version_truth
@@ -373,6 +388,49 @@ jobs:
             exit 1
           fi
 
+          absent_capability_status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+            -o /tmp/sarah-capabilities-absent.json -w '%{http_code}' \
+            "$BACKEND_URL/capabilities")"
+          if [ "$absent_capability_status" != '401' ]; then
+            echo "::error::Protected capabilities accepted an absent bearer token (HTTP $absent_capability_status)."
+            exit 1
+          fi
+          wrong_capability_status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+            -H 'Authorization: Bearer deliberately-wrong-sarah-token' \
+            -o /tmp/sarah-capabilities-wrong.json -w '%{http_code}' \
+            "$BACKEND_URL/capabilities")"
+          if [ "$wrong_capability_status" != '401' ]; then
+            echo "::error::Protected capabilities accepted a wrong bearer token (HTTP $wrong_capability_status)."
+            exit 1
+          fi
+          curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+            -H 'Cache-Control: no-cache' \
+            "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID" \
+            > /tmp/sarah-capabilities-exact.json
+          python - <<'PY'
+          import json, os
+          capabilities = json.load(open('/tmp/sarah-capabilities-exact.json', encoding='utf-8'))
+          expected = {
+              'service': 'sarah-model-proxy',
+              'contract_version': 'sarah-model-proxy-v2-workers-ai-voice',
+              'deployment_id': os.environ['EXPECTED_DEPLOYMENT_ID'].lower(),
+              'source_sha256': os.environ['EXPECTED_SOURCE_SHA256'].lower(),
+              'config_sha256': os.environ['EXPECTED_CONFIG_SHA256'].lower(),
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model_override': os.environ['SARAH_MODEL_ID'],
+          }
+          matches = capabilities.get('ok') is True and capabilities.get('voice_ready') is True
+          matches = matches and capabilities.get('deployment_ready') is True
+          matches = matches and capabilities.get('route_rate_limits_ready') is True
+          matches = matches and all(capabilities.get(key) == value for key, value in expected.items())
+          if os.environ.get('PROTECTED_SEARCH_CONFIGURED') == 'true':
+              matches = matches and capabilities.get('current_source_ready') is True
+          if not matches:
+              raise SystemExit('Authenticated capability response did not match the exact candidate contract.')
+          print('Authenticated Sarah capability contract passed for the exact candidate deployment.')
+          PY
+
           python - <<'PY'
           import json, os
           request = {
@@ -562,10 +620,13 @@ jobs:
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
           SARAH_MODEL_BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
-          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_MODEL_BACKEND_TOKEN: ''
+          SARAH_EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+          SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
+          SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
           SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
-          SARAH_ELEVENLABS_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_ELEVENLABS_BACKEND_TOKEN: ''
           SARAH_TAVILY_API_KEY: ''
           SARAH_STAY22_BACKEND_URL: ''
           SARAH_STAY22_BACKEND_TOKEN: ''
@@ -650,7 +711,16 @@ jobs:
           import re, sys
           from pathlib import Path
           text = Path(sys.argv[1]).read_text(encoding='utf-8')
-          for field in ('SARAH_OPENAI_API_KEY', 'SARAH_ELEVENLABS_API_KEY', 'SARAH_TAVILY_API_KEY'):
+          for field in (
+              'SARAH_OPENAI_API_KEY',
+              'SARAH_MODEL_BACKEND_TOKEN',
+              'SARAH_TRAVEL_COMMERCE_TOKEN',
+              'SARAH_VOICE_CONCIERGE_TOKEN',
+              'SARAH_ELEVENLABS_API_KEY',
+              'SARAH_ELEVENLABS_BACKEND_TOKEN',
+              'SARAH_TAVILY_API_KEY',
+              'SARAH_STAY22_BACKEND_TOKEN',
+          ):
               match = re.search(rf'public static final String {field} = "([^"]*)";', text)
               if match is None or match.group(1):
                   raise SystemExit(f'Provider credential field {field} is not explicitly empty in generated BuildConfig.')
@@ -712,6 +782,8 @@ jobs:
               ),
               'provider_key_embedded': False,
               'elevenlabs_key_embedded': False,
+              'protected_backend_access_bundled': False,
+              'owner_runtime_activation_required': True,
               'live_online_smoke_test': 'passed',
               'live_vision_solid_red_jpeg_smoke_test': 'passed_exact_red',
               'live_protected_elevenlabs_smoke_test': 'passed',
@@ -834,7 +906,6 @@ jobs:
         working-directory: windows-companion
         env:
           SARAH_MODEL_BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
-          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
@@ -842,24 +913,26 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_ELEVENLABS_VOICE_ID')) {
+          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_ELEVENLABS_VOICE_ID')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Required event build setting is absent: $name"
             }
           }
           $eventConfig = [ordered]@{
             SARAH_MODEL_BACKEND_URL = $env:SARAH_MODEL_BACKEND_URL
-            SARAH_MODEL_BACKEND_TOKEN = $env:SARAH_MODEL_BACKEND_TOKEN
             SARAH_MODEL_PROVIDER = $env:SARAH_MODEL_PROVIDER
             SARAH_MODEL_ID = $env:SARAH_MODEL_ID
             SARAH_ELEVENLABS_VOICE_ID = $env:SARAH_ELEVENLABS_VOICE_ID
             SARAH_ELEVENLABS_MODEL_ID = $env:SARAH_ELEVENLABS_MODEL_ID
           }
+          if (@($eventConfig.Keys | Where-Object { $_ -match '(TOKEN|API_KEY|PASSWORD|SECRET)' }).Count -ne 0) {
+            throw 'A reusable credential was added to the Windows bundled event configuration.'
+          }
           New-Item -ItemType Directory -Force -Path 'build' | Out-Null
           $eventConfigPath = (Resolve-Path 'build').Path + '\sarah-event-config.json'
           $eventConfig | ConvertTo-Json | Set-Content -LiteralPath $eventConfigPath -Encoding utf8NoBOM
           try {
-            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R2-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow sarah_event_ready.py
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R2-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow sarah_event_ready.py
             if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
           }
           finally {
@@ -905,12 +978,14 @@ jobs:
             backend_url = $env:BACKEND_URL
             provider_key_embedded = $false
             elevenlabs_key_embedded = $false
-            event_app_token_bundled = $true
+            event_app_token_bundled = $false
+            owner_runtime_activation_required = $true
             live_online_smoke_test = 'passed-before-windows-build'
             exact_installer_self_test = 'passed'
             physical_8gb_laptop_acceptance = 'pending'
             full_owner_workflow_acceptance = 'pending'
-            token_rotation_required_after_event = $true
+            token_rotation_required_after_event = $false
+            token_rotation_required_if_privately_transferred_code_is_exposed = $true
           }
           $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorganTravelOS-R2-Candidate-Setup-manifest.json' -Encoding utf8NoBOM
 

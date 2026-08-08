@@ -498,10 +498,17 @@ public final class CloudVoiceClient {
                 }
             });
 
+            if (REQUEST_SEQUENCE.get() != requestGeneration) {
+                session.fail("superseded_before_playback");
+                return;
+            }
             PlaybackSession previous = ACTIVE_SESSION.getAndSet(session);
             if (previous != null) previous.interrupt();
+            if (releaseIfStale(requestGeneration, session)) return;
             player.setMediaSource(mediaSource);
+            if (releaseIfStale(requestGeneration, session)) return;
             player.prepare();
+            if (releaseIfStale(requestGeneration, session)) return;
             player.play();
         } catch (Exception e) {
             if (session != null) {
@@ -519,6 +526,23 @@ public final class CloudVoiceClient {
                         reported);
             }
         }
+    }
+
+    /**
+     * Closes the cancellation/supersession window between publishing a
+     * provisional player and each operation that can advance it toward
+     * playback. A stale or displaced session owns no permission to prepare or
+     * play, even if its player construction already completed.
+     */
+    private static boolean releaseIfStale(
+            long requestGeneration,
+            PlaybackSession session) {
+        if (REQUEST_SEQUENCE.get() == requestGeneration
+                && ACTIVE_SESSION.get() == session) {
+            return false;
+        }
+        session.fail("superseded_before_playback");
+        return true;
     }
 
     private static StreamingRequest buildStreamingRequest(String text) throws Exception {

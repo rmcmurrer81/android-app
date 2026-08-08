@@ -12,50 +12,101 @@ import java.util.Map;
 /** Runs destination-pack refreshes, fare checks, and multimodal journey checks. */
 public final class DealWatchWorker extends JobService {
     private static final String TAG = "SarahTravelAutomation";
-    private volatile Thread running;
-    private volatile boolean stopped;
+    private static final class ActiveRun {
+        final JobParameters params;
+        final Thread thread;
+        final long generation;
+        final long scheduleToken;
+        volatile boolean stopped;
+
+        ActiveRun(JobParameters params, Thread thread, long generation) {
+            this.params = params;
+            this.thread = thread;
+            this.generation = generation;
+            this.scheduleToken = params.getExtras().getLong(
+                    DealWatchScheduler.EXTRA_SCHEDULE_TOKEN, 0L);
+        }
+    }
+
+    private final Object runLock = new Object();
+    private ActiveRun activeRun;
+    private long nextGeneration;
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        stopped = false;
-        running = new Thread(() -> {
-            boolean retry = true;
-            try {
-                retry = runAutomation(getApplicationContext());
-            } finally {
-                if (!stopped) jobFinished(params, retry);
-                running = null;
-            }
-        }, "SarahTravelAutomation");
-        running.start();
+        if (params == null) return false;
+        if (params.getExtras().getLong(
+                DealWatchScheduler.EXTRA_SCHEDULE_TOKEN, 0L) == 0L) return false;
+        final ActiveRun[] holder = new ActiveRun[1];
+        Thread worker = new Thread(
+                () -> runExactJob(holder[0]),
+                "SarahTravelAutomation");
+        ActiveRun run;
+        synchronized (runLock) {
+            // Periodic and run-soon jobs can arrive together. Never replace
+            // the cancellation/finish identity of work already in flight.
+            if (activeRun != null) return false;
+            run = new ActiveRun(params, worker, ++nextGeneration);
+            holder[0] = run;
+            activeRun = run;
+        }
+        worker.start();
         return true;
+    }
+
+    private void runExactJob(ActiveRun run) {
+        boolean retry = true;
+        try {
+            if (run == null || run.stopped || Thread.currentThread().isInterrupted()) return;
+            retry = runAutomation(getApplicationContext());
+        } finally {
+            boolean mayFinish;
+            synchronized (runLock) {
+                mayFinish = run != null && activeRun == run && !run.stopped;
+                if (activeRun == run) activeRun = null;
+            }
+            if (mayFinish) jobFinished(run.params, retry);
+        }
     }
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        stopped = true;
-        Thread thread = running;
-        if (thread != null) {
-            thread.interrupt();
-            TavilyClient.cancel(thread);
+        ActiveRun run;
+        synchronized (runLock) {
+            run = activeRun;
+            long stoppingToken = params == null ? Long.MIN_VALUE
+                    : params.getExtras().getLong(
+                            DealWatchScheduler.EXTRA_SCHEDULE_TOKEN, 0L);
+            // Binder may recreate JobParameters, so match the immutable job
+            // ID plus the scheduler token captured by this exact generation.
+            if (run == null || params == null
+                    || run.params.getJobId() != params.getJobId()
+                    || run.scheduleToken == 0L
+                    || run.scheduleToken != stoppingToken) return false;
+            run.stopped = true;
+            activeRun = null;
         }
+        run.thread.interrupt();
+        TravelDealGateway.cancel(run.thread);
+        MobilityGateway.cancel(run.thread);
+        TavilyClient.cancel(run.thread);
+        ConnectedModelGateway.cancel(run.thread);
+        OfficialEventPageLookup.cancel(run.thread);
         return true;
     }
 
     private static boolean runAutomation(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(SettingsActivity.PREFS, Context.MODE_PRIVATE);
         SarahDatabase db = new SarahDatabase(context);
-        PersonProfileStore people = new PersonProfileStore(context);
         boolean temporaryFailure = false;
         try {
-            Map<String, String> owner = db.getProfile();
-            people.ensureOwner(owner);
-            Map<String, String> active = people.getActiveProfile();
-            if (active.isEmpty()) active = owner;
-            String personId = active.getOrDefault(
-                    "person_id", active.getOrDefault("name", "unknown_profile"));
+            ConfirmedOwnerLease ownerLease = ConfirmedOwnerLease.capture(context);
+            if (ownerLease == null) return false;
+            ownerLease.requireActive();
+            Map<String, String> active = ownerLease.capturedProfile();
+            String personId = ownerLease.personId();
             boolean backgroundResearchAllowed = KnowledgePackSchedulingPolicy.canSchedule(
-                    "yes".equals(active.getOrDefault("is_owner", "no")),
+                    true,
                     "yes".equals(active.getOrDefault("memory_consent", "no")),
                     ConnectivityMonitor.hasValidatedInternet(context),
                     SarahModelConfig.fullConversationAvailable(),
@@ -67,20 +118,26 @@ public final class DealWatchWorker extends JobService {
             if (backgroundResearchAllowed) {
                 String key = SecureStore.loadApiKey(context);
                 try {
+                    ownerLease.requireActive();
                     DestinationKnowledgeCoordinator.refreshPending(
                             db,
                             KnowledgeProfileKey.forProfile(active),
                             SarahModelConfig.PROVIDER_ID,
                             key,
                             SarahModelConfig.MODEL_ID,
-                            BackgroundResearchPolicy.MAX_PACKS_PER_RUN);
+                            BackgroundResearchPolicy.MAX_PACKS_PER_RUN,
+                            ownerLease);
+                    ownerLease.requireActive();
                 } catch (Exception failure) {
+                    if (Thread.currentThread().isInterrupted()) return true;
+                    if (!ownerLease.isActive()) return false;
                     Log.e(TAG, "Destination knowledge refresh failed; append-only attempt receipt retained", failure);
                     temporaryFailure = true;
                 }
             }
 
             if (Thread.currentThread().isInterrupted()) return true;
+            if (!ownerLease.isActive()) return false;
 
             boolean monitoringAllowed = BackgroundResearchPolicy.monitoringCanRun(
                     prefs.getBoolean(
@@ -90,38 +147,52 @@ public final class DealWatchWorker extends JobService {
                             || MobilityGateway.isConfigured(context),
                     true);
             if (!monitoringAllowed) return temporaryFailure;
+            ownerLease.requireActive();
             List<Map<String, String>> watches = db.listActiveDealWatches(100);
             for (Map<String, String> watch : watches) {
                 if (Thread.currentThread().isInterrupted()) return true;
+                if (!ownerLease.isActive()) return false;
                 long id = longValue(watch, "id", 0);
                 try {
-                    TravelDealResult result = TravelDealGateway.check(context, watch);
+                    ownerLease.requireActive();
+                    TravelDealResult result = TravelDealGateway.check(
+                            context, watch, ownerLease);
+                    ownerLease.requireActive();
                     long now = System.currentTimeMillis();
                     if (!result.configured) {
+                        ownerLease.requireActive();
                         db.updateDealWatchCheck(id, "setup_required", now, 0,
                                 watch.getOrDefault("currency", "USD"));
                         continue;
                     }
                     if (!result.found) {
+                        ownerLease.requireActive();
                         db.updateDealWatchCheck(id, "checked_no_result", now, 0, result.currency);
                         continue;
                     }
                     if (result.isDeal && shouldNotify(watch, result)) {
+                        ownerLease.requireActive();
                         DealNotificationManager.post(context, watch, result);
+                        ownerLease.requireActive();
                         db.updateDealWatchCheck(id, "deal_notified", now, result.totalPrice, result.currency);
                     } else {
+                        ownerLease.requireActive();
                         db.updateDealWatchCheck(id, "checked_no_new_deal", now, 0, result.currency);
                     }
-                } catch (Exception ignored) {
+                } catch (Exception failure) {
+                    if (Thread.currentThread().isInterrupted()) return true;
+                    if (!ownerLease.isActive()) return false;
                     temporaryFailure = true;
+                    ownerLease.requireActive();
                     db.updateDealWatchCheck(id, "temporary_error", System.currentTimeMillis(), 0,
                             watch.getOrDefault("currency", "USD"));
                 }
             }
 
-            if (MobilityWatchCoordinator.run(context)) temporaryFailure = true;
+            ownerLease.requireActive();
+            if (MobilityWatchCoordinator.run(context, ownerLease)) temporaryFailure = true;
+            if (!ownerLease.isActive()) return false;
         } finally {
-            people.close();
             db.close();
         }
         return temporaryFailure;

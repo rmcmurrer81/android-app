@@ -42,19 +42,24 @@ ten-message keyboard/inset, full route sequence, and hearing/latency gates.
 The workflow `.github/workflows/sarah-2.5-online-judge-build.yml`:
 
 1. validates the requested provider and model;
-2. requires the owner-revocable `SARAH_MODEL_BACKEND_TOKEN` repository secret;
+2. requires the owner-revocable `SARAH_MODEL_BACKEND_TOKEN` repository secret
+   for Worker deployment and bounded service smoke tests only;
 3. deploys a unique candidate Worker named from the immutable GitHub run ID
    and attempt through Wrangler dotenv secret transport, leaving the R1 Worker
    and every earlier candidate endpoint unchanged;
 4. confirms exact source/config/deployment identity, all three route-limit
-   bindings, Worker health, and exact-token authentication;
+   bindings, public Worker health, and exact-token authentication on the
+   bounded `/capabilities` route used by the installed clients;
 5. receives exactly `ONLINE_READY` from the selected Workers AI model;
 6. proves protected `/search`, then proves the real chat route applies the
    Android-style contextual `search_query` and returns exact HTTPS receipts;
 7. generates a short real ElevenLabs audio response through the protected `/voice` route without playback;
-8. builds the Android APK with the tested Worker URL and the same event token;
-9. builds and self-tests a Windows event installer with a CI-generated bundled event configuration;
-10. verifies that direct OpenAI, ElevenLabs, and Tavily provider keys were not placed in either client;
+8. builds the Android APK with the tested Worker URL and public identity, but no
+   access code or provider credential;
+9. builds and self-tests a Windows event installer whose CI-generated bundled
+   configuration contains only the tested URL, provider/model, and voice IDs;
+10. verifies that no provider, protected-backend, voice, travel-commerce, or
+    concierge credential was placed in either client;
 11. uploads only clearly labeled candidate artifacts with hashes and manifests.
 
 This workflow does not simulate or waive the 16 physical owner-acceptance
@@ -118,7 +123,12 @@ The voice ID is a non-secret public identifier. If its repository secret is
 absent, the workflow uses Sarah's existing approved Voice Design ID
 `WcGvc9xxaOYbKswm3NBx`; it never substitutes a generic voice.
 
-Do not put provider credentials in source, a pull-request comment, issue, screenshot, APK, EXE, or team chat. `SARAH_MODEL_BACKEND_TOKEN` is different: the event clients must possess it to authenticate, so CI intentionally bundles that one owner-revocable app token after keeping it out of source, logs, and manifests.
+Do not put provider credentials or the Sarah backend access code in source, a
+pull-request comment, issue, screenshot, APK, EXE, or team chat. The repository
+`SARAH_MODEL_BACKEND_TOKEN` is used only by deployment and smoke-test steps.
+After installation, Robert enters that revocable app access code through
+Android **Activate online mind** or Windows **Connection** using a separate
+private transfer. It is never a Cloudflare, OpenAI, ElevenLabs, or Tavily key.
 
 ## Build the owner-acceptance candidates
 
@@ -135,7 +145,13 @@ Do not put provider credentials in source, a pull-request comment, issue, screen
 
 A push that changes `.github/ONLINE_JUDGE_BUILD_REQUEST.json` also triggers the workflow. Its current default is the no-credit Workers AI route.
 
-The repository `SARAH_MODEL_BACKEND_TOKEN` is intentionally embedded as an app-to-Worker credential in both event binaries. It is not a Cloudflare, OpenAI, or ElevenLabs account credential, but a determined person can extract it from an APK or EXE. Treat it as event-only and revocable. The model/search/voice rate-limit bindings are per Cloudflare location and reduce ordinary abuse; they are not a hard global/day spending cap. Rotate the repository secret, redeploy the Worker, and rebuild/reinstall both clients after the event, or immediately whenever either binary leaves the intended team, and use provider/account budget controls where available.
+The repository `SARAH_MODEL_BACKEND_TOKEN` is not embedded in either event
+binary. It remains an event-only revocable app credential on the Worker and in
+the narrowly scoped deployment/smoke steps. Rotate it and redeploy the Worker
+if the privately transferred access code is exposed; clients then fail closed
+until the confirmed owner activates the replacement code. Route limits reduce
+ordinary abuse but are not a hard global/day spending cap, so provider/account
+budget controls remain necessary.
 
 The separate online-diagnostic workflow deploys `sarah-model-proxy-diagnostic`. It must not deploy over the judge/production `sarah-model-proxy`; diagnostic work cannot invalidate the shared event token and tested judge clients.
 
@@ -146,8 +162,11 @@ The same Worker exposes authenticated `POST /voice`.
 - `ELEVENLABS_API_KEY` stays in the Worker.
 - `SARAH_ELEVENLABS_VOICE_ID` selects the approved Sarah voice server-side.
 - A client request for another voice ID is rejected.
-- Android receives only `<Worker URL>/voice` and the revocable Sarah event token.
-- The event Windows build derives the same voice URL and token from its bundled configuration; per-user setup can override it.
+- Android derives `<Worker URL>/voice` from the owner-activated protected route
+  and uses the same Keystore-encrypted revocable Sarah access code.
+- The event Windows build contains the same public route/voice identity but no
+  token. The owner supplies the access code after installation through
+  **Connection**; voice derives from that per-user protected route.
 
 Do not replace the approved voice with a generic voice merely to make a demo pass. Local device speech is an explicitly labeled offline/error fallback.
 
@@ -172,15 +191,33 @@ candidate workflow also exercises the normal chat endpoint with
 `web_search=true` and an Android-style contextual `search_query` so `/search`
 cannot pass independently while chat ignores it.
 
+## Authenticated capability truth
+
+`GET /health` is public deployment/readiness metadata. It does not prove that
+an installed owner's access code matches the deployed Worker and therefore must
+not make Android report the online mind or protected voice as ready. Android
+uses bounded `GET /capabilities` with its exact bearer token. Missing or wrong
+tokens receive HTTP 401 (or HTTP 503 when the Worker itself has no configured
+token), and those responses cannot create a ready capability cache entry. The
+short-lived cache is also bound to a SHA-256 fingerprint of the local token,
+the authenticated-probe contract version, build/deployment identity,
+source/config hashes, provider, and model. That contract-version binding
+invalidates any earlier readiness value produced by the old public-health
+probe after an app update.
+
 ## Windows event provisioning and owner override
 
-The online-judge Windows installer contains no provider key. CI creates a non-source `sarah-event-config.json` and bundles the tested Worker URL, provider/model selection, approved voice ID, and the same revocable event app token inside the application EXE. The workflow never uploads the plain config or writes the token to logs or manifests.
+The online-judge Windows installer contains no provider key or protected-route
+access code. CI creates a non-source `sarah-event-config.json` containing only
+the tested Worker URL, provider/model selection, and approved voice/model IDs.
+The build fails if a token, API-key, password, or secret field is added.
 
 1. Install `SarahMorganTravelOS-R2-Candidate-Setup.exe` from the Windows
    owner-acceptance candidate artifact. Its executable, shortcuts, uninstall
    entry, and data root remain side-by-side with the preserved R1 Windows build.
-2. Start Sarah; the tested event route works without manually transcribing the token.
-3. Use **Connection** only to override the event defaults or remove a per-user override.
+2. Start Sarah and use **Connection** to enter the privately transferred,
+   revocable Sarah access code. The included URL normally needs no editing.
+3. Use **Connection** again to replace or clear that per-user activation.
 4. The protected Worker supplies voice; ordinary owner setup never asks for an ElevenLabs provider key.
 
 Settings are stored for the current user in:
@@ -189,11 +226,14 @@ Settings are stored for the current user in:
 %APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json
 ```
 
-That local file is outside the EXE and repository. Do not distribute it.
+That local file is outside the EXE and repository. Credential values are
+Windows-DPAPI protected for the current Windows account rather than stored as
+plaintext. Do not distribute the file.
 Resolution order is environment variable, then R2 per-user runtime config,
-then bundled event config. The event token remains extractable from the
-installed binary despite being absent from source and manifests, so post-event
-rotation is mandatory. The side-by-side Windows candidate does not silently
+then non-secret bundled event defaults. The access code is not extractable
+from the installed binary because it is entered only after installation.
+Rotate it if the private transfer or installed per-user credential is exposed.
+The side-by-side Windows candidate does not silently
 inherit R1's private database. Network device sync is disabled in the R2
 candidate pending an accepted TLS or authenticated key-agreement transport;
 only an owner-selected verified backup/restore path may move private data.
@@ -262,7 +302,11 @@ The workflow names the missing repository secret and stops before deployment. Ad
 
 ### HTTP 401 from the Worker
 
-The Sarah app token used by a client did not match the deployed token. Confirm that `SARAH_MODEL_BACKEND_TOKEN` is the intended current repository secret, then rerun the complete judge workflow so Worker deployment, live smoke tests, APK, and Windows installer all use that exact value. Do not paste the token into source or workflow output.
+The Sarah access code saved after installation did not match the deployed
+Worker. Confirm the Worker still uses the intended current repository secret,
+then privately re-enter that exact revocable app code through Android
+**Activate online mind** or Windows **Connection**. Do not rebuild it into an
+artifact or paste it into source or workflow output.
 
 ### Workers AI error or quota exhaustion
 
@@ -270,7 +314,10 @@ Inspect the bounded Worker error and Cloudflare dashboard. Free allocation exhau
 
 ### ElevenLabs voice gate fails
 
-Confirm the repository key and approved voice ID, then inspect the `/health` `voice_ready` field. Do not put the provider key into Android BuildConfig to bypass the protected route.
+Confirm the repository key and approved voice ID, then inspect the authenticated
+`/capabilities` `voice_ready` field with the exact event bearer token. Public
+`/health` is deployment metadata and is not client capability proof. Do not put
+the provider key into Android BuildConfig to bypass the protected route.
 
 ### Android refuses an update
 

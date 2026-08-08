@@ -12,6 +12,15 @@ public final class SafeAreaInsets {
     private SafeAreaInsets() { }
 
     public static void apply(Activity activity, View root, View bottomView, ScrollView scroll) {
+        apply(activity, root, bottomView, scroll, null);
+    }
+
+    public static void apply(
+            Activity activity,
+            View root,
+            View bottomView,
+            ScrollView scroll,
+            View hideWhileKeyboardVisible) {
         if (root == null) return;
         if (Build.VERSION.SDK_INT >= 30) activity.getWindow().setDecorFitsSystemWindows(false);
 
@@ -27,14 +36,17 @@ public final class SafeAreaInsets {
         final int margin = baseBottomMargin;
 
         root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int preservedScrollY = scroll == null ? 0 : scroll.getScrollY();
             int left;
             int top;
             int right;
             int bottom;
+            boolean keyboardVisible = false;
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                keyboardVisible = insets.isVisible(WindowInsets.Type.ime());
                 left = bars.left;
                 top = bars.top;
                 right = bars.right;
@@ -44,6 +56,10 @@ public final class SafeAreaInsets {
                 top = insets.getSystemWindowInsetTop();
                 right = insets.getSystemWindowInsetRight();
                 bottom = insets.getSystemWindowInsetBottom();
+            }
+            if (hideWhileKeyboardVisible != null) {
+                hideWhileKeyboardVisible.setVisibility(
+                        keyboardVisible ? View.GONE : View.VISIBLE);
             }
             view.setPadding(rootLeft + left, rootTop + top, rootRight + right,
                     bottomView == null ? rootBottom + bottom : rootBottom);
@@ -58,6 +74,7 @@ public final class SafeAreaInsets {
                         scroll.getPaddingTop(),
                         scroll.getPaddingRight(),
                         scrollBottom + (bottomView == null ? bottom : 0));
+                scroll.post(() -> scroll.scrollTo(0, preservedScrollY));
             }
             return insets;
         });

@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -22,19 +23,24 @@ public final class EventResearchCoordinator {
             String providerId,
             String apiKey,
             String model,
-            int limit) {
+            int limit,
+            ConfirmedOwnerLease ownerLease) {
         boolean modelAvailable = SarahModelConfig.fullConversationAvailable()
                 || apiKey != null && !apiKey.trim().isEmpty();
         int refreshed = 0;
+        if (!leaseStillValid(context, store, ownerLease)) return 0;
         for (Map<String, String> event : store.listDueEventTrips(Math.max(1, limit))) {
+            if (!leaseStillValid(context, store, ownerLease)) break;
             boolean officialRefreshed = false;
             KnownEventCatalog.Entry known = KnownEventCatalog.findByEventName(
                     event.getOrDefault("event_name", ""));
             if (known != null) {
                 try {
+                    if (!leaseStillValid(context, store, ownerLease)) break;
                     OfficialEventPageLookup.Result official = OfficialEventPageLookup.lookup(known);
-                    if (official.found) {
-                        OfficialEventPageLookup.apply(store, known, official);
+                    if (official.found && leaseStillValid(context, store, ownerLease)) {
+                        long applied = OfficialEventPageLookup.apply(store, known, official, true);
+                        if (applied <= 0) continue;
                         refreshed++;
                         officialRefreshed = true;
                     }
@@ -49,7 +55,10 @@ public final class EventResearchCoordinator {
             }
             if (officialRefreshed) continue;
             try {
-                if (refreshOne(context, store, event, providerId, apiKey, model)) refreshed++;
+                if (refreshOne(
+                        context, store, event, providerId, apiKey, model, ownerLease)) {
+                    refreshed++;
+                }
             } catch (Exception ignored) {
                 // Keep the event due so a later connected run can retry.
             }
@@ -63,7 +72,8 @@ public final class EventResearchCoordinator {
             Map<String, String> event,
             String providerId,
             String apiKey,
-            String model) throws Exception {
+            String model,
+            ConfirmedOwnerLease ownerLease) throws Exception {
         long eventId = longValue(event, "id", 0);
         String eventName = event.getOrDefault("event_name", "");
         String destination = event.getOrDefault("destination", "");
@@ -95,6 +105,9 @@ public final class EventResearchCoordinator {
                 + "Previously known start date: " + knownStartDate + "\n"
                 + "Previously known venue: " + knownVenue;
 
+        // Re-check the exact active-person/owner/opt-in lease at the last
+        // boundary before any connected request is registered.
+        if (!leaseStillValid(context, store, ownerLease)) return false;
         ConnectedModelResponse connected = ConnectedModelGateway.respondDetailed(
                 providerId,
                 apiKey,
@@ -104,7 +117,8 @@ public final class EventResearchCoordinator {
                 message,
                 true,
                 null);
-        if (!connected.hasVerifiedWebReceipt()) return false;
+        if (!connected.hasVerifiedWebReceipt()
+                || !leaseStillValid(context, store, ownerLease)) return false;
         JSONObject json = new JSONObject(stripCodeFence(connected.reply));
         String refreshedEventName = value(json, "event_name", eventName);
         String refreshedDestination = value(json, "destination", destination);
@@ -116,7 +130,8 @@ public final class EventResearchCoordinator {
         if (!candidateOfficialUrl.isEmpty() && !connected.hasSourceUrl(candidateOfficialUrl)) {
             candidateOfficialUrl = knownOfficialUrl;
         }
-        store.updateEventResearch(
+        if (!leaseStillValid(context, store, ownerLease)
+                || !store.updateEventResearch(
                 eventId,
                 refreshedEventName,
                 refreshedDestination,
@@ -130,11 +145,12 @@ public final class EventResearchCoordinator {
                 value(json, "transport_notes", ""),
                 connected.sourceReceipt(),
                 now,
-                nextCheck);
+                nextCheck)) return false;
 
         JSONArray updates = json.optJSONArray("latest_updates");
         if (updates == null) return true;
         for (int i = 0; i < updates.length(); i++) {
+            if (!leaseStillValid(context, store, ownerLease)) return false;
             JSONObject update = updates.optJSONObject(i);
             if (update == null) continue;
             String title = update.optString("title", "").trim();
@@ -143,6 +159,7 @@ public final class EventResearchCoordinator {
             String key = update.optString("update_key", "").trim();
             if (key.isEmpty()) key = stableKey(title, sourceUrl, publishedAt);
             if (title.isEmpty() || key.isEmpty() || !connected.hasSourceUrl(sourceUrl)) continue;
+            if (!leaseStillValid(context, store, ownerLease)) return false;
             boolean added = store.addEventUpdate(
                     eventId,
                     key,
@@ -152,6 +169,7 @@ public final class EventResearchCoordinator {
                     sourceUrl,
                     publishedAt);
             if (added) {
+                if (!leaseStillValid(context, store, ownerLease)) return false;
                 EventNotificationManager.post(
                         context,
                         eventId,
@@ -162,6 +180,31 @@ public final class EventResearchCoordinator {
             }
         }
         return true;
+    }
+
+    /** Re-check the person, owner status, opt-in, and thread at every commit boundary. */
+    private static boolean leaseStillValid(
+            Context context,
+            EventTripStore store,
+            ConfirmedOwnerLease ownerLease) {
+        if (context == null || store == null || ownerLease == null
+                || !store.isActiveProfile()) return false;
+        try {
+            ownerLease.requireActive();
+        } catch (IllegalStateException failure) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(
+                SettingsActivity.PREFS,
+                Context.MODE_PRIVATE);
+        return EventTripMonitoringPolicy.leaseStillValidForProfileKey(
+                store.profileKey(),
+                ownerLease.personId(),
+                true,
+                preferences.getBoolean(
+                        "deal_alerts_enabled",
+                        BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED),
+                Thread.currentThread().isInterrupted());
     }
 
     private static long cadenceMillis(String startDate) {

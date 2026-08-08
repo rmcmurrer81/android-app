@@ -23,10 +23,11 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/buildProductText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Sarah Travel OS 2.5"
+            android:text="Sarah Travel OS"
             android:textColor="@color/sarah_blue"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -46,7 +47,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/mode_status_background"
             android:padding="12dp"
-            android:text="Sarah uses her connected mind when it is available and continues with saved knowledge and on-device tools when it is not. Her natural online voice falls back automatically to the phone’s offline voice. No technical setup is required here."
+            android:text="Sarah uses her connected mind only after its protected route verifies, and continues with saved knowledge and on-device tools when it does not. A verified natural online voice falls back automatically to the phone’s offline voice. Tap the build details above for technical identity."
             android:textColor="@color/sarah_text"
             android:textSize="14sp" />
 
@@ -63,6 +64,21 @@
             android:id="@+id/providerSpinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/onlineMindAccessStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Sarah's protected online connection is not activated."
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/configureOnlineMindAccessButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Activate online mind"
+            android:textAllCaps="false" />
 
         <CheckBox
             android:id="@+id/webSearchCheck"

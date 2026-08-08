@@ -13,16 +13,32 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Calls a team-configured backend that normalizes fare and weather results. */
 public final class TravelDealGateway {
+    private static final ConcurrentHashMap<Thread, HttpURLConnection> ACTIVE_CONNECTIONS =
+            new ConcurrentHashMap<>();
+
     private TravelDealGateway() { }
+
+    public static void cancel(Thread worker) {
+        if (worker == null) return;
+        HttpURLConnection active = ACTIVE_CONNECTIONS.remove(worker);
+        if (active != null) active.disconnect();
+    }
 
     public static boolean isConfigured(Context context) {
         return endpoint(context).startsWith("https://");
     }
 
-    public static TravelDealResult check(Context context, Map<String, String> watch) throws Exception {
+    public static TravelDealResult check(
+            Context context,
+            Map<String, String> watch,
+            ConfirmedOwnerLease lease) throws Exception {
+        if (lease == null) throw new IllegalStateException("CONFIRMED_OWNER_LEASE_REQUIRED");
+        Thread worker = Thread.currentThread();
+        lease.requireActive();
         String endpoint = endpoint(context);
         if (endpoint.isEmpty()) return TravelDealResult.unconfigured();
 
@@ -42,35 +58,69 @@ public final class TravelDealGateway {
         request.put("currency", watch.getOrDefault("currency", "USD"));
         request.put("include_weather_context", true);
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setConnectTimeout(30000);
-        connection.setReadTimeout(90000);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Content-Type", "application/json");
-        String token = SecureStore.loadDealBackendToken(context);
-        if (token.isEmpty()) token = TravelCommerceConfig.token();
-        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
-        byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
-        try (OutputStream out = connection.getOutputStream()) {
-            out.write(body);
+        HttpURLConnection connection = null;
+        try {
+            lease.requireActive();
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(90000);
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestProperty("Content-Type", "application/json");
+            String token = SecureStore.loadDealBackendToken(context);
+            if (token.isEmpty()) token = TravelCommerceConfig.token();
+            if (!token.isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+            }
+            byte[] body = request.toString().getBytes(StandardCharsets.UTF_8);
+            lease.requireActive();
+            if (ACTIVE_CONNECTIONS.putIfAbsent(worker, connection) != null) {
+                throw new IllegalStateException("DEAL_CONNECTION_ALREADY_REGISTERED");
+            }
+            lease.requireActive();
+            try (OutputStream out = connection.getOutputStream()) {
+                lease.requireActive();
+                out.write(body);
+                lease.requireActive();
+                out.flush();
+                lease.requireActive();
+            }
+            lease.requireActive();
+            int code = connection.getResponseCode();
+            lease.requireActive();
+            InputStream stream = code >= 200 && code < 300
+                    ? connection.getInputStream()
+                    : connection.getErrorStream();
+            String response = readAll(stream, lease);
+            lease.requireActive();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException(
+                        "Deal backend returned HTTP " + code + ": "
+                                + abbreviate(response));
+            }
+            return TravelDealResult.fromJson(new JSONObject(response));
+        } finally {
+            if (connection != null) {
+                ACTIVE_CONNECTIONS.remove(worker, connection);
+                connection.disconnect();
+            }
         }
-
-        int code = connection.getResponseCode();
-        InputStream stream = code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream();
-        String response = readAll(stream);
-        if (code < 200 || code >= 300) {
-            throw new IllegalStateException("Deal backend returned HTTP " + code + ": " + abbreviate(response));
-        }
-        return TravelDealResult.fromJson(new JSONObject(response));
     }
 
-    private static String readAll(InputStream stream) throws Exception {
+    private static String readAll(InputStream stream, ConfirmedOwnerLease lease)
+            throws Exception {
         if (stream == null) return "";
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             StringBuilder text = new StringBuilder();
             String line;
-            while ((line = reader.readLine()) != null) text.append(line);
+            while (true) {
+                lease.requireActive();
+                line = reader.readLine();
+                lease.requireActive();
+                if (line == null) break;
+                text.append(line);
+            }
             return text.toString();
         }
     }

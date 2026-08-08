@@ -446,6 +446,10 @@ public final class SpeakerContext implements AutoCloseable {
                 String destination = trip.getOrDefault("destination", "").trim();
                 if (!destination.isEmpty() && (status.contains("planned")
                         || status.contains("upcoming") || status.contains("confirmed"))) {
+                    if (!isOwner() && (people == null || !"going".equalsIgnoreCase(
+                            people.getTripParticipation(activeName(), destination)))) {
+                        continue;
+                    }
                     return destination;
                 }
             }
@@ -453,7 +457,7 @@ public final class SpeakerContext implements AutoCloseable {
             db.close();
         }
 
-        EventTripStore events = new EventTripStore(context);
+        EventTripStore events = new EventTripStore(context, activePersonId());
         try {
             for (Map<String, String> event : events.listActiveEventTrips(20)) {
                 String destination = event.getOrDefault("destination", "").trim();

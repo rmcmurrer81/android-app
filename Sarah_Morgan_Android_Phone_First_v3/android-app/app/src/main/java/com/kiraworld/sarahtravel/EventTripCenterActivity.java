@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.LinearLayout;
 
@@ -29,7 +30,7 @@ public final class EventTripCenterActivity extends Activity {
                 "Conventions, conferences and festivals",
                 "Sarah keeps the event separate from the city, preserves official-source evidence, and carries the event through short follow-up questions."));
 
-        EventTripStore store = new EventTripStore(this);
+        EventTripStore store = new EventTripStore(this, EventTripStore.activePersonId(this));
         List<Map<String, String>> events;
         try {
             events = store.listActiveEventTrips(100);
@@ -46,6 +47,14 @@ public final class EventTripCenterActivity extends Activity {
             return;
         }
 
+        SharedPreferences preferences = getSharedPreferences(
+                SettingsActivity.PREFS, MODE_PRIVATE);
+        boolean ownerMonitoringOptIn = preferences.getBoolean(
+                "deal_alerts_enabled",
+                BackgroundResearchPolicy.DEFAULT_BACKGROUND_MONITORING_ENABLED);
+        boolean durableSchedulerAccepted = EventMonitorScheduler.isDurablyScheduled(this);
+        boolean currentSourceReady = TavilyClient.configured();
+
         for (Map<String, String> event : events) {
             String name = event.getOrDefault("event_name", "Event");
             String destination = event.getOrDefault("destination", "");
@@ -53,7 +62,30 @@ public final class EventTripCenterActivity extends Activity {
             String start = event.getOrDefault("start_date", "");
             String end = event.getOrDefault("end_date", "");
             String official = event.getOrDefault("official_url", "");
-            String detail = "Status: " + event.getOrDefault("monitor_status", "queued")
+            String storedMonitorStatus = event.getOrDefault("monitor_status", "saved");
+            boolean monitoringEnabled = "yes".equals(event.getOrDefault("monitor_enabled", "no"));
+            boolean sourceReady = currentSourceReady
+                    || KnownEventCatalog.findByEventName(name) != null;
+            boolean monitoringRunning = monitoringEnabled
+                    && ownerMonitoringOptIn
+                    && sourceReady
+                    && durableSchedulerAccepted;
+            String monitoringTruth;
+            if (monitoringRunning) {
+                monitoringTruth = "Monitoring: scheduled · state " + storedMonitorStatus;
+            } else if (monitoringEnabled) {
+                String reason = !ownerMonitoringOptIn
+                        ? "owner monitoring opt-in is off"
+                        : !sourceReady
+                            ? "no verified current source is available"
+                            : "Android did not accept the durable monitor job";
+                monitoringTruth = "Monitoring requested but currently paused · " + reason;
+            } else {
+                monitoringTruth = "Monitoring: off" + ("saved".equals(storedMonitorStatus)
+                        ? ""
+                        : " (preserved status: " + storedMonitorStatus + ")");
+            }
+            String detail = monitoringTruth
                     + (venue.isEmpty() ? "" : "\nVenue: " + venue)
                     + (start.isEmpty() ? "\nDates: not verified yet" : "\nDates: " + start + (end.isEmpty() || start.equals(end) ? "" : " to " + end))
                     + text("Latest details", event.getOrDefault("updates_summary", ""))
@@ -64,7 +96,8 @@ public final class EventTripCenterActivity extends Activity {
 
             LinearLayout card = TravelUi.card(this, TravelUi.LAVENDER);
             card.addView(TravelUi.cardTitle(this, "🎫", name));
-            card.addView(TravelUi.body(this, destination + detail));
+            card.addView(TravelUi.body(this,
+                    destination + (destination.isEmpty() ? "" : "\n") + detail));
             if (!official.isEmpty()) {
                 card.addView(TravelUi.primaryButton(this, "Open official event page",
                         v -> TravelUi.open(this, official)));

@@ -295,7 +295,10 @@ def test_runtime_config_is_local_atomic_and_environment_wins(monkeypatch):
             "NOT_ALLOWED": "must-not-be-saved",
         }, root)
         assert path.parent == root
-        assert "NOT_ALLOWED" not in path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
+        assert "NOT_ALLOWED" not in raw
+        assert "saved-token" not in raw
+        assert "dpapi-v1:" in raw or "local-aesgcm-v1:" in raw
         assert load_runtime_config(root)["SARAH_MODEL_BACKEND_TOKEN"] == "saved-token"
         assert runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=root) == "saved-token"
         monkeypatch.setenv("SARAH_MODEL_BACKEND_TOKEN", "environment-token")
@@ -304,7 +307,22 @@ def test_runtime_config_is_local_atomic_and_environment_wins(monkeypatch):
             save_runtime_config({"SARAH_MODEL_BACKEND_URL": "http://not-protected.test"}, root)
 
 
-def test_runtime_setting_precedence_includes_ci_bundled_event_config(monkeypatch):
+def test_legacy_plaintext_runtime_access_is_migrated_on_first_read():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
+        root = make_sarah_home(Path(temp) / "legacy-runtime")
+        path = root / "runtime-config.json"
+        path.write_text(json.dumps({
+            "SARAH_MODEL_BACKEND_URL": "https://sarah.example.test",
+            "SARAH_MODEL_BACKEND_TOKEN": "legacy-plaintext-token",
+        }), encoding="utf-8")
+
+        assert load_runtime_config(root)["SARAH_MODEL_BACKEND_TOKEN"] == "legacy-plaintext-token"
+        migrated = path.read_text(encoding="utf-8")
+        assert "legacy-plaintext-token" not in migrated
+        assert "dpapi-v1:" in migrated or "local-aesgcm-v1:" in migrated
+
+
+def test_runtime_setting_precedence_excludes_bundled_credentials(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "runtime")
         bundle = Path(temp) / "sarah-event-config.json"
@@ -317,11 +335,10 @@ def test_runtime_setting_precedence_includes_ci_bundled_event_config(monkeypatch
         monkeypatch.delenv("SARAH_MODEL_BACKEND_TOKEN", raising=False)
         assert load_bundled_event_config(bundle) == {
             "SARAH_MODEL_BACKEND_URL": "https://event.example.test",
-            "SARAH_MODEL_BACKEND_TOKEN": "event-token",
         }
         assert runtime_setting(
             "SARAH_MODEL_BACKEND_TOKEN", root=root, bundled_path=bundle,
-        ) == "event-token"
+        ) == ""
 
         save_runtime_config({"SARAH_MODEL_BACKEND_TOKEN": "user-token"}, root)
         assert runtime_setting(

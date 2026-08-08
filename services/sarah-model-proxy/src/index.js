@@ -12,7 +12,17 @@ export default {
     const url = new URL(request.url);
     const provider = configuredProvider(env);
 
-    if (request.method === "GET" && url.pathname === "/health") {
+    if (request.method === "GET"
+        && (url.pathname === "/health" || url.pathname === "/capabilities")) {
+      if (url.pathname === "/capabilities") {
+        if (!env.SARAH_BACKEND_TOKEN) {
+          return json({ error: "server_not_configured" }, 503);
+        }
+        const suppliedToken = bearerToken(request.headers.get("Authorization"));
+        if (!suppliedToken || !(await constantTimeEqual(suppliedToken, env.SARAH_BACKEND_TOKEN))) {
+          return json({ error: "unauthorized" }, 401);
+        }
+      }
       const deployment = deploymentIdentity(env);
       return json({
         ok: Boolean(env.SARAH_BACKEND_TOKEN && providerReady(provider, env)),
@@ -40,6 +50,7 @@ export default {
         service: "sarah-model-proxy",
         status: "ready",
         health: "/health",
+        capabilities: "/capabilities",
       }, 200);
     }
 

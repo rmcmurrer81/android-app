@@ -98,7 +98,8 @@ public final class PublicMediaGateway {
         connection.setConnectTimeout(12000);
         connection.setReadTimeout(18000);
         connection.setInstanceFollowRedirects(true);
-        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.5 (public media preview)");
+        connection.setRequestProperty("User-Agent", "SarahMorganTravel/" + BuildConfig.VERSION_NAME
+                + " (public media preview)");
         connection.setRequestProperty("Accept", accept);
         int status = connection.getResponseCode();
         if (status < 200 || status >= 400) {

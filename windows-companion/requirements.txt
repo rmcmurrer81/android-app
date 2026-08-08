@@ -3,6 +3,7 @@ Pillow>=10,<13
 requests>=2.32,<3
 pystray>=0.19,<1
 playsound3>=3,<4
+miniaudio>=1.71,<2
 google-api-python-client>=2.160,<3
 google-auth-oauthlib>=1.2,<2
 pytest>=8,<10

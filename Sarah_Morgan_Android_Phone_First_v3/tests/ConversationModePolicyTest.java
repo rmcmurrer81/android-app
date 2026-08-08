@@ -18,8 +18,20 @@ public final class ConversationModePolicyTest {
 
         String configuredOnly = ConversationModePolicy.statusLabel(
                 ConversationModePolicy.MODE_AUTO, true, true, false, false);
-        require(configuredOnly.contains("configured") && configuredOnly.contains("verifying"),
-                "network plus configuration must not be mistaken for a proven backend route");
+        require(configuredOnly.contains("verified") && configuredOnly.contains("first connected reply"),
+                "a verified contract still must not claim a successful conversation turn");
+
+        String checking = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, false, false, false,
+                true, false);
+        require(checking.startsWith("Checking connection"),
+                "a health probe must have an explicit checking state");
+
+        String reconnecting = ConversationModePolicy.statusLabel(
+                ConversationModePolicy.MODE_AUTO, true, false, true, false,
+                false, true);
+        require(reconnecting.startsWith("Reconnecting"),
+                "a restored network must not claim readiness before verification");
 
         String smartOnline = ConversationModePolicy.statusLabel(
                 ConversationModePolicy.MODE_AUTO, true, true, false, true);

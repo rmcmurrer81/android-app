@@ -5,25 +5,21 @@ plugins {
 def javaString = { String value ->
     '"' + (value ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
-def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
 def sarahModelProvider = System.getenv('SARAH_MODEL_PROVIDER') ?: 'workers-ai'
 def sarahModelId = System.getenv('SARAH_MODEL_ID') ?: (System.getenv('SARAH_OPENAI_MODEL') ?: '@cf/google/gemma-4-26b-a4b-it')
 def sarahOpenAiModel = System.getenv('SARAH_OPENAI_MODEL') ?: sarahModelId
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
-def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
 def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
-def sarahTravelCommerceToken = System.getenv('SARAH_TRAVEL_COMMERCE_TOKEN') ?: ''
 def sarahVoiceConciergeUrl = System.getenv('SARAH_VOICE_CONCIERGE_URL') ?: ''
-def sarahVoiceConciergeToken = System.getenv('SARAH_VOICE_CONCIERGE_TOKEN') ?: ''
-def sarahElevenLabsApiKey = System.getenv('SARAH_ELEVENLABS_API_KEY') ?: ''
 def sarahElevenLabsVoiceId = System.getenv('SARAH_ELEVENLABS_VOICE_ID') ?: ''
 def sarahElevenLabsModelId = System.getenv('SARAH_ELEVENLABS_MODEL_ID') ?: 'eleven_multilingual_v2'
 def sarahElevenLabsBackendUrl = System.getenv('SARAH_ELEVENLABS_BACKEND_URL') ?: ''
-def sarahElevenLabsBackendToken = System.getenv('SARAH_ELEVENLABS_BACKEND_TOKEN') ?: ''
 def sarahStay22Aid = System.getenv('SARAH_STAY22_AID') ?: ''
 def sarahStay22BackendUrl = System.getenv('SARAH_STAY22_BACKEND_URL') ?: ''
-def sarahStay22BackendToken = System.getenv('SARAH_STAY22_BACKEND_TOKEN') ?: ''
 def sarahBuildCommit = System.getenv('GITHUB_SHA') ?: ''
+def sarahExpectedDeploymentId = System.getenv('SARAH_EXPECTED_DEPLOYMENT_ID') ?: ''
+def sarahExpectedWorkerSourceSha256 = System.getenv('SARAH_EXPECTED_WORKER_SOURCE_SHA256') ?: ''
+def sarahExpectedWorkerConfigSha256 = System.getenv('SARAH_EXPECTED_WORKER_CONFIG_SHA256') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -38,29 +34,35 @@ android {
         versionCode 26
         versionName '2.5-r2-owner-repair'
 
-        // Team-owned connections. People installing Sarah do not enter provider keys.
-        buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
+        // Artifacts contain public route/model identity only. All credential
+        // compatibility fields are forced empty even when a build runner has
+        // similarly named secrets in its environment. A confirmed owner
+        // activates one revocable protected-backend access code at runtime.
+        buildConfigField 'String', 'SARAH_OPENAI_API_KEY', '""'
         buildConfigField 'String', 'SARAH_OPENAI_MODEL', javaString(sarahOpenAiModel)
         buildConfigField 'String', 'SARAH_MODEL_PROVIDER', javaString(sarahModelProvider)
         buildConfigField 'String', 'SARAH_MODEL_ID', javaString(sarahModelId)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
-        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
+        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', '""'
         buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_URL', javaString(sarahTravelCommerceUrl)
-        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', javaString(sarahTravelCommerceToken)
+        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', '""'
         buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_URL', javaString(sarahVoiceConciergeUrl)
-        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', javaString(sarahVoiceConciergeToken)
-        buildConfigField 'String', 'SARAH_ELEVENLABS_API_KEY', javaString(sarahElevenLabsApiKey)
+        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', '""'
+        buildConfigField 'String', 'SARAH_ELEVENLABS_API_KEY', '""'
         buildConfigField 'String', 'SARAH_ELEVENLABS_VOICE_ID', javaString(sarahElevenLabsVoiceId)
         buildConfigField 'String', 'SARAH_ELEVENLABS_MODEL_ID', javaString(sarahElevenLabsModelId)
         buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_URL', javaString(sarahElevenLabsBackendUrl)
-        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', javaString(sarahElevenLabsBackendToken)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', '""'
         // Provider search credentials must remain server-side. This constant
         // is intentionally blank even if an old build environment sets one.
         buildConfigField 'String', 'SARAH_TAVILY_API_KEY', '""'
         buildConfigField 'String', 'SARAH_STAY22_AID', javaString(sarahStay22Aid)
         buildConfigField 'String', 'SARAH_STAY22_BACKEND_URL', javaString(sarahStay22BackendUrl)
-        buildConfigField 'String', 'SARAH_STAY22_BACKEND_TOKEN', javaString(sarahStay22BackendToken)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_TOKEN', '""'
         buildConfigField 'String', 'SARAH_BUILD_COMMIT', javaString(sarahBuildCommit)
+        buildConfigField 'String', 'SARAH_EXPECTED_DEPLOYMENT_ID', javaString(sarahExpectedDeploymentId)
+        buildConfigField 'String', 'SARAH_EXPECTED_WORKER_SOURCE_SHA256', javaString(sarahExpectedWorkerSourceSha256)
+        buildConfigField 'String', 'SARAH_EXPECTED_WORKER_CONFIG_SHA256', javaString(sarahExpectedWorkerConfigSha256)
     }
 
     buildFeatures {
