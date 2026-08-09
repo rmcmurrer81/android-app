@@ -972,6 +972,8 @@ jobs:
           PY
           modelclient_warm_status=000
           for attempt in $(seq 1 4); do
+            modelclient_warm_nonce="$(python -c 'import secrets; print(secrets.token_urlsafe(12))')"
+            modelclient_warm_url="${MODELCLIENT_BACKEND_URL}&warm_attempt=${attempt}&warm_nonce=${modelclient_warm_nonce}"
             if modelclient_warm_status="$(curl --silent --show-error \
               --connect-timeout 5 --max-time 35 \
               -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
@@ -981,7 +983,7 @@ jobs:
               --data-binary @/tmp/sarah-modelclient-warm-request.json \
               --output /tmp/sarah-modelclient-warm-response.json \
               --write-out '%{http_code}' \
-              "$MODELCLIENT_BACKEND_URL")"; then
+              "$modelclient_warm_url")"; then
               :
             else
               modelclient_warm_status=000

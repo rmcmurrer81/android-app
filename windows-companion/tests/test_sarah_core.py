@@ -1121,7 +1121,7 @@ def test_windows_connected_retry_preserves_second_attempt_after_fast_failure(mon
     } for call in calls)
 
 
-def test_windows_ordinary_retry_uses_only_the_remaining_15_second_budget(monkeypatch):
+def test_windows_ordinary_retry_uses_only_the_remaining_15_second_socket_budget(monkeypatch):
     clock = {"seconds": 0.0}
     calls = []
 

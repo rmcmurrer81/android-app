@@ -2017,16 +2017,20 @@ class ModelClient:
         A current-source turn performs a protected Tavily lookup and then
         source-coupled model inference in the same Worker request. Both normal
         and current-source inference need one useful first read window.
-        Ordinary chat keeps its 15-second total budget but may spend up to 12
-        seconds on a read; a second attempt remains available only when an
-        earlier connection or transient HTTP failure returns quickly. Current-
+        Ordinary chat keeps its 15-second normal-transport admission/socket
+        budget but may spend up to 12 seconds on a read; a second attempt
+        remains available only when an earlier connection or transient HTTP
+        failure returns quickly. Current-
         source work keeps its bounded 25-second budget, 18-second maximum
         read, and up to three attempts. The source-receipt gate remains
         mandatory. Every attempt uses a distinct no-cache query so a stale
         edge response cannot poison the retry. A 404 is retryable only inside
         this already bounded loop because a newly deployed Worker route can
         briefly return it; persistent or misconfigured routes still fall back
-        after the same attempt and wall-clock limits.
+        after the same attempt-admission and socket-phase limits. Requests does
+        not provide a safely cancellable hard wall for DNS or a maliciously
+        trickling response; this is a bounded normal-transport budget, not an
+        absolute process-level deadline.
         """
         current_source_request = as_bool(payload.get("web_search"), False)
         turn_budget_seconds = 25.0 if current_source_request else 15.0

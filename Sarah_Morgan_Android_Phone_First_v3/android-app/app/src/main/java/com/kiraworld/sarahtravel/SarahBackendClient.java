@@ -72,6 +72,24 @@ public final class SarahBackendClient {
             boolean webSearch,
             String searchQuery,
             byte[] imageJpeg) throws Exception {
+        return respondDetailed(
+                endpoint, providerId, model, systemPrompt, history, message,
+                webSearch, searchQuery, imageJpeg, 1,
+                ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+    }
+
+    public static ConnectedModelResponse respondDetailed(
+            String endpoint,
+            String providerId,
+            String model,
+            String systemPrompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean webSearch,
+            String searchQuery,
+            byte[] imageJpeg,
+            int attemptNumber,
+            long remainingBudgetMs) throws Exception {
         long requestStartedAt = System.currentTimeMillis();
         String safeEndpoint = endpoint == null ? "" : endpoint.trim();
         if (!safeEndpoint.startsWith("https://")) {
@@ -107,18 +125,22 @@ public final class SarahBackendClient {
 
         Thread worker = Thread.currentThread();
         requireActive(worker);
-        HttpURLConnection connection = (HttpURLConnection) new URL(safeEndpoint).openConnection();
+        String attemptEndpoint = ConnectedTurnPolicy.endpointForAttempt(
+                safeEndpoint, attemptNumber);
+        HttpURLConnection connection = (HttpURLConnection) new URL(attemptEndpoint).openConnection();
         ACTIVE_CONNECTIONS.put(worker, connection);
         int status;
         String response;
         try {
             requireActive(worker);
-            connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
+            connection.setConnectTimeout(ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs));
+            connection.setReadTimeout(ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs));
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Cache-Control", "no-cache");
+            connection.setRequestProperty("Pragma", "no-cache");
             connection.setRequestProperty("User-Agent", "SarahMorganTravel/" + BuildConfig.VERSION_NAME);
             String token = SarahModelConfig.backendToken();
             if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
@@ -141,7 +163,8 @@ public final class SarahBackendClient {
             connection.disconnect();
         }
         if (status < 200 || status >= 300) {
-            throw new IllegalStateException("Sarah backend returned " + status);
+            throw new ConnectedTurnPolicy.HttpStatusException(
+                    "Sarah backend", status, response.substring(0, Math.min(response.length(), 500)));
         }
         JSONObject json = new JSONObject(response);
         String reply = json.optString("reply", "").trim();

@@ -37,6 +37,12 @@ approved portrait, real animation/power-saving toggle, Travel Workbench, maps
 and public-media handoffs, trip tools, wallet, secure same-Wi-Fi discovery and
 matching-code pairing.
 
+The Windows event installer is not Authenticode-signed. Windows may therefore
+show an **Unknown publisher** or SmartScreen warning even when its SHA-256
+matches the adjacent manifest. This is an event-candidate packaging limitation,
+not evidence that the hash changed. Do not bypass an unexpected hash mismatch;
+download the artifact again and compare the exact recorded SHA-256 instead.
+
 ## Online and offline behavior
 
 The event artifacts contain the exact candidate Worker URL and one short-lived,

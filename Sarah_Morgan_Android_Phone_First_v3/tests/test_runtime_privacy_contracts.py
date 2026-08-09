@@ -640,6 +640,82 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
         ):
             self.assertIn(phrase, notebook)
 
+    def test_connected_turn_uses_one_useful_read_and_only_a_bounded_transient_retry(self):
+        policy = source("ConnectedTurnPolicy.java")
+        backend = source("SarahBackendClient.java")
+        openai = source("OpenAIClient.java")
+        gateway = source("ConnectedModelGateway.java")
+        main = source("MainActivity.java")
+
+        for phrase in (
+            "READ_TIMEOUT_MS = 11_500",
+            "MAX_NETWORK_WAIT_MS = 15_000",
+            "MIN_SECOND_ATTEMPT_BUDGET_MS = 4_000",
+            "isRetryableFailure(failure)",
+            "status == 404",
+            "status == 408",
+            "status == 429",
+            "status >= 500",
+            "current instanceof SSLHandshakeException",
+        ):
+            self.assertIn(phrase, policy)
+
+        for client in (backend, openai):
+            for phrase in (
+                "ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs)",
+                "ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs)",
+                'setRequestProperty("Cache-Control", "no-cache")',
+                'setRequestProperty("Pragma", "no-cache")',
+                "new ConnectedTurnPolicy.HttpStatusException(",
+            ):
+                self.assertIn(phrase, client)
+
+        for phrase in (
+            "ConnectedTurnPolicy.endpointForAttempt(\n                safeEndpoint, attemptNumber)",
+        ):
+            self.assertIn(phrase, backend)
+        for phrase in (
+            "static String endpointForAttempt(String endpoint, int attemptNumber)",
+            "UUID.randomUUID().toString()",
+            '"sarah_attempt=" + Math.max(1, attemptNumber)',
+            '"sarah_nonce=" + encodeQueryPart(exactNonce)',
+            'exact.indexOf(\'#\')',
+            '"sarah_attempt".equals(decodedKey)',
+            '"sarah_nonce".equals(decodedKey)',
+        ):
+            self.assertIn(phrase, policy)
+
+        self.assertIn("int attemptNumber,\n            long remainingBudgetMs", gateway)
+        self.assertIn("attemptNumber,\n                    remainingBudgetMs", gateway)
+        for phrase in (
+            "final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime());",
+            "final int attemptNumber = attempt;",
+            "long socketBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(",
+            "web, searchQuery, image, attemptNumber, socketBudgetMs",
+            "long futureWaitBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(",
+            "futureWaitBudgetMs, TimeUnit.MILLISECONDS",
+            "Connected reply completed after its shared deadline",
+            "attempt, remainingAfterFailure, lastFailure",
+        ):
+            self.assertIn(phrase, main)
+        submit = main.index("networkAttemptExecutor.submit")
+        socket_budget = main.index("long socketBudgetMs", submit)
+        network_call = main.index("ConnectedModelGateway.respondDetailed(", socket_budget)
+        future_wait = main.index("long futureWaitBudgetMs", network_call)
+        future_get = main.index("attemptFuture.get(", future_wait)
+        post_get_deadline = main.index(
+            "if (ConnectedTurnPolicy.remainingUntilDeadlineMs(", future_get
+        )
+        online_receipt = main.index("if (!connected.online)", post_get_deadline)
+        accepted_return = main.index("return connected;", online_receipt)
+        self.assertLess(submit, socket_budget)
+        self.assertLess(socket_budget, network_call)
+        self.assertLess(network_call, future_wait)
+        self.assertLess(future_wait, future_get)
+        self.assertLess(future_get, post_get_deadline)
+        self.assertLess(post_get_deadline, online_receipt)
+        self.assertLess(online_receipt, accepted_return)
+
     def test_startup_never_globally_deletes_misclassified_event_rows(self):
         application = source("SarahApplication.java")
         self.assertNotIn("repairEventMisclassification", application)

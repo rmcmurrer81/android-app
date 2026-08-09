@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class OpenAIClient {
@@ -36,6 +37,21 @@ public final class OpenAIClient {
     }
 
     public static ConnectedModelResponse respondDetailed(String apiKey, String model, String systemPrompt, List<Map<String, String>> history, String message, boolean webSearch, byte[] imageJpeg) throws Exception {
+        return respondDetailed(
+                apiKey, model, systemPrompt, history, message, webSearch,
+                imageJpeg, 1, ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+    }
+
+    public static ConnectedModelResponse respondDetailed(
+            String apiKey,
+            String model,
+            String systemPrompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean webSearch,
+            byte[] imageJpeg,
+            int attemptNumber,
+            long remainingBudgetMs) throws Exception {
         long requestStartedAt = System.currentTimeMillis();
         JSONObject payload = new JSONObject();
         payload.put("model", model == null || model.trim().isEmpty() ? "gpt-5-mini" : model.trim());
@@ -74,12 +90,16 @@ public final class OpenAIClient {
         String response;
         try {
             requireActive(worker);
-            connection.setConnectTimeout(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS);
-            connection.setReadTimeout(ConnectedTurnPolicy.READ_TIMEOUT_MS);
+            connection.setConnectTimeout(ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs));
+            connection.setReadTimeout(ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs));
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Authorization", "Bearer " + apiKey);
             connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Cache-Control", "no-cache");
+            connection.setRequestProperty("Pragma", "no-cache");
+            connection.setRequestProperty("X-Sarah-Attempt", String.valueOf(Math.max(1, attemptNumber)));
+            connection.setRequestProperty("X-Sarah-Nonce", UUID.randomUUID().toString());
             byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
             requireActive(worker);
             try (OutputStream out = connection.getOutputStream()) { out.write(body); }
@@ -92,7 +112,11 @@ public final class OpenAIClient {
             ACTIVE_CONNECTIONS.remove(worker, connection);
             connection.disconnect();
         }
-        if (code < 200 || code >= 300) throw new IllegalStateException("Model service returned HTTP " + code + ": " + response.substring(0, Math.min(response.length(), 500)));
+        if (code < 200 || code >= 300) {
+            throw new ConnectedTurnPolicy.HttpStatusException(
+                    "Model service", code,
+                    response.substring(0, Math.min(response.length(), 500)));
+        }
         JSONObject responseJson = new JSONObject(response);
         String reply = extractOutputText(responseJson);
         List<String> sourceUrls = new ArrayList<>();

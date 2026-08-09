@@ -166,7 +166,9 @@ assert 'people.stageOwnerCandidate(incomingProfile)' in sync_importer
 assert 'store.addSynced(' in sync_importer and 'row.optLong("source_time", 0L)' in sync_importer
 backend=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahBackendClient.java').read_text(encoding='utf-8')
 assert 'duplicateCurrentUser' in backend
-for phrase in ['ConnectedTurnPolicy.CONNECT_TIMEOUT_MS','ConnectedTurnPolicy.READ_TIMEOUT_MS','MAX_RESPONSE_CHARS','response exceeded the bounded response limit']:
+for phrase in ['ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs)',
+               'ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs)',
+               'MAX_RESPONSE_CHARS','response exceeded the bounded response limit']:
     assert phrase in backend, phrase
 for phrase in ['actualProvider.isEmpty()','actualModel.isEmpty()','onlineReceipt instanceof Boolean','required actual provider/model/online route receipt']:
     assert phrase in backend, phrase
@@ -182,8 +184,17 @@ connect_timeout=int_constant(turn_policy, 'CONNECT_TIMEOUT_MS')
 read_timeout=int_constant(turn_policy, 'READ_TIMEOUT_MS')
 attempts=int_constant(turn_policy, 'ATTEMPTS_PER_TURN')
 retry_backoff=int_constant(turn_policy, 'RETRY_BACKOFF_MS')
+minimum_retry_budget=int_constant(turn_policy, 'MIN_SECOND_ATTEMPT_BUDGET_MS')
+maximum_wait=int_constant(turn_policy, 'MAX_NETWORK_WAIT_MS')
 assert attempts == 2
-assert attempts * (connect_timeout + read_timeout) + retry_backoff <= 15_000
+assert 11_000 <= read_timeout <= 12_000
+assert connect_timeout + read_timeout <= maximum_wait <= 15_000
+assert retry_backoff + minimum_retry_budget < maximum_wait
+for phrase in ['status == 404', 'status == 408', 'status == 429',
+               'status >= 500', 'SSLHandshakeException', 'isRetryableFailure(failure)',
+               'deadlineNanos(long startedAtNanos)',
+               'remainingUntilDeadlineMs(long deadlineNanos, long nowNanos)']:
+    assert phrase in turn_policy, phrase
 truth_guard=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ReplyTruthGuard.java').read_text(encoding='utf-8')
 assert 'no durable job was created' in truth_guard
 destination=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DestinationKnowledgeCoordinator.java').read_text(encoding='utf-8')
@@ -401,13 +412,17 @@ for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R3 sou
                'EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}',
                'EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}',
                'acceptance_probe=production_modelclient',
+               'modelclient_warm_url="${MODELCLIENT_BACKEND_URL}&warm_attempt=${attempt}&warm_nonce=${modelclient_warm_nonce}"',
+               '"$modelclient_warm_url"',
                'sarah-capabilities-absent.json','sarah-capabilities-wrong.json',
                'sarah-capabilities-exact.json',
                'Authenticated Sarah capability contract passed']:
     assert phrase in workflow, phrase
-assert 'maximum_read_seconds = 18.0 if current_source_request else 12.0' in (
-    REPO / 'windows-companion' / 'sarah_core.py'
-).read_text(encoding='utf-8')
+windows_core=(REPO/'windows-companion'/'sarah_core.py').read_text(encoding='utf-8')
+for phrase in ['maximum_read_seconds = 18.0 if current_source_request else 12.0',
+               'bounded normal-transport budget, not an',
+               'absolute process-level deadline']:
+    assert phrase in windows_core, phrase
 assert 'strings Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk' not in workflow
 for phrase in ['d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c',
                'be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314',

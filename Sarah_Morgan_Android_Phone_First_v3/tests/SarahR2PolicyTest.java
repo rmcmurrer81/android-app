@@ -218,22 +218,77 @@ public final class SarahR2PolicyTest {
                 "normal owner chat hides provider jargon while exact audit telemetry remains intact");
         require(ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS <= 15_000,
                 "both connected attempts share the same 15-second maximum as Windows");
-        require(ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS
-                        == ConnectedTurnPolicy.ATTEMPTS_PER_TURN
-                            * (ConnectedTurnPolicy.CONNECT_TIMEOUT_MS
-                                + ConnectedTurnPolicy.READ_TIMEOUT_MS)
-                            + ConnectedTurnPolicy.RETRY_BACKOFF_MS,
-                "both bounded attempt timeouts fit inside the shared network budget");
-        require(ConnectedTurnPolicy.mayRetry(1, 5_000L),
-                "first fast failure permits the one bounded retry");
+        require(ConnectedTurnPolicy.READ_TIMEOUT_MS >= 11_000,
+                "the first request gives a normal Gemma reply a useful read window");
+        require(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS
+                        + ConnectedTurnPolicy.READ_TIMEOUT_MS
+                        <= ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS,
+                "one useful attempt fits inside the shared network budget");
+        require(ConnectedTurnPolicy.connectTimeoutMs(15_000L)
+                        + ConnectedTurnPolicy.readTimeoutMs(15_000L) <= 15_000,
+                "socket timeouts cannot exceed the remaining owner-visible deadline");
+        String reboundAttemptUrl = ConnectedTurnPolicy.endpointForAttempt(
+                "https://sarah.example.test/?acceptance_probe=production_modelclient"
+                        + "&%73arah_attempt=99&sarah_nonce=stale#owner-fragment",
+                2,
+                "fresh nonce");
+        require(reboundAttemptUrl.equals(
+                        "https://sarah.example.test/?acceptance_probe=production_modelclient"
+                                + "&sarah_attempt=2&sarah_nonce=fresh%20nonce#owner-fragment"),
+                "attempt cache-busting preserves the existing query, replaces reserved fields,"
+                        + " and keeps the fragment last");
+        require(reboundAttemptUrl.indexOf("sarah_attempt=")
+                        == reboundAttemptUrl.lastIndexOf("sarah_attempt=")
+                        && reboundAttemptUrl.indexOf("sarah_nonce=")
+                        == reboundAttemptUrl.lastIndexOf("sarah_nonce="),
+                "reserved attempt fields occur exactly once after replacement");
+        String generatedAttemptOne = ConnectedTurnPolicy.endpointForAttempt(
+                "https://sarah.example.test/?acceptance_probe=production_modelclient#owner", 1);
+        String generatedAttemptTwo = ConnectedTurnPolicy.endpointForAttempt(
+                "https://sarah.example.test/?acceptance_probe=production_modelclient#owner", 2);
+        require(!generatedAttemptOne.equals(generatedAttemptTwo)
+                        && generatedAttemptOne.contains("sarah_attempt=1")
+                        && generatedAttemptTwo.contains("sarah_attempt=2")
+                        && generatedAttemptOne.endsWith("#owner")
+                        && generatedAttemptTwo.endsWith("#owner"),
+                "successive attempts receive distinct generated attempt and nonce URLs");
+        require(ConnectedTurnPolicy.mayRetry(
+                        1, 14_000L,
+                        new ConnectedTurnPolicy.HttpStatusException(
+                                "test backend", 404, "route is still propagating")),
+                "a fast transient route-propagation 404 permits the one bounded retry");
+        require(ConnectedTurnPolicy.mayRetry(
+                        1, 14_000L, new java.net.SocketTimeoutException("transient")),
+                "a fast transient transport failure permits the one bounded retry");
+        require(!ConnectedTurnPolicy.mayRetry(
+                        1, 14_000L,
+                        new ConnectedTurnPolicy.HttpStatusException(
+                                "test backend", 401, "wrong credential")),
+                "an authorization failure never consumes a retry");
         require(!ConnectedTurnPolicy.mayRetry(2, 5_000L),
                 "a second failure must fall back locally instead of retrying again");
         require(!ConnectedTurnPolicy.mayRetry(
-                        1, ConnectedTurnPolicy.RETRY_BACKOFF_MS),
-                "deadline exhaustion prevents even the bounded retry");
+                        1,
+                        ConnectedTurnPolicy.RETRY_BACKOFF_MS
+                                + ConnectedTurnPolicy.MIN_SECOND_ATTEMPT_BUDGET_MS - 1L,
+                        new java.net.SocketTimeoutException("too late")),
+                "a late failure cannot start a second attempt without useful remaining budget");
         require(ConnectedTurnPolicy.remainingBudgetMs(1_000_000L, 1_000_000L)
                         == ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS,
                 "monotonic connected-turn deadline starts with the full shared budget");
+        long queuedDeadline = ConnectedTurnPolicy.deadlineNanos(1_000_000L);
+        long socketBudgetAfterQueueDelay = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                queuedDeadline, 1_000_000L + 4_000_000_000L);
+        require(socketBudgetAfterQueueDelay == 11_000L
+                        && ConnectedTurnPolicy.connectTimeoutMs(socketBudgetAfterQueueDelay)
+                        + ConnectedTurnPolicy.readTimeoutMs(socketBudgetAfterQueueDelay)
+                        <= socketBudgetAfterQueueDelay,
+                "executor delay is deducted before socket timeouts are configured");
+        long futureWaitAfterMoreDelay = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                queuedDeadline, 1_000_000L + 6_000_000_000L);
+        require(futureWaitAfterMoreDelay == 9_000L
+                        && futureWaitAfterMoreDelay < socketBudgetAfterQueueDelay,
+                "Future.get receives a fresh smaller deadline after submission delay");
         require(ConnectedTurnPolicy.remainingBudgetMs(
                         1_000_000L,
                         1_000_000L

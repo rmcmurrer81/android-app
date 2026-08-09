@@ -57,6 +57,24 @@ public final class ConnectedModelGateway {
             boolean webSearch,
             String searchQuery,
             byte[] imageJpeg) throws Exception {
+        return respondDetailed(
+                providerId, apiKey, model, systemPrompt, history, message,
+                webSearch, searchQuery, imageJpeg, 1,
+                ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+    }
+
+    public static ConnectedModelResponse respondDetailed(
+            String providerId,
+            String apiKey,
+            String model,
+            String systemPrompt,
+            List<Map<String, String>> history,
+            String message,
+            boolean webSearch,
+            String searchQuery,
+            byte[] imageJpeg,
+            int attemptNumber,
+            long remainingBudgetMs) throws Exception {
         String normalized = providerId == null ? SarahModelConfig.PROVIDER_ID : providerId.trim().toLowerCase(Locale.US);
         boolean effectiveWebSearch = webSearch;
 
@@ -71,7 +89,9 @@ public final class ConnectedModelGateway {
                     message,
                     effectiveWebSearch,
                     searchQuery,
-                    imageJpeg);
+                    imageJpeg,
+                    attemptNumber,
+                    remainingBudgetMs);
         }
 
         if (normalized.isEmpty() || "openai".equals(normalized)) {
@@ -91,7 +111,9 @@ public final class ConnectedModelGateway {
                     history,
                     message,
                     effectiveWebSearch,
-                    imageJpeg);
+                    imageJpeg,
+                    attemptNumber,
+                    remainingBudgetMs);
         }
 
         if ("workers-ai".equals(normalized)

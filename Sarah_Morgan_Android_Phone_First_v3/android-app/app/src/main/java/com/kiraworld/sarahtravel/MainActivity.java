@@ -1462,26 +1462,48 @@ public final class MainActivity extends Activity {
             boolean web,
             String searchQuery,
             byte[] image) throws Exception {
-        long startedAtNanos = System.nanoTime();
+        final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime());
         Exception lastFailure = null;
         for (int attempt = 1; attempt <= ConnectedTurnPolicy.ATTEMPTS_PER_TURN; attempt++) {
-            long remainingMs = ConnectedTurnPolicy.remainingBudgetMs(
-                    startedAtNanos, System.nanoTime());
-            if (remainingMs <= 0L) break;
+            long preSubmitBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                    deadlineNanos, System.nanoTime());
+            if (preSubmitBudgetMs <= 0L) break;
+            final int attemptNumber = attempt;
             AtomicReference<Thread> attemptThread = new AtomicReference<>();
             Future<ConnectedModelResponse> attemptFuture = networkAttemptExecutor.submit(() -> {
                 attemptThread.set(Thread.currentThread());
                 try {
+                    long socketBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                            deadlineNanos, System.nanoTime());
+                    if (socketBudgetMs <= 0L) {
+                        throw new TimeoutException(
+                                "Connected attempt started after its shared deadline");
+                    }
                     return ConnectedModelGateway.respondDetailed(
                             providerId, key, model, prompt, history, message,
-                            web, searchQuery, image);
+                            web, searchQuery, image, attemptNumber, socketBudgetMs);
                 } finally {
                     attemptThread.set(null);
                 }
             });
+            long futureWaitBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                    deadlineNanos, System.nanoTime());
+            if (futureWaitBudgetMs <= 0L) {
+                Thread worker = attemptThread.get();
+                attemptFuture.cancel(true);
+                ConnectedModelGateway.cancel(worker);
+                lastFailure = new TimeoutException(
+                        "Connected reply reached its deadline before Future.get");
+                break;
+            }
             try {
                 ConnectedModelResponse connected = attemptFuture.get(
-                        remainingMs, TimeUnit.MILLISECONDS);
+                        futureWaitBudgetMs, TimeUnit.MILLISECONDS);
+                if (ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                        deadlineNanos, System.nanoTime()) <= 0L) {
+                    throw new TimeoutException(
+                            "Connected reply completed after its shared deadline");
+                }
                 if (!connected.online) {
                     throw new IllegalStateException(
                             "Connected route returned an offline response without fallback telemetry");
@@ -1508,9 +1530,10 @@ public final class MainActivity extends Activity {
             } catch (Exception failure) {
                 lastFailure = failure;
             }
-            long remainingAfterFailure = ConnectedTurnPolicy.remainingBudgetMs(
-                    startedAtNanos, System.nanoTime());
-            if (!ConnectedTurnPolicy.mayRetry(attempt, remainingAfterFailure)) break;
+            long remainingAfterFailure = ConnectedTurnPolicy.remainingUntilDeadlineMs(
+                    deadlineNanos, System.nanoTime());
+            if (!ConnectedTurnPolicy.mayRetry(
+                    attempt, remainingAfterFailure, lastFailure)) break;
             long backoff = Math.min(
                     ConnectedTurnPolicy.RETRY_BACKOFF_MS,
                     Math.max(0L, remainingAfterFailure - 1L));
