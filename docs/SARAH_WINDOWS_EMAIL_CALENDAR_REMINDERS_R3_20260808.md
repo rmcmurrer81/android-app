@@ -8,6 +8,10 @@ Status: `IMPLEMENTED_SOURCE_AND_AUTOMATED_TESTS_PASS_PHYSICAL_ACCEPTANCE_PENDING
 - Every Gmail result is first stored as a profile-isolated, encrypted, source-bound proposal.
 - Sarah may ask, "I saw this in your email. Do you want me to remember it?"
 - **Yes** opens a short title/date/place review before creating an item.
+- Flight, train, and bus proposals preserve separately reviewed departure and
+  arrival instants. Sarah asks for the optional arrival when it is not safely
+  present in the metadata; an arrival before departure fails without consuming
+  the pending proposal.
 - **No** preserves an append-only rejection for that exact source item.
 - **Cancel** leaves the proposal pending.
 - A local reminder requires a separate owner choice and lead time.
@@ -23,6 +27,11 @@ payload is stored in Sarah's existing local database under the current device
 crypto boundary. Rescanning an exact source does not duplicate it or reset an
 earlier decision.
 
+The bounded Gmail query includes ordinary travel terms plus event, concert,
+conference, convention, and festival subjects, and excludes spam and trash.
+Detection is still provisional: observing a matching message does not create a
+calendar item, reminder, attendance claim, booking, or memory.
+
 The Gmail connector remains read-only. It does not send, delete, label, mark
 read, purchase, book, add a Google Calendar entry, or transmit a notification
 to another device. Windows reminders are local notices while Sarah is running.
@@ -31,8 +40,12 @@ to another device. Windows reminders are local notices while Sarah is running.
 
 Automated tests cover pending-only ingestion, stable source identity,
 owner-confirmed creation, rejection history, profile isolation, explicit time
-entry, opt-in reminders, and one-time reminder delivery. The packaged
+entry, distinct departure/arrival storage, impossible-time rejection, opt-in
+reminders, and one-time reminder delivery. The packaged
 self-test also exercises an encrypted proposal -> event -> reminder round trip.
+
+Post-parity verification on the current R3 branch: the complete Windows suite
+passed `149`; the complete Android contract suite passed `67`.
 
 Still pending:
 

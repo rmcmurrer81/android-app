@@ -188,6 +188,17 @@ def test_gmail_connect_and_async_results_are_profile_bound_and_single_flight():
     assert "account_email != safe_text(self._gmail_account).lower()" in tasks
 
 
+def test_windows_transport_calendar_keeps_owner_reviewed_arrival_separate():
+    remember = inspect.getsource(SarahEventReadyApp._remember_email_proposal)
+    refresh = inspect.getsource(SarahEventReadyApp.refresh_calendar)
+
+    assert "Arrival time (optional)" in remember
+    assert '{"flight", "train", "bus"}' in remember
+    assert "suggested_end_local" in remember
+    assert "end_local=end" in remember
+    assert 'event.get("end_local")' in refresh
+
+
 def test_first_run_offers_device_discovery_before_name_and_decline_keeps_local_setup():
     onboarding = inspect.getsource(SarahEventReadyApp._maybe_onboard)
     init = inspect.getsource(SarahEventReadyApp.__init__)

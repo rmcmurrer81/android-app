@@ -47,6 +47,60 @@ def test_email_candidate_is_only_a_source_bound_pending_proposal() -> None:
     assert len(proposal["source_hash"]) == 64
 
 
+def test_transport_proposal_and_saved_event_preserve_separate_arrival(tmp_path: Path) -> None:
+    row = _row()
+    row["subject"] = (
+        "Train departure 2027-03-26 10:30; arrival 2027-03-26 13:45"
+    )
+    store = SarahCalendarStore(_db(tmp_path))
+    proposal = store.ingest_email_candidates(
+        [row], account_email="owner@example.com"
+    )[0]
+    assert proposal["kind"] == "train"
+    assert proposal["suggested_start_local"] == "2027-03-26 10:30"
+    assert proposal["suggested_end_local"] == "2027-03-26 13:45"
+    event = store.decide(
+        proposal["proposal_id"],
+        remember=True,
+        owner_action="Remember this exact train email",
+        start_local=proposal["suggested_start_local"],
+        end_local=proposal["suggested_end_local"],
+    )
+    assert event is not None
+    assert event["end_at_ms"] > event["start_at_ms"]
+    saved = store.events()[0]
+    assert saved["end_at_ms"] == event["end_at_ms"]
+    assert saved["end_local"] == event["end_local"]
+
+    offset_row = _row("offset")
+    offset_row["subject"] = (
+        "Flight departure 2027-03-26T10:30:00-04:00; "
+        "arrival 2027-03-26T13:45:00-07:00"
+    )
+    offset = build_email_event_proposal(
+        offset_row, account_email="owner@example.com"
+    )
+    assert offset["suggested_start_local"].endswith("-04:00")
+    assert offset["suggested_end_local"].endswith("-07:00")
+
+
+def test_arrival_before_departure_fails_without_accepting_proposal(tmp_path: Path) -> None:
+    store = SarahCalendarStore(_db(tmp_path))
+    proposal = store.ingest_email_candidates(
+        [_row()], account_email="owner@example.com"
+    )[0]
+    with pytest.raises(SarahCalendarError, match="cannot precede"):
+        store.decide(
+            proposal["proposal_id"],
+            remember=True,
+            owner_action="Remember",
+            start_local="2027-03-26 10:30",
+            end_local="2027-03-26 09:30",
+        )
+    assert store.events() == []
+    assert store.proposals(status="pending_owner_decision")
+
+
 def test_email_date_header_is_not_mistaken_for_event_time() -> None:
     row = _row()
     row["subject"] = "Your ticket confirmation"

@@ -54,6 +54,8 @@ def test_owner_calendar_and_local_reminder_are_connected():
     assert "Remind me 1 day before" in activity
     assert "Remind me 1 hour before" in activity
     assert "Remove this saved calendar item" in activity
+    assert "Add exact end or arrival time" in activity
+    assert "calendar_end_instant" in activity
     assert "OneTimeWorkRequest" in scheduler
     assert "vault.setReminder" in scheduler
     assert "mayScheduleReminder" in text("GmailTokenVault.java")

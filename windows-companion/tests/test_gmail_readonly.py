@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from sarah_gmail import (
+    DEFAULT_TRAVEL_MESSAGE_QUERY,
     GMAIL_READONLY_SCOPE,
     GmailAuthorizationError,
     GmailConfigurationError,
@@ -330,3 +331,7 @@ def test_message_candidates_use_metadata_reads_and_keep_source_binding() -> None
     assert set(calls[1][1]["metadataHeaders"]) == {"From", "Subject", "Date"}
     assert calls[0][1]["fields"] == "messages(id,threadId)"
     assert calls[1][1]["fields"] == "id,threadId,internalDate,payload(headers)"
+    for required in ("event", "concert", "conference", "convention", "festival"):
+        assert required in DEFAULT_TRAVEL_MESSAGE_QUERY
+    assert "-in:spam" in DEFAULT_TRAVEL_MESSAGE_QUERY
+    assert "-in:trash" in DEFAULT_TRAVEL_MESSAGE_QUERY

@@ -1433,6 +1433,9 @@ class SarahEventReadyApp(SarahApp):
             self.calendar_pending_list.insert("end", f"{kind.title()} â€¢ {title}")
         for event in self._calendar_event_rows:
             start = safe_text(event.get("start_local"))
+            end = safe_text(event.get("end_local"))
+            if end:
+                start = f"{start} to {end}"
             title = safe_text(event.get("title")) or "Calendar item"
             self.calendar_event_list.insert("end", f"{start} â€¢ {title}")
 
@@ -1467,6 +1470,16 @@ class SarahEventReadyApp(SarahApp):
         )
         if start is None:
             return
+        end = ""
+        if safe_text(proposal.get("kind")) in {"flight", "train", "bus"}:
+            end = simpledialog.askstring(
+                "Arrival time (optional)",
+                "When does it arrive? Use YYYY-MM-DD HH:MM, or leave this blank if it is not established.",
+                initialvalue=safe_text(proposal.get("suggested_end_local")),
+                parent=self.root,
+            )
+            if end is None:
+                return
         location = simpledialog.askstring(
             "Place (optional)",
             "Where is it? You may leave this blank.",
@@ -1482,6 +1495,7 @@ class SarahEventReadyApp(SarahApp):
                 owner_action="Owner chose Remember selected in Sarah Calendar",
                 title=title,
                 start_local=start,
+                end_local=end,
                 location=location,
                 kind=safe_text(proposal.get("kind")),
             )

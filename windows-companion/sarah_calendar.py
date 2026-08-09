@@ -81,6 +81,32 @@ def _suggested_explicit_time(text: str) -> str:
     return value.strftime("%Y-%m-%d %H:%M")
 
 
+def _suggested_labeled_time(text: str, *, ending: bool) -> str:
+    """Return a role-labelled time without discarding an explicit UTC offset."""
+
+    labels = (
+        r"(?:arriv(?:al|e|es|ing)?|end(?:s|ing)?)"
+        if ending
+        else r"(?:depart(?:ure|s|ing)?|leav(?:e|es|ing)|start(?:s|ing)?|begin(?:s|ning)?)"
+    )
+    match = re.search(
+        rf"\b{labels}\b[^\r\n]{{0,48}}?"
+        r"\b(20\d{2}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2}"
+        r"(?::\d{2}(?:\.\d{1,9})?)?(?:\s*(?:AM|PM)|Z|[+-]\d{2}:\d{2})?))",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return ""
+    value = match.group(1).strip()
+    if value.upper().endswith("Z") or re.search(r"[+-]\d{2}:\d{2}$", value):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            return ""
+    return _suggested_explicit_time(value)
+
+
 def build_email_event_proposal(
     row: Mapping[str, Any],
     *,
@@ -119,7 +145,11 @@ def build_email_event_proposal(
         "source": source,
         "title": source["subject"] or "Email event or travel item",
         "kind": _kind_for(visible),
-        "suggested_start_local": _suggested_explicit_time(visible),
+        "suggested_start_local": (
+            _suggested_labeled_time(visible, ending=False)
+            or _suggested_explicit_time(visible)
+        ),
+        "suggested_end_local": _suggested_labeled_time(visible, ending=True),
         "status": "pending_owner_decision",
     }
 
@@ -393,6 +423,7 @@ class SarahCalendarStore:
         owner_action: str,
         title: str = "",
         start_local: str = "",
+        end_local: str = "",
         location: str = "",
         kind: str = "",
         person_id: str | None = None,
@@ -428,6 +459,14 @@ class SarahCalendarStore:
             if not remember:
                 return None
             start_at_ms, start_iso = parse_owner_local_time(start_local)
+            end_at_ms: int | None = None
+            end_iso = ""
+            if _bounded(end_local, 80):
+                end_at_ms, end_iso = parse_owner_local_time(end_local)
+                if end_at_ms < start_at_ms:
+                    raise SarahCalendarError(
+                        "The end or arrival time cannot precede the start or departure time"
+                    )
             event_kind = _bounded(kind or proposal.get("kind"), 40).lower()
             if event_kind not in ALLOWED_KINDS:
                 event_kind = "other"
@@ -437,6 +476,7 @@ class SarahCalendarStore:
                 "location": _bounded(location, 500),
                 "kind": event_kind,
                 "start_local": start_iso,
+                "end_local": end_iso,
                 "source": "owner_confirmed_gmail_proposal",
                 "source_proposal_id": row["proposal_id"],
                 "source_hash": row["source_hash"],
@@ -451,7 +491,7 @@ class SarahCalendarStore:
                 "INSERT INTO owner_calendar_events VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (
                     event_id, person, row["proposal_id"], row["source_hash"], encrypted,
-                    start_at_ms, None, "scheduled", timestamp, timestamp,
+                    start_at_ms, end_at_ms, "scheduled", timestamp, timestamp,
                 ),
             )
             connection.execute(
@@ -461,7 +501,12 @@ class SarahCalendarStore:
                     _bounded(owner_action, 1_000), encrypted, timestamp,
                 ),
             )
-        event_payload.update({"event_id": event_id, "start_at_ms": start_at_ms, "status": "scheduled"})
+        event_payload.update({
+            "event_id": event_id,
+            "start_at_ms": start_at_ms,
+            "end_at_ms": end_at_ms,
+            "status": "scheduled",
+        })
         return event_payload
 
     def events(self, *, person_id: str | None = None) -> list[dict[str, Any]]:
@@ -478,6 +523,7 @@ class SarahCalendarStore:
                 {
                     "event_id": row["event_id"],
                     "start_at_ms": row["start_at_ms"],
+                    "end_at_ms": row["end_at_ms"],
                     "status": row["status"],
                 }
             )

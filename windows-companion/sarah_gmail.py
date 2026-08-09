@@ -24,6 +24,12 @@ MAX_MESSAGE_CANDIDATES = 50
 GOOGLE_TOKEN_REVOCATION_URL = "https://oauth2.googleapis.com/revoke"
 GMAIL_BUNDLED_CLIENT_NAME = "sarah-gmail-oauth-client.json"
 GMAIL_DEVELOPMENT_CLIENT_ENV = "SARAH_GMAIL_DESKTOP_CLIENT_PATH"
+DEFAULT_TRAVEL_MESSAGE_QUERY = (
+    "newer_than:365d (subject:(travel OR itinerary OR reservation OR booking OR "
+    "confirmation OR flight OR hotel OR train OR amtrak OR bus OR cruise OR rental OR "
+    "ticket OR event OR concert OR conference OR convention OR festival) OR label:travel) "
+    "-in:spam -in:trash"
+)
 
 
 class GmailConfigurationError(ValueError):
@@ -488,7 +494,7 @@ def revoke_google_authorization(
 def list_travel_message_candidates(
     service: Any,
     *,
-    query: str = "newer_than:180d (subject:(travel OR itinerary OR reservation OR booking OR flight OR hotel OR ticket) OR label:travel)",
+    query: str = DEFAULT_TRAVEL_MESSAGE_QUERY,
     max_results: int = 25,
 ) -> list[dict[str, str]]:
     """Read source-bound Gmail candidates; never modify, send, or delete mail."""
