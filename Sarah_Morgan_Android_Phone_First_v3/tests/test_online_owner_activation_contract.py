@@ -44,3 +44,18 @@ def test_every_isolated_conversation_policy_harness_compiles_activation_policy()
             consumers.append(path.name)
             assert "OwnerOnlineActivationPolicy.java" in text, path.name
     assert sorted(consumers) == ["build-apk.yml", "sarah-2.5-pr-validation.yml"]
+
+
+def test_online_judge_retries_transient_worker_route_propagation_without_weakening_auth():
+    workflow = (
+        ROOT.parent / ".github" / "workflows" / "sarah-2.5-online-judge-build.yml"
+    ).read_text(encoding="utf-8")
+    assert "require_worker_unauthorized_capability" in workflow
+    assert "for attempt in $(seq 1 8)" in workflow
+    assert "response != {'error': 'unauthorized'}" in workflow
+    assert "if [[ \"$status\" =~ ^[23] ]]" in workflow
+    assert "Protected capabilities accepted or redirected" in workflow
+    assert "auth_probe=$label&attempt=$attempt" in workflow
+    assert "absent /tmp/sarah-capabilities-absent.json" in workflow
+    assert "wrong /tmp/sarah-capabilities-wrong.json" in workflow
+    assert "Authorization: Bearer deliberately-wrong-sarah-token" in workflow

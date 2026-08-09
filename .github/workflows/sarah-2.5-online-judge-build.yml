@@ -413,21 +413,56 @@ jobs:
             exit 1
           fi
 
-          absent_capability_status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
-            -o /tmp/sarah-capabilities-absent.json -w '%{http_code}' \
-            "$BACKEND_URL/capabilities")"
-          if [ "$absent_capability_status" != '401' ]; then
-            echo "::error::Protected capabilities accepted an absent bearer token (HTTP $absent_capability_status)."
-            exit 1
-          fi
-          wrong_capability_status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
-            -H 'Authorization: Bearer deliberately-wrong-sarah-token' \
-            -o /tmp/sarah-capabilities-wrong.json -w '%{http_code}' \
-            "$BACKEND_URL/capabilities")"
-          if [ "$wrong_capability_status" != '401' ]; then
-            echo "::error::Protected capabilities accepted a wrong bearer token (HTTP $wrong_capability_status)."
-            exit 1
-          fi
+          # A freshly named workers.dev route can briefly return a deployment
+          # propagation 404 even after one health request reaches the exact
+          # Worker.  Do not misclassify that fail-closed response as token
+          # acceptance, and do not accept it as proof of our auth handler.
+          # Require the exact Worker's 401 JSON contract within a bounded
+          # cache-busted retry window.  Any 2xx/3xx response fails immediately.
+          require_worker_unauthorized_capability() {
+            local label="$1"
+            local output_path="$2"
+            shift 2
+            local attempt status
+            for attempt in $(seq 1 8); do
+              if ! status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+                -H 'Cache-Control: no-cache' \
+                "$@" \
+                -o "$output_path" -w '%{http_code}' \
+                "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID&auth_probe=$label&attempt=$attempt")"; then
+                status="${status:-000}"
+              fi
+              if [ "$status" = '401' ] && python - "$output_path" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding='utf-8') as handle:
+              response = json.load(handle)
+          if response != {'error': 'unauthorized'}:
+              raise SystemExit(1)
+          PY
+              then
+                echo "Exact Sarah Worker rejected the $label bearer-token probe."
+                return 0
+              fi
+              if [[ "$status" =~ ^[23] ]]; then
+                echo "::error::Protected capabilities accepted or redirected the $label bearer-token probe (HTTP $status)."
+                return 1
+              fi
+              if [ "$attempt" -lt 8 ]; then
+                sleep 2
+              fi
+            done
+            echo "::error::The exact Sarah Worker unauthorized contract was not observed for the $label bearer-token probe (last HTTP $status)."
+            return 1
+          }
+
+          require_worker_unauthorized_capability \
+            absent /tmp/sarah-capabilities-absent.json
+          # This literal is shorter than the enforced 32-character production
+          # token minimum, so it cannot accidentally equal the configured key.
+          require_worker_unauthorized_capability \
+            wrong /tmp/sarah-capabilities-wrong.json \
+            -H 'Authorization: Bearer deliberately-wrong-sarah-token'
           curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
             -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
             -H 'Cache-Control: no-cache' \

@@ -2,5 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "reason": "Build the separate R3 CURRENT OWNER TEST after Robert rejected the physical R2 Android and Windows artifacts; preserve application/signing identity and require the protected online/ElevenLabs route, approved portrait, restored Workbench, optional Gmail, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
+  "requested_at": "2026-08-09T02:57:29Z",
+  "reason": "Rerun the separate R3 CURRENT OWNER TEST after correcting the false-positive fresh-Worker route-propagation auth probe; preserve application/signing identity and require the exact protected Workers AI and ElevenLabs routes, approved portrait, restored Workbench, optional read-only Gmail with owner-confirmed calendar/reminders, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
 }
