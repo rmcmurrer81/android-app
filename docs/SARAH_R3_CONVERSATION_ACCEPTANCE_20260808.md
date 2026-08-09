@@ -59,15 +59,16 @@ py -B sarah_r3_acceptance.py `
   --confirm-live I_AUTHORIZE_BOUNDED_SARAH_LIVE_ACCEPTANCE
 ```
 
-No paid OpenAI service is required or selected. The live path is bounded by
-the production ModelClient's at-most-two attempts. Ordinary conversation keeps
-the 15-second route budget and 15.5-second acceptance limit. A request that
-requires current sources has a separate 25-second route budget and 25.5-second
-acceptance limit because the protected Worker performs Tavily retrieval and
-then source-coupled model inference sequentially. This does not relax the
-source gate: current claims still require an applied search plus HTTPS source
-receipts. Evidence records only whether an access token was present; it never
-writes the token value.
+No paid OpenAI service is required or selected. Ordinary conversation keeps
+at most two attempts, a 15-second route budget, and a 15.5-second acceptance
+limit. A request that requires current sources may use at most three attempts
+inside a separate 25-second route budget and 25.5-second acceptance limit
+because the protected Worker performs Tavily retrieval and then source-coupled
+model inference sequentially. Only transport/timeouts and HTTP `408`, `429`,
+or `5xx` may retry; authorization, nontransient `4xx`, and response-contract
+failures stop immediately. This does not relax the source gate: current claims
+still require an applied search plus HTTPS source receipts. Evidence records
+only whether an access token was present; it never writes the token value.
 
 ## Objective versus subjective evidence
 

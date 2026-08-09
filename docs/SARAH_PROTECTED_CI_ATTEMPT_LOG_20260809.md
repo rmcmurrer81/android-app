@@ -78,8 +78,16 @@ This is append-only engineering evidence for the protected Sarah R3 owner-candid
 - The bounded repair retains at most two attempts, the original ordinary-chat window, and all current-source receipt gates. Only a `web_search=true` request receives one useful read window: a 25-second total budget, 18-second maximum read, and 25.5-second acceptance ceiling. No secret, provider, model, search rule, or fallback rule changes.
 - No artifact was uploaded; the run-owned temporary Worker was retired successfully.
 
+### Run 31300263977 / job 93211807026 / commit 5a49a866f3f715fd4a6cf748c6d79129ac829f15
+
+- Exact deployment/source/config identity and every protected preflight gate passed again: authorization, capability, Gemma, Tavily search, contextual source coupling, generated-image vision, and ElevenLabs audio/route/latency.
+- The production battery improved: the nearby-event current-source turn passed through the real application route.
+- The official-event/ticket-link turn alone failed closed after 14.67 seconds with no raw reply or source receipt. No current claim, ticket URL, APK, or EXE was released.
+- This attempt predated per-attempt status/exception telemetry, so the existing evidence does not distinguish a transport timeout from an explicitly transient Worker status. It does prove that two attempts ended while roughly ten seconds remained inside the source-specific wall-clock ceiling.
+- The run-owned temporary Worker was retired successfully.
+
 ## Current bounded repair
 
-The workflow applies a unique, non-secret query string to each bounded attempt for the protected model, search, contextual-chat, vision, and voice POST routes. It retries only transport failure, `404`, `408`, `429`, or `5xx`; every other HTTP status fails immediately. Existing exact response validators remain mandatory. The production `ModelClient` ten-turn online/offline/restore battery still runs afterward on its normal route, so cache-busted smoke probes cannot substitute for real application routing. The next run also verifies the current-source-specific bounded read repair described above.
+The workflow applies a unique, non-secret query string to each bounded attempt for the protected model, search, contextual-chat, vision, and voice POST routes. The production `ModelClient` now also makes its retry rule explicit: transport/timeouts and HTTP `408`, `429`, or `5xx` may retry; authentication and other nontransient `4xx` responses and malformed success contracts fail immediately. Ordinary chat retains two attempts inside 15 seconds. Only `web_search=true` may use up to three attempts inside the unchanged 25-second source-specific ceiling. Public failure telemetry contains only HTTP status, exception class, and a bounded backend error code; it excludes prompts, replies, URLs, tokens, and secrets. Existing source validators remain mandatory, and the real ten-turn online/offline/restore battery still runs before any artifact can be built.
 
 No run in this log is an owner-ready release. Only a workflow that passes every protected gate and uploads an artifact explicitly labeled `CURRENT-OWNER-TEST` may advance to physical Galaxy A17 and 8 GB Windows laptop testing.

@@ -189,16 +189,23 @@ class TurnTransport:
 
     def post(self, url: str, **kwargs: Any) -> Any:
         payload = dict(kwargs.get("json") or {})
-        self.attempts.append({
+        attempt_record = {
             "url": safe_text(url),
             "timeout": kwargs.get("timeout"),
             "payload": payload,
             "started_at_utc": utc_now(),
-        })
+        }
+        self.attempts.append(attempt_record)
         if self.spec.force_connected_failure:
+            attempt_record["transport_error_class"] = "ConnectionError"
             raise requests.ConnectionError("acceptance fixture: bounded connected failure")
         if self.live:
-            response = self.original_post(url, **kwargs)
+            try:
+                response = self.original_post(url, **kwargs)
+            except requests.RequestException as error:
+                attempt_record["transport_error_class"] = type(error).__name__
+                raise
+            attempt_record["http_status"] = int(response.status_code)
             # Read only the already buffered JSON used by ModelClient. requests
             # caches response content, so this does not issue a second request.
             try:
@@ -206,6 +213,11 @@ class TurnTransport:
             except Exception:
                 data = {}
             if isinstance(data, Mapping):
+                backend_error = safe_text(data.get("error"))
+                attempt_record["backend_error_code"] = (
+                    backend_error if re.fullmatch(r"[a-z0-9_]{1,64}", backend_error)
+                    else ("nonstandard_error" if backend_error else None)
+                )
                 self.raw_reply = safe_text(
                     data.get("reply") or data.get("text") or data.get("response") or data.get("output_text")
                 ) or None

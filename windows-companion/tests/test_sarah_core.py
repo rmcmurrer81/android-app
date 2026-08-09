@@ -1128,6 +1128,106 @@ def test_windows_current_source_request_gets_one_useful_bounded_read_window(monk
     assert 5.5 < read <= 18.0
 
 
+def test_windows_current_source_can_use_third_attempt_without_relaxing_ordinary_chat(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {
+                "reply": "<SPOKEN>Recovered.</SPOKEN>",
+                "provider": "workers-ai",
+                "model": "fixture-model",
+                "online": True,
+            }
+
+    def fake_post(_url, **kwargs):
+        calls.append(kwargs["timeout"])
+        if len(calls) < 3:
+            raise requests.ConnectionError("bounded transient")
+        return FakeResponse()
+
+    monkeypatch.setattr("sarah_core.requests.post", fake_post)
+    data, _started_at = ModelClient._post_connected_with_retry(
+        "https://sarah.example.test",
+        "test-token",
+        {"message": "Give me an official event link", "web_search": True},
+    )
+    assert data["reply"] == "<SPOKEN>Recovered.</SPOKEN>"
+    assert len(calls) == 3
+
+
+def test_windows_unavailable_route_word_does_not_request_current_search():
+    assert needs_current_sources("Keep talking while the online route is unavailable") is False
+    assert needs_current_sources("What tickets are available today?") is True
+
+
+def test_windows_connected_retry_rejects_nontransient_http_without_retry(monkeypatch):
+    calls = []
+
+    class UnauthorizedResponse:
+        status_code = 401
+
+        def raise_for_status(self):
+            error = requests.HTTPError("unauthorized")
+            error.response = self
+            raise error
+
+    def fake_post(_url, **kwargs):
+        calls.append(kwargs["timeout"])
+        return UnauthorizedResponse()
+
+    monkeypatch.setattr("sarah_core.requests.post", fake_post)
+    with pytest.raises(requests.HTTPError):
+        ModelClient._post_connected_with_retry(
+            "https://sarah.example.test",
+            "wrong-token",
+            {"message": "Hello", "web_search": True},
+        )
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("transient_status", [408, 429, 503])
+def test_windows_connected_retry_accepts_only_explicit_transient_http(monkeypatch, transient_status):
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                error = requests.HTTPError(f"transient {self.status_code}")
+                error.response = self
+                raise error
+
+        @staticmethod
+        def json():
+            return {
+                "reply": "<SPOKEN>Recovered.</SPOKEN>",
+                "provider": "workers-ai",
+                "model": "fixture-model",
+                "online": True,
+            }
+
+    def fake_post(_url, **kwargs):
+        calls.append(kwargs["timeout"])
+        return FakeResponse(transient_status if len(calls) == 1 else 200)
+
+    monkeypatch.setattr("sarah_core.requests.post", fake_post)
+    data, _started_at = ModelClient._post_connected_with_retry(
+        "https://sarah.example.test",
+        "test-token",
+        {"message": "Current event", "web_search": True},
+    )
+    assert data["reply"] == "<SPOKEN>Recovered.</SPOKEN>"
+    assert len(calls) == 2
+
+
 def test_windows_online_forced_offline_restored_online_transcript_and_actual_receipts(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "route-sequence")

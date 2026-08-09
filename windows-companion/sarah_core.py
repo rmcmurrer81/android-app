@@ -574,7 +574,7 @@ def connected_route(provider: Any) -> str:
 
 def needs_current_sources(message: Any) -> bool:
     lower = safe_text(message).lower()
-    return any(phrase in lower for phrase in (
+    return any(re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lower) for phrase in (
         "current", "today", "tonight", "tomorrow", "this week", "next week",
         "this weekend", "next weekend", "near me", "nearby", "weather",
         "event", "schedule", "ticket", "availability", "available", "price",
@@ -2014,15 +2014,17 @@ class ModelClient:
         ordinary 15-second budget into two 5.5-second reads can time out both
         attempts before either valid response completes. Ordinary chat keeps
         its original limits. Current-source work gets a bounded 25-second
-        budget with an 18-second maximum read, while retaining the same two-
-        attempt ceiling and the application source-receipt gate.
+        budget with an 18-second maximum read and up to three attempts inside
+        that unchanged wall-clock ceiling. The application source-receipt
+        gate remains mandatory.
         """
         current_source_request = as_bool(payload.get("web_search"), False)
         turn_budget_seconds = 25.0 if current_source_request else 15.0
         maximum_read_seconds = 18.0 if current_source_request else 5.5
+        maximum_attempts = 3 if current_source_request else 2
         deadline = time.monotonic() + turn_budget_seconds
         last_error: Exception | None = None
-        for _attempt in range(2):
+        for _attempt in range(maximum_attempts):
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
                 break
@@ -2051,8 +2053,18 @@ class ModelClient:
                         or not as_bool(data.get("online"), False)):
                     raise ValueError("Sarah backend omitted its actual provider, model, or online receipt")
                 return data, request_started_at
-            except (requests.RequestException, ValueError, TypeError) as error:
+            except requests.HTTPError as error:
+                status = int(error.response.status_code) if error.response is not None else 0
+                if status and status not in {408, 429} and not 500 <= status <= 599:
+                    raise
                 last_error = error
+            except requests.RequestException as error:
+                last_error = error
+            except (ValueError, TypeError):
+                # A syntactically successful response that violates Sarah's
+                # provider/model/online contract is not a transient transport
+                # failure. Fail closed without repeating it.
+                raise
         if last_error is not None:
             raise last_error
         raise requests.Timeout("Sarah's bounded connected retry budget expired")

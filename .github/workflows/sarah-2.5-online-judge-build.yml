@@ -933,6 +933,15 @@ jobs:
                       'raw_reply_sha256=', turn.get('raw_model_reply_sha256'),
                       'final_spoken_sha256=', turn.get('final_spoken_sha256'),
                   )
+                  transport_facts = [
+                      {
+                          'http_status': attempt.get('http_status'),
+                          'transport_error_class': attempt.get('transport_error_class'),
+                          'backend_error_code': attempt.get('backend_error_code'),
+                      }
+                      for attempt in (turn.get('connected_attempts') or [])
+                  ]
+                  print('  transport_attempts=', json.dumps(transport_facts, sort_keys=True))
                   for check in failed:
                       # Check details contain only static gate descriptions,
                       # routes, counts, or timings. Never print prompts, replies,

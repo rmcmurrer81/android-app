@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T07:02:32Z",
-  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after build 14 passed exact deployment, authorization, capability, Gemma, Tavily, contextual source coupling, generated-image vision, and protected ElevenLabs gates, then proved the production ModelClient's two 5.5-second reads expired before either sequential current-source request could complete even though the exact source-coupled Worker had just passed in about 14.4 seconds; retain ordinary-chat limits and every source receipt/fallback gate, but give only web_search=true turns a bounded 25-second budget and 18-second maximum read before running the unchanged 10-turn online/offline/restore behavior and all artifact gates"
+  "requested_at": "2026-08-09T07:09:00Z",
+  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after build 15 passed every protected preflight and the production nearby-event source turn, while the official-event source turn alone failed closed after two attempts and 14.67 seconds with no raw reply; keep ordinary chat at two attempts and every source/fallback gate unchanged, allow only web_search=true up to three attempts inside the same 25-second ceiling, retry only transport/timeouts or HTTP 408, 429, and 5xx, fail immediately on auth/nontransient 4xx/contract errors, and emit only non-content transport facts before any artifact gate"
 }
