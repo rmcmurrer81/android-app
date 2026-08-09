@@ -396,6 +396,10 @@ for phrase in ['url.pathname === "/search"','runProtectedSearch','current_source
     assert phrase in worker, phrase
 workflow=(REPO/'.github/workflows/sarah-2.5-online-judge-build.yml').read_text(encoding='utf-8')
 for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R3 source and pure-policy acceptance','CURRENT_SOURCE_ACCEPTANCE_BLOCKED','SARAH_TAVILY_API_KEY: \'\'','sarah-contextual-chat-request.json','72_HOUR_EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE','72-HOUR EVENT CANDIDATE','Sarah-Morgan-Event-Candidate-72H.apk','SarahMorgan-Event-Candidate-72H-Setup.exe','physical_galaxy_a17_acceptance','full_16_gate_owner_acceptance','physical_8gb_laptop_acceptance','media3_progressive_one_shot_post','protected_voice_route_receipt_required','first_network_byte','player_ready','response_complete','pending_physical_galaxy_a17_measurement','sarah-r3-${{ github.run_id }}-${{ github.run_attempt }}','id: signing_cache','steps.signing_cache.outputs.cache-hit','SARAH_R1_SIGNING_CERT_SHA256','SARAH_R1_APK_SHA256','apksigner verify --print-certs','BuildConfig.java','build/r3-apk-secret-scan','r1_signer_sha256','r3_signer_sha256','same-package-in-place-only',
+               "isoformat(timespec='milliseconds').replace('+00:00', 'Z')",
+               'EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}',
+               'EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}',
+               'EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}',
                'sarah-capabilities-absent.json','sarah-capabilities-wrong.json',
                'sarah-capabilities-exact.json',
                'Authenticated Sarah capability contract passed']:
