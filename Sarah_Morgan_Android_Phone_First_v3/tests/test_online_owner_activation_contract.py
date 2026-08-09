@@ -33,3 +33,14 @@ def test_saved_activation_keeps_automatic_capability_retry():
     assert "refreshProtectedCapabilities();" in main
     assert "ProtectedBackendCapabilities.refreshAsync" in main
     assert '"Authorization", "Bearer " + SarahModelConfig.backendToken()' in capabilities
+
+
+def test_every_isolated_conversation_policy_harness_compiles_activation_policy():
+    workflows = ROOT.parent / ".github" / "workflows"
+    consumers = []
+    for path in workflows.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        if "ConversationModePolicyTest.java" in text:
+            consumers.append(path.name)
+            assert "OwnerOnlineActivationPolicy.java" in text, path.name
+    assert sorted(consumers) == ["build-apk.yml", "sarah-2.5-pr-validation.yml"]
