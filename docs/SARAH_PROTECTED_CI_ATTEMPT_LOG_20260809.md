@@ -86,8 +86,18 @@ This is append-only engineering evidence for the protected Sarah R3 owner-candid
 - This attempt predated per-attempt status/exception telemetry, so the existing evidence does not distinguish a transport timeout from an explicitly transient Worker status. It does prove that two attempts ended while roughly ten seconds remained inside the source-specific wall-clock ceiling.
 - The run-owned temporary Worker was retired successfully.
 
+### Run 31300663252 / job 93212795288 / commit 59713d3542820807f5d09de41afa297b340950a2
+
+- Exact deployment/source/config identity and every protected preflight gate passed: authorization, capability, Gemma, Tavily search, contextual source coupling, generated-image vision, and ElevenLabs audio/route/latency.
+- The production `ModelClient` ten-turn battery passed all objective gates, including both source-bound event turns and the exact online to local-tool to offline to failed-online-fallback to restored-online route transition.
+- Passed Workers AI text latencies were `[1591, 3069, 5024, 9003, 9111, 11987, 19374]` milliseconds. The 19.374-second turn was a current-source turn inside its separate 25.5-second acceptance ceiling; ordinary turns retained the 15.5-second limit.
+- The later release-continuity gate failed because the exact GitHub Actions cache key `sarah-morgan-debug-signing-v1` was not found. CI correctly blocked APK/EXE building and upload rather than signing an incompatible replacement.
+- No artifact was uploaded, and the run-owned temporary Worker was retired successfully.
+
 ## Current bounded repair
 
-The workflow applies a unique, non-secret query string to each bounded attempt for the protected model, search, contextual-chat, vision, and voice POST routes. The production `ModelClient` now also makes its retry rule explicit: transport/timeouts and HTTP `408`, `429`, or `5xx` may retry; authentication and other nontransient `4xx` responses and malformed success contracts fail immediately. Ordinary chat retains two attempts inside 15 seconds. Only `web_search=true` may use up to three attempts inside the unchanged 25-second source-specific ceiling. Public failure telemetry contains only HTTP status, exception class, and a bounded backend error code; it excludes prompts, replies, URLs, tokens, and secrets. Existing source validators remain mandatory, and the real ten-turn online/offline/restore battery still runs before any artifact can be built.
+The production `ModelClient` and protected source path are now automated-CI accepted at commit `59713d3542820807f5d09de41afa297b340950a2`. Its retry rule remains explicit: transport/timeouts and HTTP `408`, `429`, or `5xx` may retry; authentication and other nontransient `4xx` responses and malformed success contracts fail immediately. Ordinary chat retains two attempts inside 15 seconds. Only `web_search=true` may use up to three attempts inside the 25-second source-specific ceiling. Source receipt gates remain mandatory.
+
+The separate current blocker is Android signing continuity: the preserved R1 signing cache was not available to this run. Do not build or upload a differently signed replacement, and do not claim a phone/Windows owner candidate exists from this run.
 
 No run in this log is an owner-ready release. Only a workflow that passes every protected gate and uploads an artifact explicitly labeled `CURRENT-OWNER-TEST` may advance to physical Galaxy A17 and 8 GB Windows laptop testing.

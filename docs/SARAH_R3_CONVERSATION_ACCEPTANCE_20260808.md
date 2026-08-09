@@ -1,6 +1,10 @@
 # Sarah R3 bounded online/offline conversation acceptance
 
-Status: deterministic route-contract harness implemented; physical/live owner acceptance pending.
+Status: deterministic route-contract harness and protected live-CI conversation
+accepted at commit `59713d3542820807f5d09de41afa297b340950a2`;
+physical Galaxy A17/Windows owner acceptance remains pending. The live CI run
+did not produce an installable artifact because the preserved R1 Android
+signing cache was unavailable.
 
 The harness at `windows-companion/sarah_r3_acceptance.py` drives the real
 `SarahDatabase` and `ModelClient` paths. It writes each run to a new
