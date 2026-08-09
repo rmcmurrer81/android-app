@@ -298,7 +298,12 @@ jobs:
               raise SystemExit('Event capability TTL must be between 1 and 168 hours.')
           now = datetime.now(timezone.utc).replace(microsecond=0)
           expires = now + timedelta(hours=ttl_hours)
-          expires_utc = expires.isoformat().replace('+00:00', 'Z')
+          # JavaScript Date.toISOString() reports UTC with millisecond
+          # precision. Emit the same canonical representation so the
+          # deployment proof compares the exact instant byte-for-byte.
+          expires_utc = expires.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+          if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z', expires_utc):
+              raise SystemExit('Event capability expiry was not canonical UTC milliseconds.')
           context = '\n'.join((
               'domain=sarah-event-artifact-worker-auth-v1',
               f"repository={os.environ['GITHUB_REPOSITORY']}",
