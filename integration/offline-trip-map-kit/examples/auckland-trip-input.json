@@ -1,0 +1,80 @@
+{
+  "personScopeId": "traveler-demo",
+  "trip": {
+    "id": "new-zealand-demo",
+    "title": "New Zealand Adventure",
+    "destination": "Auckland, New Zealand",
+    "startDate": "2026-09-21",
+    "endDate": "2026-09-27",
+    "timezone": "Pacific/Auckland",
+    "budgetLevel": 2,
+    "accessibilityNeeds": ["rest breaks"]
+  },
+  "profileInterests": ["history", "AI and technology", "unusual attractions"],
+  "explicitInterests": ["Power Rangers", "filming locations"],
+  "socialInterestPayload": {
+    "schema": "sarah-social-interest-v1",
+    "interests": [
+      { "topic": "Power Rangers", "confidence": 0.94, "evidence_count": 14, "sources": ["instagram", "youtube"] },
+      { "topic": "movie locations", "confidence": 0.82, "evidence_count": 8, "sources": ["instagram"] }
+    ]
+  },
+  "tripFacts": [
+    {
+      "id": "arrival-airport",
+      "kind": "airport",
+      "title": "Auckland Airport",
+      "latitude": -37.0082,
+      "longitude": 174.785,
+      "startTime": "2026-09-21T08:30:00+12:00",
+      "confirmed": true,
+      "summary": "Arrival point. Confirm terminal and transport shortly before travel."
+    },
+    {
+      "id": "hotel-demo",
+      "kind": "hotel",
+      "title": "Example Auckland Hotel",
+      "latitude": -36.849,
+      "longitude": 174.765,
+      "startTime": "2026-09-21T15:00:00+12:00",
+      "confirmed": true,
+      "summary": "Demo hotel only; replace with the traveler's confirmed reservation."
+    }
+  ],
+  "notes": [
+    {
+      "title": "Arrival reminder",
+      "body": "Ask the hotel whether luggage can be stored before check-in.",
+      "latitude": -36.849,
+      "longitude": 174.765
+    }
+  ],
+  "candidatePlaces": [
+    {
+      "id": "filming-location-demo",
+      "title": "Possible television filming-location stop",
+      "latitude": -36.86,
+      "longitude": 174.77,
+      "tags": ["Power Rangers", "filming locations"],
+      "summary": "Research candidate. Verify access, current conditions, and whether it is appropriate to visit.",
+      "openDuringTrip": true,
+      "priceLevel": 1,
+      "accessibilityTags": ["rest breaks"],
+      "source": "Tavily-backed discovery example",
+      "sourceUrl": "https://example.com/source",
+      "sourceVerified": true,
+      "checkedAt": "2026-09-20T12:00:00Z"
+    },
+    {
+      "id": "generic-sports-demo",
+      "title": "Generic sports stop",
+      "latitude": -36.9,
+      "longitude": 174.78,
+      "tags": ["baseball"],
+      "summary": "A generic place with no strong match to the demonstrated traveler.",
+      "openDuringTrip": true,
+      "priceLevel": 2,
+      "checkedAt": "2026-09-20T12:00:00Z"
+    }
+  ]
+}
