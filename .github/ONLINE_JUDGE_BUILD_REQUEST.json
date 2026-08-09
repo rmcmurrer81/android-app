@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T07:09:00Z",
-  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after build 15 passed every protected preflight and the production nearby-event source turn, while the official-event source turn alone failed closed after two attempts and 14.67 seconds with no raw reply; keep ordinary chat at two attempts and every source/fallback gate unchanged, allow only web_search=true up to three attempts inside the same 25-second ceiling, retry only transport/timeouts or HTTP 408, 429, and 5xx, fail immediately on auth/nontransient 4xx/contract errors, and emit only non-content transport facts before any artifact gate"
+  "requested_at": "2026-08-09T09:52:00Z",
+  "reason": "Owner-authorized urgent event build: after the exact protected Gemma, Tavily, contextual-source, vision, ElevenLabs, and 10-turn production gates, build a separately signed side-by-side Android event candidate and the tested Windows event installer with only the revocable app-to-Worker bearer bundled; keep all provider keys server-side, hide unconfigured Gmail on both platforms, preserve the normal R1 signing gate unchanged, upload explicit manifests and README, and preserve the unique Worker only if owner artifacts upload"
 }
