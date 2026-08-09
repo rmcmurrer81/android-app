@@ -93,8 +93,10 @@ wrong/absent-token rejection, authenticated capabilities, and the exact
 Workers AI Gemma reply, then stopped before artifact creation because this
 secret was absent. Do not bypass that gate or claim current search without a
 working source route. Tavily documents a free Researcher allowance of 1,000
-credits per month with no credit card; creating that account and storing its
-key as the exact Actions secret is a deliberate repository-owner setup step.
+credits per month with no credit card at
+<https://docs.tavily.com/documentation/api-credits>; creating that account and
+storing its key as the exact Actions secret is a deliberate repository-owner
+setup step.
 When the allowance is unavailable or exhausted, Sarah must keep unsupported
 current claims withheld and retain her offline/known-source behavior.
 
