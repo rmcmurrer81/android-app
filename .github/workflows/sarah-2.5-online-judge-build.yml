@@ -465,15 +465,54 @@ jobs:
             -H 'Authorization: Bearer deliberately-wrong-sarah-token'
           # The exact unauthorized contract above may become reachable a few
           # seconds before the authenticated cache key on a newly named
-          # workers.dev route. Retry only transient HTTP/transport failures;
-          # the Python check below still requires this run's exact deployment,
-          # source, config, provider, model, voice, rate-limit, and search truth.
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
-            --retry 19 --retry-all-errors --retry-delay 3 \
-            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-            -H 'Cache-Control: no-cache' \
-            "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID" \
-            > /tmp/sarah-capabilities-exact.json
+          # workers.dev route. A curl retry of one identical URL can remain on
+          # an edge-cached propagation 404, so cache-bust every bounded exact-
+          # token attempt. The Python check below still requires this run's
+          # exact deployment, source, config, provider, model, voice,
+          # rate-limit, and search truth.
+          authenticated_status=000
+          authenticated_deadline=$(( $(date +%s) + 60 ))
+          for attempt in $(seq 1 20); do
+            authenticated_remaining=$(( authenticated_deadline - $(date +%s) ))
+            if [ "$authenticated_remaining" -le 0 ]; then
+              break
+            fi
+            authenticated_request_timeout="$authenticated_remaining"
+            if [ "$authenticated_request_timeout" -gt 5 ]; then
+              authenticated_request_timeout=5
+            fi
+            if ! authenticated_status="$(curl --silent --show-error \
+              --connect-timeout "$authenticated_request_timeout" --max-time "$authenticated_request_timeout" \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -o /tmp/sarah-capabilities-exact.json -w '%{http_code}' \
+              "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID&auth_probe=exact&attempt=$attempt")"; then
+              authenticated_status=000
+            fi
+            case "$authenticated_status" in
+              200)
+                break
+                ;;
+              000|404|408|429|5??)
+                ;;
+              *)
+                echo "::error::Exact-token capability probe returned non-propagation HTTP $authenticated_status."
+                exit 1
+                ;;
+            esac
+            authenticated_remaining=$(( authenticated_deadline - $(date +%s) ))
+            if [ "$attempt" -lt 20 ] && [ "$authenticated_remaining" -gt 0 ]; then
+              authenticated_sleep=3
+              if [ "$authenticated_sleep" -gt "$authenticated_remaining" ]; then
+                authenticated_sleep="$authenticated_remaining"
+              fi
+              sleep "$authenticated_sleep"
+            fi
+          done
+          if [ "$authenticated_status" != '200' ]; then
+            echo "::error::The exact-token capability contract did not reach HTTP 200 within the bounded cache-busted window (last HTTP $authenticated_status)."
+            exit 1
+          fi
           python - <<'PY'
           import json, os
           capabilities = json.load(open('/tmp/sarah-capabilities-exact.json', encoding='utf-8'))

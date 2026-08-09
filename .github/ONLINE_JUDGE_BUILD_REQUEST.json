@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T06:02:49Z",
-  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after build 10 proved the short authenticated-capability wait could expire while fresh workers.dev edges still returned platform 404; align only that exact-token readiness wait with the existing bounded 60-second fresh-route budget, preserve wrong/absent-token rejection and exact deployment/source/config/provider/model checks, retain the bounded vision retry and redacted conversation diagnostics, and keep application/signing identity, approved portrait, restored Workbench, optional read-only Gmail with owner-confirmed calendar/reminders, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
+  "requested_at": "2026-08-09T06:09:24Z",
+  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after build 11 proved that retrying one identical authenticated capabilities URL could remain pinned to an edge-cached platform 404 for the full bounded window; use a distinct cache-busted URL for each of 20 exact-token attempts inside one absolute 60-second deadline, retry only transport, 404, 408, 429, or 5xx failures, fail immediately on any other status, preserve wrong/absent-token rejection and exact deployment/source/config/provider/model checks, retain the bounded vision retry and redacted conversation diagnostics, and keep application/signing identity, approved portrait, restored Workbench, optional read-only Gmail with owner-confirmed calendar/reminders, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
 }
