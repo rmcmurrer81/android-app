@@ -24,14 +24,55 @@ public final class TrustedDeviceStore {
         return id;
     }
 
+    /** The retired plaintext-HTTP path may never persist an unverified token. */
+    @Deprecated
     public static synchronized void savePeer(Context c,String host,String token){
+        throw new SecurityException(
+                "Only a finalized two-device X25519 pairing credential may be stored.");
+    }
+
+    public static synchronized boolean saveFinalizedPeer(
+            Context c,
+            String host,
+            int port,
+            SarahPairingProtocol.Credential credential){
+        if(c==null||credential==null)return false;
         try { host=TrustedLanEndpointPolicy.requireLocalHost(host); }
-        catch (RuntimeException rejected) { return; }
-        token=clean(token); if(host.isEmpty()||token.isEmpty())return;
-        if(!SecureProfileVault.putVerified(c,TOKEN_NAMESPACE,hostKey(host),token))return;
+        catch (RuntimeException rejected) { return false; }
+        if(port<1||port>65535)return false;
+        String token=clean(credential.token);
+        if(host.isEmpty()||!token.matches("[A-Za-z0-9_-]{43}"))return false;
+        if(clean(credential.requestId).isEmpty()
+                ||clean(credential.peerInstanceId).isEmpty()
+                ||clean(credential.peerDeviceName).isEmpty()
+                ||clean(credential.peerDeviceType).isEmpty())return false;
+        if(!SecureProfileVault.putVerified(c,TOKEN_NAMESPACE,hostKey(host),token))return false;
         JSONObject peers=read(c); JSONObject peer=new JSONObject();
-        try{peer.put("host",host);peer.put("paired_at",System.currentTimeMillis());peer.put("token_storage","ANDROID_KEYSTORE");peers.put(host,peer);}catch(Exception ignored){}
-        write(c,peers);c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(SELECTED,host).apply();
+        try{
+            peer.put("host",host);
+            peer.put("secure_sync_port",port);
+            peer.put("paired_at",credential.establishedAt*1000L);
+            peer.put("peer_instance_id",credential.peerInstanceId);
+            peer.put("peer_device_name",credential.peerDeviceName);
+            peer.put("peer_device_type",credential.peerDeviceType);
+            peer.put("pairing_request_id",credential.requestId);
+            peer.put("pairing_protocol",SarahPairingProtocol.SCHEMA);
+            peer.put("token_storage","ANDROID_KEYSTORE");
+            peers.put(host,peer);
+        }catch(Exception ignored){
+            SecureProfileVault.removeVerified(c,TOKEN_NAMESPACE,hostKey(host));
+            return false;
+        }
+        boolean metadataCommitted=c.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+                .edit().putString(PEERS,peers.toString()).putString(SELECTED,host).commit();
+        if(!metadataCommitted){
+            SecureProfileVault.removeVerified(c,TOKEN_NAMESPACE,hostKey(host));
+            return false;
+        }
+        JSONObject verified=read(c).optJSONObject(host);
+        return verified!=null
+                &&SarahPairingProtocol.SCHEMA.equals(verified.optString("pairing_protocol",""))
+                &&token.equals(SecureProfileVault.get(c,TOKEN_NAMESPACE,hostKey(host)));
     }
 
     public static synchronized List<String> hosts(Context c){
@@ -76,16 +117,47 @@ public final class TrustedDeviceStore {
             JSONObject peers=new JSONObject(c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString(PEERS,"{}"));
             List<String> keys=new ArrayList<>();Iterator<String> iterator=peers.keys();while(iterator.hasNext())keys.add(iterator.next());
             boolean changed=false;
-            for(String host:keys){JSONObject peer=peers.optJSONObject(host);if(peer==null)continue;String legacy=clean(peer.optString("token",""));if(legacy.isEmpty())continue;
-                boolean secured=SecureProfileVault.putVerified(c,TOKEN_NAMESPACE,hostKey(host),legacy);
-                peer.remove("token");changed=true;
-                if(secured){try{peer.put("token_storage","ANDROID_KEYSTORE");}catch(Exception ignored){}}
-                else peers.remove(host);
+            for(String host:keys){JSONObject peer=peers.optJSONObject(host);if(peer==null)continue;String legacy=clean(peer.optString("token",""));
+                if(!legacy.isEmpty()){
+                    // A token returned by the retired plaintext-HTTP pairing
+                    // prototype is not a finalized SAS-bound credential.
+                    peers.remove(host);changed=true;continue;
+                }
+                if(!SarahPairingProtocol.SCHEMA.equals(peer.optString("pairing_protocol",""))){
+                    SecureProfileVault.removeVerified(c,TOKEN_NAMESPACE,hostKey(host));
+                    peers.remove(host);changed=true;
+                }
             }
             if(changed)write(c,peers);
             return peers;
         }
         catch(Exception ignored){return new JSONObject();}
+    }
+
+    public static synchronized int portFor(Context c,String host){
+        try { host=TrustedLanEndpointPolicy.requireLocalHost(host); }
+        catch (RuntimeException rejected) { return 0; }
+        JSONObject peer=read(c).optJSONObject(host);
+        if(peer==null)return 0;
+        int port=peer.optInt("secure_sync_port",0);
+        return port>0&&port<=65535?port:0;
+    }
+
+    public static synchronized String peerInstanceIdFor(Context c,String host){
+        try { host=TrustedLanEndpointPolicy.requireLocalHost(host); }
+        catch (RuntimeException rejected) { return ""; }
+        JSONObject peer=read(c).optJSONObject(host);
+        return peer==null?"":clean(peer.optString("peer_instance_id",""));
+    }
+
+    public static synchronized String hostForPeerInstanceId(Context c,String peerInstanceId){
+        String wanted=clean(peerInstanceId);if(wanted.isEmpty())return "";
+        JSONObject peers=read(c);Iterator<String> keys=peers.keys();
+        while(keys.hasNext()){
+            String host=keys.next();JSONObject peer=peers.optJSONObject(host);
+            if(peer!=null&&wanted.equals(clean(peer.optString("peer_instance_id",""))))return host;
+        }
+        return "";
     }
     private static void write(Context c,JSONObject value){c.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(PEERS,value.toString()).apply();}
     private static String hostKey(String host){return UUID.nameUUIDFromBytes(clean(host).toLowerCase().getBytes(StandardCharsets.UTF_8)).toString();}

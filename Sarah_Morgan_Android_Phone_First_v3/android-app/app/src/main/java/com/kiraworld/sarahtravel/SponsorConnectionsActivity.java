@@ -16,6 +16,7 @@ import java.util.Map;
 /** Owner-facing connection truth; opening this screen performs no network request. */
 public final class SponsorConnectionsActivity extends Activity {
     private static final int REQ_LOCATION = 8201;
+    private static final int REQ_GMAIL = 8202;
     private ApproximateLocationCoordinator locationCoordinator;
     private SarahLocationStore locationStore;
     private TextView locationStatus;
@@ -62,29 +63,30 @@ public final class SponsorConnectionsActivity extends Activity {
                 : CurrentLocationPolicy.settingsStatus(
                         savedArea, locationStore.source(activePersonId)), 13, false);
         add(root, "Gmail", 20, true);
-        add(root, GmailTravelConnection.status() + ". "
-                + GmailTravelConnection.setupStatus() + " "
-                + GmailTravelConnection.privacySummary(), 15, false);
+        GmailTokenVault gmailVault = new GmailTokenVault(this);
+        String gmailProfileId = EventTripStore.activePersonId(this);
+        boolean gmailConnected = !gmailProfileId.isEmpty()
+                && gmailVault.hasAuthorizedGrant(gmailProfileId);
+        add(root, (gmailConnected
+                ? "Gmail read-only: " + gmailVault.accountEmail(gmailProfileId)
+                    + " · monitoring "
+                    + (gmailVault.monitoringEnabled(gmailProfileId) ? "on" : "off")
+                    + (gmailVault.reauthorizationRequired() ? " · reconnect required" : "")
+                : "Gmail not connected · monitoring off")
+                + ". " + GmailTravelConnection.privacySummary(), 15, false);
         Button gmailConnect = new Button(this);
-        gmailConnect.setText("Connect Gmail · setup required");
+        gmailConnect.setText(gmailConnected
+                ? "Review Gmail connection and receipts"
+                : "Connect Gmail read-only");
         gmailConnect.setAllCaps(false);
-        gmailConnect.setEnabled(false);
+        gmailConnect.setOnClickListener(v -> startActivityForResult(
+                new Intent(this, GmailAuthorizationActivity.class), REQ_GMAIL));
         root.addView(gmailConnect);
         Button bookingImport = new Button(this);
         bookingImport.setText("Import a booking you choose to share");
         bookingImport.setAllCaps(false);
         bookingImport.setOnClickListener(v -> startActivity(new Intent(this, BookingImportActivity.class)));
         root.addView(bookingImport);
-        Button gmailDisconnect = new Button(this);
-        gmailDisconnect.setText("Disconnect Gmail · not connected");
-        gmailDisconnect.setAllCaps(false);
-        gmailDisconnect.setEnabled(GmailTravelConnection.disconnectAvailable());
-        root.addView(gmailDisconnect);
-        Button clearGmail = new Button(this);
-        clearGmail.setText("Clear Gmail-derived data · none stored");
-        clearGmail.setAllCaps(false);
-        clearGmail.setEnabled(GmailTravelConnection.gmailDerivedDataExists());
-        root.addView(clearGmail);
         add(root, "Devices and sync", 20, true);
         add(root, "Pairing is owner initiated. Sarah does not sync until you choose and approve a device.", 15, false);
         Button sync = new Button(this);
@@ -159,6 +161,11 @@ public final class SponsorConnectionsActivity extends Activity {
         } else {
             locationStatus.setText(CurrentLocationPolicy.unavailableReply("permission_denied"));
         }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_GMAIL) recreate();
     }
 
     private String activePersonId() {

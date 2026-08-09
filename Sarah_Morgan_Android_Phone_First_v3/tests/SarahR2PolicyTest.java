@@ -333,12 +333,18 @@ public final class SarahR2PolicyTest {
                 "protected ElevenLabs backend works without direct key");
         require(!VoiceRoutePolicy.shouldAttemptPremium(1, false, true, false),
                 "premium voice requires validated internet");
-        require(!GmailTravelConnection.canClaimConnected(true, true, true),
-                "Gmail remains fail closed until OAuth implementation exists");
+        require(GmailTravelConnection.canClaimConnected(true, true, true),
+                "implemented Gmail connector may claim connected only after exact supervised proof");
+        require(!GmailTravelConnection.canClaimConnected(true, true, false),
+                "Gmail cannot claim connected before a supervised read-only test");
         require(!GmailTravelConnection.canMonitor(false, true),
                 "Gmail monitoring cannot run without a real connection");
-        require(GmailTravelConnection.status().contains("not connected"),
-                "Gmail status must be truthful");
+        require(GmailTravelConnection.canMonitor(true, true),
+                "monitoring requires both a real connection and separate owner opt-in");
+        require(!GmailTravelConnection.canMonitor(true, false),
+                "monitoring remains off after connection until the owner opts in");
+        require(GmailTravelConnection.status().contains("runtime connection required"),
+                "Gmail static status must not claim a live account connection");
         require(MaturityAccessPolicy.requiresNonAdultSafeContent(Map.of()),
                 "missing maturity defaults to non-adult safe content");
         require(MaturityAccessPolicy.requiresNonAdultSafeContent(

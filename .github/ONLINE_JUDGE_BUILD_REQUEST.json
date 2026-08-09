@@ -1,5 +1,6 @@
 {
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
-  "reason": "Build a separate R2 owner-acceptance candidate after the Galaxy A17 repair: profile migration, per-turn route truth, 14.25-second connected budget, fail-closed monitoring, coarse-area provenance, bounded booking imports, progressive/cancellable voice, and side-by-side Windows repair; physical phone and laptop acceptance remain pending"
+  "repair_revision": "R3_OWNER_REPAIR",
+  "reason": "Build the separate R3 CURRENT OWNER TEST after Robert rejected the physical R2 Android and Windows artifacts; preserve application/signing identity and require the protected online/ElevenLabs route, approved portrait, restored Workbench, optional Gmail, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
 }

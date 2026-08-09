@@ -56,6 +56,7 @@ public final class MainActivity extends Activity {
     private static final String STATE_PENDING_LOCATION_PERSON = "pending_location_person";
     private static final String STATE_PENDING_LOCATION_SPEAKER = "pending_location_speaker";
     private static final String STATE_PENDING_LOCATION_GENERATION = "pending_location_generation";
+    private static final String PREF_PORTRAIT_MOTION = "portrait_motion_enabled";
 
     private static final class ActiveVoice {
         final String personId;
@@ -86,11 +87,15 @@ public final class MainActivity extends Activity {
     private EditText input;
     private ImageButton sendButton;
     private TextView status;
+    private SarahPortraitView portraitPresence;
+    private boolean portraitMotionEnabled = true;
+    private boolean activityResumed;
     private ConnectivityMonitor connectivityMonitor;
     private volatile boolean internetAvailable;
     private volatile boolean lastSmartCallFailed;
     private volatile boolean connectedRouteProven;
     private volatile boolean reconnecting;
+    private boolean ownerActivationPromptOpened;
     private volatile String lastTurnRoute = TurnRoute.UNKNOWN_LEGACY;
     private final ExecutorService conversationExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService backgroundResearchExecutor = Executors.newSingleThreadExecutor();
@@ -227,12 +232,14 @@ public final class MainActivity extends Activity {
         scroll = findViewById(R.id.chatScroll);
         input = findViewById(R.id.messageInput);
         status = findViewById(R.id.statusText);
+        portraitPresence = findViewById(R.id.sarahPortraitView);
+        portraitMotionEnabled = startupPreferences.getBoolean(PREF_PORTRAIT_MOTION, true);
+        applyPortraitPowerMode(false);
         SafeAreaInsets.apply(
                 this,
                 findViewById(R.id.mainRoot),
                 findViewById(R.id.bottomControls),
-                scroll,
-                findViewById(R.id.bottomNavigation));
+                scroll);
         speakerContext = new SpeakerContext(db.getProfile());
         locationStore = new SarahLocationStore(this);
         locationCoordinator = new ApproximateLocationCoordinator(this);
@@ -269,7 +276,13 @@ public final class MainActivity extends Activity {
             });
         });
         internetAvailable = connectivityMonitor.currentValidatedInternet();
-        status.setOnClickListener(v -> showConversationModeMenu());
+        status.setOnClickListener(v -> {
+            if (needsOwnerOnlineActivation()) {
+                openOwnerOnlineActivation();
+            } else {
+                showConversationModeMenu();
+            }
+        });
 
         tts = new SarahTts(this, new SarahTts.Listener() {
             @Override
@@ -299,7 +312,7 @@ public final class MainActivity extends Activity {
             if (focused) {
                 findViewById(R.id.tripContextPanel).setVisibility(View.GONE);
                 ((TextView) findViewById(R.id.tripContextToggle))
-                        .setText("Trip context and calm tools ▾");
+                        .setText("More tools");
             }
         });
 
@@ -308,30 +321,28 @@ public final class MainActivity extends Activity {
         contextToggle.setOnClickListener(v -> {
             boolean opening = contextPanel.getVisibility() != View.VISIBLE;
             contextPanel.setVisibility(opening ? View.VISIBLE : View.GONE);
-            contextToggle.setText(opening
-                    ? "Trip context and calm tools ▴"
-                    : "Trip context and calm tools ▾");
+            contextToggle.setText(opening ? "Hide tools" : "More tools");
         });
 
         findViewById(R.id.calmButton).setOnClickListener(v -> showCalmMenu());
         findViewById(R.id.settingsButton).setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         findViewById(R.id.notebookButton).setOnClickListener(v -> startActivity(new Intent(this, TravelNotebookActivity.class)));
         findViewById(R.id.micButton).setOnClickListener(v -> startSpeech());
+        findViewById(R.id.voiceCallButton).setOnClickListener(v -> startSpeech());
         findViewById(R.id.photoButton).setOnClickListener(v -> pickPhoto());
-        findViewById(R.id.chatNavButton).setOnClickListener(v -> {
-            contextPanel.setVisibility(View.GONE);
-            contextToggle.setText("Trip context and calm tools ▾");
-            scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
-            input.requestFocus();
+        ((TextView) findViewById(R.id.travelHubButton)).setText(
+                "Travel Workbench\nPlan, map, book and organize");
+        findViewById(R.id.presencePowerButton).setOnClickListener(v -> {
+            portraitMotionEnabled = !portraitMotionEnabled;
+            getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE)
+                    .edit().putBoolean(PREF_PORTRAIT_MOTION, portraitMotionEnabled).apply();
+            applyPortraitPowerMode(true);
         });
-        findViewById(R.id.tripNavButton).setOnClickListener(
-                v -> startActivity(new Intent(this, TravelHubActivity.class)));
-        findViewById(R.id.discoverNavButton).setOnClickListener(
-                v -> startActivity(new Intent(this, DiscoveryActivity.class)));
-        findViewById(R.id.connectionsNavButton).setOnClickListener(
-                v -> startActivity(new Intent(this, SponsorConnectionsActivity.class)));
         updateSpeakerStatus(null);
-        if (internetAvailable) refreshProtectedCapabilities();
+        if (internetAvailable) {
+            refreshProtectedCapabilities();
+            maybeOpenOwnerOnlineActivation();
+        }
     }
 
     @Override
@@ -343,20 +354,47 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        activityResumed = true;
+        applyPortraitPowerMode(false);
         if (tts != null) tts.setRate(currentSpeechRate());
         if (connectivityMonitor != null) internetAvailable = connectivityMonitor.currentValidatedInternet();
         if (speakerContext != null) updateSpeakerStatus(null);
         if (internetAvailable) {
             refreshProtectedCapabilities();
             scheduleDeferredKnowledgeRefresh();
+            maybeOpenOwnerOnlineActivation();
         }
     }
 
     @Override
     protected void onStop() {
         mainHandler.removeCallbacks(deferredKnowledgeRefresh);
+        activityResumed = false;
+        if (portraitPresence != null) portraitPresence.setAnimationActive(false);
         if (connectivityMonitor != null) connectivityMonitor.stop();
         super.onStop();
+    }
+
+    private void applyPortraitPowerMode(boolean announce) {
+        if (portraitPresence != null) {
+            portraitPresence.setAnimationActive(activityResumed && portraitMotionEnabled);
+            if (!portraitMotionEnabled) portraitPresence.endSpeechEnvelope();
+        }
+        TextView mode = findViewById(R.id.presenceModeText);
+        View control = findViewById(R.id.presencePowerButton);
+        if (mode != null) mode.setText(portraitMotionEnabled ? "Motion on" : "Power save: motion off");
+        if (control != null) {
+            control.setAlpha(portraitMotionEnabled ? 1f : 0.68f);
+            control.setContentDescription(portraitMotionEnabled
+                    ? "Turn on portrait power saving; text and voice stay available"
+                    : "Turn portrait motion back on; text and voice are still available");
+        }
+        if (announce) {
+            Toast.makeText(this, portraitMotionEnabled
+                    ? "Sarah portrait motion on"
+                    : "Power saving on: portrait frames stopped; text and voice remain available",
+                    Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void showEventTripUpgradeBlocked(EventTripPreUpgradeBackupGate.Result state) {
@@ -428,6 +466,26 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private boolean needsOwnerOnlineActivation() {
+        return OwnerOnlineActivationPolicy.needsActivation(
+                internetAvailable,
+                ConfirmedOwnerLease.capture(this) != null,
+                SarahModelConfig.backendUrl(),
+                SarahModelConfig.backendToken());
+    }
+
+    private void maybeOpenOwnerOnlineActivation() {
+        if (ownerActivationPromptOpened || !needsOwnerOnlineActivation()) return;
+        ownerActivationPromptOpened = true;
+        openOwnerOnlineActivation();
+    }
+
+    private void openOwnerOnlineActivation() {
+        Intent intent = new Intent(this, SettingsActivity.class);
+        intent.putExtra(SettingsActivity.EXTRA_OPEN_ONLINE_ACCESS, true);
+        startActivity(intent);
+    }
+
     private void showConversationModeMenu() {
         int mode = SettingsActivity.getConversationMode(this);
         String[] choices = {
@@ -461,8 +519,13 @@ public final class MainActivity extends Activity {
                             && !SarahModelConfig.fullConversationAvailable()) {
                         new AlertDialog.Builder(this)
                                 .setTitle("Connected conversation is unavailable")
-                                .setMessage("Sarah can keep talking offline and can open supported public tools while internet is available. There is nothing you need to configure here.")
-                                .setPositiveButton("OK", null)
+                                .setMessage(needsOwnerOnlineActivation()
+                                        ? "Internet is available, but Sarah needs your private access code once. The code is encrypted for this phone and is not a provider key."
+                                        : "Sarah can keep talking offline while the protected connection is unavailable. A saved connection will retry automatically.")
+                                .setPositiveButton(needsOwnerOnlineActivation()
+                                        ? "Connect Sarah" : "OK", (notice, selected) -> {
+                                    if (needsOwnerOnlineActivation()) openOwnerOnlineActivation();
+                                })
                                 .show();
                     }
                 })
@@ -1120,6 +1183,14 @@ public final class MainActivity extends Activity {
         if (status == null || speakerContext == null) return;
         String label;
         if (event == null || event.trim().isEmpty() || "Ready".equals(event)) {
+            if (needsOwnerOnlineActivation()) {
+                status.setText(OwnerOnlineActivationPolicy.status(
+                        internetAvailable,
+                        true,
+                        SarahModelConfig.backendUrl(),
+                        SarahModelConfig.backendToken()));
+                return;
+            }
             int mode = SettingsActivity.getConversationMode(this);
             String nextRoute = ConversationModePolicy.statusLabel(
                     mode,
@@ -1375,6 +1446,7 @@ public final class MainActivity extends Activity {
         recordActiveVoiceCancellation("superseded_by_new_voice_request");
         CloudVoiceClient.cancel();
         if (tts != null) tts.stop();
+        if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
         final long voiceGeneration = lifecycleGeneration.get();
         Map<String, String> voiceProfile = currentProfile();
         final String expectedSpeaker = speakerContext.activeName();
@@ -1402,26 +1474,42 @@ public final class MainActivity extends Activity {
         markActiveVoice(personId, turnId, text.length(), attemptedVoiceRoute);
         if (attemptPremium) {
             updateSpeakerStatus("Generating Sarah’s online voice…");
-            CloudVoiceClient.speak(this, "", text, receipt -> {
-                if (voiceRequest != voiceRequestSequence.get()) return;
-                if (!requestMayApplyToSpeaker(
-                        voiceGeneration, personId, expectedSpeaker)) return;
-                runOnUiThreadIfActive(voiceGeneration, () -> updateSpeakerStatus(null));
-                if (receipt.completed) {
-                    recordVoiceReceipt(personId, turnId, text.length(), receipt, "");
-                    clearActiveVoice(personId, turnId);
-                } else if (!VoiceFallbackPolicy.shouldStartAndroidFallback(
-                        receipt.playbackStart, receipt.failureReason)) {
-                    String detail = receipt.playbackStart > 0
-                            ? "approved progressive playback began; partial route failure recorded; full Android replay suppressed"
-                            : "newer voice request owns playback; obsolete Android fallback suppressed";
-                    recordVoiceReceipt(personId, turnId, text.length(), receipt, detail);
-                    clearActiveVoice(personId, turnId);
-                } else {
-                    runOnUiThreadIfActive(voiceGeneration, () -> speakLocallyWithReceipt(
-                            personId, expectedSpeaker, turnId, text,
-                            receipt.attemptedRoute, receipt.failureReason, receipt,
-                            voiceGeneration, voiceRequest));
+            CloudVoiceClient.speak(this, "", text, new CloudVoiceClient.ReceiptListener() {
+                @Override public void onPlaybackStarted(long playbackStartedAt) {
+                    if (voiceRequest != voiceRequestSequence.get()) return;
+                    if (!requestMayApplyToSpeaker(
+                            voiceGeneration, personId, expectedSpeaker)) return;
+                    runOnUiThreadIfActive(voiceGeneration, () -> {
+                        if (portraitPresence != null) {
+                            portraitPresence.beginSpeechEnvelope(text, playbackStartedAt);
+                        }
+                    });
+                }
+
+                @Override public void onFinished(CloudVoiceClient.Receipt receipt) {
+                    if (voiceRequest != voiceRequestSequence.get()) return;
+                    if (!requestMayApplyToSpeaker(
+                            voiceGeneration, personId, expectedSpeaker)) return;
+                    runOnUiThreadIfActive(voiceGeneration, () -> {
+                        updateSpeakerStatus(null);
+                        if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
+                    });
+                    if (receipt.completed) {
+                        recordVoiceReceipt(personId, turnId, text.length(), receipt, "");
+                        clearActiveVoice(personId, turnId);
+                    } else if (!VoiceFallbackPolicy.shouldStartAndroidFallback(
+                            receipt.playbackStart, receipt.failureReason)) {
+                        String detail = receipt.playbackStart > 0
+                                ? "approved progressive playback began; partial route failure recorded; full Android replay suppressed"
+                                : "newer voice request owns playback; obsolete Android fallback suppressed";
+                        recordVoiceReceipt(personId, turnId, text.length(), receipt, detail);
+                        clearActiveVoice(personId, turnId);
+                    } else {
+                        runOnUiThreadIfActive(voiceGeneration, () -> speakLocallyWithReceipt(
+                                personId, expectedSpeaker, turnId, text,
+                                receipt.attemptedRoute, receipt.failureReason, receipt,
+                                voiceGeneration, voiceRequest));
+                    }
                 }
             });
             return;
@@ -1460,6 +1548,11 @@ public final class MainActivity extends Activity {
                         && requestMayApplyToSpeaker(
                         voiceGeneration, personId, expectedSpeaker)) {
                     playbackStarted.set(startedAt);
+                    runOnUiThreadIfActive(voiceGeneration, () -> {
+                        if (portraitPresence != null) {
+                            portraitPresence.beginSpeechEnvelope(text, startedAt);
+                        }
+                    });
                 } else if (tts != null) {
                     tts.stop();
                 }
@@ -1473,6 +1566,9 @@ public final class MainActivity extends Activity {
                         personId, turnId, text.length(), attemptedRoute, fallbackReason,
                         requestedAt, playbackStarted.get(), completedAt, true, failedPremium);
                 clearActiveVoice(personId, turnId);
+                runOnUiThreadIfActive(voiceGeneration, () -> {
+                    if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
+                });
             }
 
             @Override public void onError(long failedAt, String reason) {
@@ -1484,6 +1580,9 @@ public final class MainActivity extends Activity {
                         fallbackReason + "; " + reason,
                         requestedAt, playbackStarted.get(), failedAt, false, failedPremium);
                 clearActiveVoice(personId, turnId);
+                runOnUiThreadIfActive(voiceGeneration, () -> {
+                    if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
+                });
             }
         });
     }
@@ -1916,6 +2015,10 @@ public final class MainActivity extends Activity {
         networkAttemptExecutor.shutdownNow();
         CloudVoiceClient.cancel();
         if (tts != null) tts.shutdown();
+        if (portraitPresence != null) {
+            portraitPresence.endSpeechEnvelope();
+            portraitPresence.setAnimationActive(false);
+        }
         discardPendingPhoto();
         if (speakerContext != null) speakerContext.close();
         if (locationCoordinator != null) locationCoordinator.close();

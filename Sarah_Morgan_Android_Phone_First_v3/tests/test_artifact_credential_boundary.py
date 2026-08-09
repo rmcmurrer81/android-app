@@ -170,6 +170,10 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
             r"(?m)^\s+SARAH_MODEL_BACKEND_TOKEN\s*=",
         )
         self.assertIn("A reusable credential was added", windows)
+        self.assertIn("vars.SARAH_GMAIL_DESKTOP_CLIENT_ID", windows)
+        self.assertIn("vars.SARAH_GMAIL_DESKTOP_CLIENT_SECRET", windows)
+        self.assertNotIn("secrets.SARAH_GMAIL_DESKTOP", windows)
+        self.assertIn('--add-data "$gmailOAuthPath;."', windows)
         self.assertIn("event_app_token_bundled = $false", workflow)
         self.assertIn("owner_runtime_activation_required = $true", workflow)
 
@@ -264,19 +268,20 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
             workflow = read(WORKFLOWS / name)
             self.assertIn("test_artifact_credential_boundary.py", workflow, name)
 
-    def test_final_release_identity_is_source_derived_r2(self):
+    def test_generic_release_identity_is_source_derived_r3_engineering_evidence(self):
         final = read(WORKFLOWS / "sarah-2.5-final-release.yml")
         for phrase in (
             "source_code = int(code_match.group(1))",
             "source_name = name_match.group(1)",
             "expected_variant_name = source_name",
-            "source_code != 26 or source_name != '2.5-r2-owner-repair'",
+            "source_code != 27 or source_name != '2.5-r3-owner-repair'",
             "name != expected_variant_name or code != source_code",
-            "Sarah-Morgan-2.5-R2-owner-repair.apk",
+            "Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk",
         ):
             self.assertIn(phrase, final)
         self.assertNotIn("Sarah-Morgan-2.5-event-ready.apk", final)
         self.assertNotIn("version code 25", final.lower())
+        self.assertNotIn("CURRENT-OWNER-TEST", final)
 
     def test_documentation_does_not_claim_client_tokens_are_bundled(self):
         documents = {

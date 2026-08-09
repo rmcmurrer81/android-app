@@ -53,6 +53,11 @@ public final class TravelHubActivity extends Activity {
                 TravelUi.MINT,
                 TripPlannerActivity.class));
         root.addView(feature(
+                "📅", "Sarah's calendar and email proposals",
+                "Review possible trips or events found through optional Gmail read-only access, choose what Sarah may remember, preserve exact departure/arrival or event times, and request individual local reminders.",
+                TravelUi.SKY,
+                TravelCalendarActivity.class));
+        root.addView(feature(
                 "🏨", "Hotels and rooms",
                 "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and verified live results when available.",
                 TravelUi.PEACH,
@@ -97,6 +102,11 @@ public final class TravelHubActivity extends Activity {
                 TravelUi.LAVENDER,
                 LoyaltyWalletActivity.class));
         root.addView(feature(
+                "🎟️", "Tickets and passes",
+                "Keep owner-selected ticket, badge and QR-code images encrypted for the active profile, alongside exact official event links when known. This never stores payment secrets or invents a purchase.",
+                TravelUi.SKY,
+                TicketPassWalletActivity.class));
+        root.addView(feature(
                 "♿", "Accessibility, pace and greener choices",
                 "Save walking limits, step-free needs, sensory preferences, food needs, pace, and sustainability priorities for the active profile.",
                 TravelUi.MINT,
@@ -118,8 +128,14 @@ public final class TravelHubActivity extends Activity {
                 "Show how Sarah can turn guest requests into a front-desk, housekeeping, maintenance, and guest-experience task board while keeping unverified requests separate from completed work.",
                 TravelUi.SKY,
                 HospitalityOpsActivity.class));
+        root.addView(feature(
+                "🔗", "Event partner connections",
+                "Open the installed ElevenLabs, Tavily, Stay22, Rove, booking-import, location, and trusted-device connection surfaces. Each connection reports whether it is live, a bounded demo, or still awaiting setup.",
+                TravelUi.LAVENDER,
+                SponsorConnectionsActivity.class));
 
-        TravelUi.makeSectionsCollapsible(root);
+        // Keep the complete workbench visible. Hiding every section made the
+        // retained sponsor and travel integrations appear to be missing.
     }
 
     private LinearLayout feature(

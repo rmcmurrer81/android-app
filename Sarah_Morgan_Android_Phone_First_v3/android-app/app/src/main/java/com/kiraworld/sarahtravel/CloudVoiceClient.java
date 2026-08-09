@@ -53,7 +53,11 @@ public final class CloudVoiceClient {
 
     private CloudVoiceClient() { }
 
-    public interface ReceiptListener { void onFinished(Receipt receipt); }
+    public interface ReceiptListener {
+        /** Exact progressive-playback boundary; optional for existing callers. */
+        default void onPlaybackStarted(long playbackStartedAt) { }
+        void onFinished(Receipt receipt);
+    }
 
     public static final class Receipt {
         public final String attemptedRoute;
@@ -249,7 +253,14 @@ public final class CloudVoiceClient {
         }
 
         void markPlaying() {
-            playbackStart.compareAndSet(0L, System.currentTimeMillis());
+            long startedAt = System.currentTimeMillis();
+            if (playbackStart.compareAndSet(0L, startedAt) && listener != null) {
+                try {
+                    listener.onPlaybackStarted(startedAt);
+                } catch (RuntimeException ignored) {
+                    // Presentation callbacks must never break approved audio playback.
+                }
+            }
         }
 
         void complete() {

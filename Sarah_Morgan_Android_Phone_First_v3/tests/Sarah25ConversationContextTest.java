@@ -2,6 +2,7 @@ import com.kiraworld.sarahtravel.DestinationParser;
 import com.kiraworld.sarahtravel.GenericEventReference;
 import com.kiraworld.sarahtravel.KnownEventCatalog;
 import com.kiraworld.sarahtravel.TravelContextResolver;
+import com.kiraworld.sarahtravel.TravelPlanningConversationPolicy;
 
 import java.util.List;
 
@@ -19,6 +20,16 @@ public final class Sarah25ConversationContextTest {
                 "Paris, Texas must not be confused with Paris, France");
         require("Paris".equals(DestinationParser.extractDestinations("I am going to Paris").get(0)),
                 "Paris by itself must remain Paris, France");
+        require(DestinationParser.extractDestinations(
+                        "I am travelling to New Zealand and the details is in my email")
+                        .contains("New Zealand"),
+                "the exact owner phrase must retain New Zealand travel context");
+        require(DestinationParser.extractDestinations("I am traveling to Aotearoa")
+                        .contains("New Zealand"),
+                "traveling/travelling wording and the Aotearoa alias must resolve");
+        require(TravelPlanningConversationPolicy.explicitlyPlansTrip(
+                        "I am travelling to New Zealand and the details is in my email"),
+                "the owner sentence must be treated as a real planned trip");
 
         require(!GenericEventReference.isFollowUp("Where is Paris Texas?"),
                 "an explicit new destination must not inherit an old event");

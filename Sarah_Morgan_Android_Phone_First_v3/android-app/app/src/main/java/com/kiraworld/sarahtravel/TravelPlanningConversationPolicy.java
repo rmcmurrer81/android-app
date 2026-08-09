@@ -27,7 +27,11 @@ public final class TravelPlanningConversationPolicy {
                 "i'm planning a trip to", "i am planning a trip to",
                 "we're planning a trip to", "we are planning a trip to",
                 "i'm planning to go to", "i am planning to go to",
-                "we're planning to go to", "we are planning to go to");
+                "we're planning to go to", "we are planning to go to",
+                "i'm traveling to", "i am traveling to",
+                "i'm travelling to", "i am travelling to",
+                "we're traveling to", "we are traveling to",
+                "we're travelling to", "we are travelling to");
     }
 
     public static String shortTripReply(String destination) {

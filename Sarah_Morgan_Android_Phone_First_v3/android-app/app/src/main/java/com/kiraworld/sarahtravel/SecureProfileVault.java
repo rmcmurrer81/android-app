@@ -25,6 +25,16 @@ public final class SecureProfileVault {
 
     private SecureProfileVault() { }
 
+    public static final class VaultReadException extends IllegalStateException {
+        VaultReadException(String message) {
+            super(message);
+        }
+
+        VaultReadException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
     public static void put(Context context, String namespace, String personId, String value) {
         putVerified(context, namespace, personId, value);
     }
@@ -44,29 +54,57 @@ public final class SecureProfileVault {
                     .putString(key + "_iv", Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
                     .putString(key + "_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
                     .commit();
-            return committed && clean(value).equals(get(context, namespace, personId));
+            return committed && clean(value).equals(getOrThrow(context, namespace, personId));
         } catch (Exception ignored) {
             return false;
         }
     }
 
+    /**
+     * Legacy best-effort read for older non-critical stores. New mutable stores
+     * must use getOrThrow so a missing record cannot be confused with damage.
+     */
     public static String get(Context context, String namespace, String personId) {
         try {
-            String key = key(namespace, personId);
-            SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            String iv = preferences.getString(key + "_iv", "");
-            String data = preferences.getString(key + "_data", "");
-            if (iv.isEmpty() || data.isEmpty()) return "";
+            return getOrThrow(context, namespace, personId);
+        } catch (VaultReadException ignored) {
+            return "";
+        }
+    }
+
+    /** Return empty only for a truly absent record; throw on partial/tampered data. */
+    public static String getOrThrow(Context context, String namespace, String personId) {
+        String key = key(namespace, personId);
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String iv = preferences.getString(key + "_iv", "");
+        String data = preferences.getString(key + "_data", "");
+        SecureVaultReadPolicy.StoredState state = SecureVaultReadPolicy.classify(
+                !iv.isEmpty(), !data.isEmpty());
+        if (state == SecureVaultReadPolicy.StoredState.MISSING) return "";
+        if (state == SecureVaultReadPolicy.StoredState.CORRUPT_PARTIAL) {
+            try {
+                SecureVaultReadPolicy.requireReadable(state, false);
+            } catch (IllegalStateException error) {
+                throw new VaultReadException(error.getMessage(), error);
+            }
+        }
+        try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(
                     Cipher.DECRYPT_MODE,
                     getOrCreateKey(),
                     new GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)));
-            return new String(
+            String plaintext = new String(
                     cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)),
                     StandardCharsets.UTF_8);
-        } catch (Exception ignored) {
-            return "";
+            SecureVaultReadPolicy.requireReadable(state, true);
+            return plaintext;
+        } catch (VaultReadException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new VaultReadException(
+                    "Encrypted profile data failed authenticated decryption; no record was changed.",
+                    error);
         }
     }
 
@@ -103,10 +141,16 @@ public final class SecureProfileVault {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String oldIv = preferences.getString(oldKey + "_iv", "");
         String oldData = preferences.getString(oldKey + "_data", "");
-        if (oldIv.isEmpty() || oldData.isEmpty()) return true;
+        SecureVaultReadPolicy.StoredState oldState = SecureVaultReadPolicy.classify(
+                !oldIv.isEmpty(), !oldData.isEmpty());
+        if (oldState == SecureVaultReadPolicy.StoredState.MISSING) return true;
+        getOrThrow(context, namespace, oldPersonId);
         String newIv = preferences.getString(newKey + "_iv", "");
         String newData = preferences.getString(newKey + "_data", "");
-        if (!newIv.isEmpty() && !newData.isEmpty()) {
+        SecureVaultReadPolicy.StoredState newState = SecureVaultReadPolicy.classify(
+                !newIv.isEmpty(), !newData.isEmpty());
+        if (newState != SecureVaultReadPolicy.StoredState.MISSING) {
+            getOrThrow(context, namespace, newPersonId);
             if (oldIv.equals(newIv) && oldData.equals(newData)) {
                 return preferences.edit().remove(oldKey + "_iv").remove(oldKey + "_data").commit();
             }

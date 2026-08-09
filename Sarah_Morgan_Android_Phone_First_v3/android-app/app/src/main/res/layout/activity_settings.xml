@@ -185,10 +185,18 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/gmailConnectionStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Not connected · share a booking link, message, image or PDF through Connections."
+            android:text="Gmail not connected. Monitoring is off."
             android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/manageGmailConnectionButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Connect or manage Gmail read-only"
+            android:textAllCaps="false" />
 
         <TextView
             android:layout_width="match_parent"

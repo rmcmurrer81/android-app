@@ -44,7 +44,10 @@ public final class PublicOnlineFallback {
             } catch (Exception ignored) { }
             return PublicSourceResult.unavailable(
                     "I recognized " + knownEvent.eventName + " in " + knownEvent.destination
-                            + ", but I could not read its official page right now. I will not invent current dates or details. Use the media panel to open its official page, map, public photos, videos, and route options.");
+                            + ", but I could not read its official page right now. I will not invent current dates or details. "
+                            + "The exact known official website or ticket source is "
+                            + knownEvent.officialUrl
+                            + ". Opening it does not purchase a ticket. Use Explore for its map, public photos, videos, and route options.");
         }
 
         if (!GenericEventReference.recentEvent(history, message).isEmpty()) {

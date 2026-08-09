@@ -15,11 +15,11 @@ except Exception:
     messagebox = None
 
 
-APP_FOLDER = "SarahTravelOS-R2-Candidate"
-APP_EXE = "SarahTravelOS-R2-Candidate.exe"
-DISPLAY_NAME = "Sarah Travel OS R2 Candidate"
-APP_VERSION = "2.5-r2-owner-repair-candidate"
-UNINSTALL_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SarahTravelOS-R2-Candidate"
+APP_FOLDER = "SarahTravelOS-R3-Candidate"
+APP_EXE = "SarahTravelOS-R3-Candidate.exe"
+DISPLAY_NAME = "Sarah Travel OS R3 Candidate"
+APP_VERSION = "2.5-r3-owner-repair-candidate"
+UNINSTALL_REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SarahTravelOS-R3-Candidate"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 

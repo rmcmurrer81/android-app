@@ -60,7 +60,9 @@
         <activity android:name=".LocalExperienceActivity" android:exported="false" />
         <activity android:name=".RoadTripActivity" android:exported="false" />
         <activity android:name=".EventTripCenterActivity" android:exported="false" />
+        <activity android:name=".TravelCalendarActivity" android:exported="false" />
         <activity android:name=".LoyaltyWalletActivity" android:exported="false" />
+        <activity android:name=".TicketPassWalletActivity" android:exported="false" />
         <activity android:name=".TravelerNeedsActivity" android:exported="false" />
         <activity android:name=".StayAssistantActivity" android:exported="false" />
         <activity android:name=".HospitalityOpsActivity" android:exported="false" />
@@ -70,6 +72,12 @@
         <activity android:name=".TrustedSyncActivity" android:exported="false" />
         <activity android:name=".HackathonDemoActivity" android:exported="false" />
         <activity android:name=".SponsorConnectionsActivity" android:exported="false" />
+
+        <provider
+            android:name=".TicketPassShareProvider"
+            android:authorities="${applicationId}.ticketpasses"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <activity
             android:name=".BookingImportActivity"
@@ -93,6 +101,10 @@
         </activity>
 
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity
+            android:name=".GmailAuthorizationActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".OwnerIdentityCorrectionActivity"
             android:exported="false"

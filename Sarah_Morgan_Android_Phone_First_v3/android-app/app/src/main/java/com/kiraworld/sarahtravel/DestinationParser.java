@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 public final class DestinationParser {
     private static final Map<String, String[]> KNOWN = new LinkedHashMap<>();
     private static final Pattern AFTER_TRAVEL_VERB = Pattern.compile(
-            "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|fly to|flights to|ride to|head to|heading to|take a train to|take the train to|planning on going to|thinking about going to)\\s+([A-Za-z][A-Za-z .,'-]{1,80})");
+            "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|traveling to|travelling to|fly to|flights to|ride to|head to|heading to|take a train to|take the train to|planning on going to|thinking about going to)\\s+([A-Za-z][A-Za-z .,'-]{1,80})");
 
     static {
         KNOWN.put("Paris, Texas", new String[]{"paris texas", "paris, texas", "paris tx", "paris, tx"});
@@ -48,6 +48,7 @@ public final class DestinationParser {
         KNOWN.put("Beijing", new String[]{"beijing"});
         KNOWN.put("Shanghai", new String[]{"shanghai"});
         KNOWN.put("Hong Kong", new String[]{"hong kong"});
+        KNOWN.put("New Zealand", new String[]{"new zealand", "aotearoa"});
     }
 
     private DestinationParser() { }

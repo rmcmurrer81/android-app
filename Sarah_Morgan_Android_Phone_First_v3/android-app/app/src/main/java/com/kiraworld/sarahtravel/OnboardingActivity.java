@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 public final class OnboardingActivity extends Activity {
     private static final int REQ_SPEECH = 2201;
     private static final int REQ_AUDIO_PERMISSION = 2202;
+    private static final int REQ_FIRST_RUN_SYNC = 2203;
 
     private static final int STEP_NAME = 0;
     private static final int STEP_AGE = 1;
@@ -36,7 +37,8 @@ public final class OnboardingActivity extends Activity {
     private static final int STEP_INTERESTS = 4;
     private static final int STEP_WORRIES = 5;
     private static final int STEP_MEMORY = 6;
-    private static final int STEP_DONE = 7;
+    private static final int STEP_EMAIL = 7;
+    private static final int STEP_DONE = 8;
 
     private SarahDatabase db;
     private SarahTts tts;
@@ -56,6 +58,9 @@ public final class OnboardingActivity extends Activity {
     private String interests = "";
     private String worries = "";
     private boolean memoryConsent = true;
+    private boolean discoveryResolved;
+    private boolean syncActivityPending;
+    private boolean profileSaved;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -114,7 +119,26 @@ public final class OnboardingActivity extends Activity {
         });
 
         if (state != null) restoreState(state);
-        else ask("Hi, I’m Sarah. Nice to meet you. What is your name?");
+        else beginDiscoveryBeforeProfile();
+    }
+
+    private void beginDiscoveryBeforeProfile() {
+        composer.setVisibility(View.GONE);
+        beginButton.setVisibility(View.GONE);
+        status.setText("Looking briefly for Sarah on another device on this Wi-Fi…");
+        SarahAutoPairCoordinator.runBeforeProfileQuestions(
+                this,
+                REQ_FIRST_RUN_SYNC,
+                () -> syncActivityPending = true,
+                this::beginProfileQuestions);
+    }
+
+    private void beginProfileQuestions() {
+        if (discoveryResolved || isFinishing()) return;
+        discoveryResolved = true;
+        composer.setVisibility(View.VISIBLE);
+        status.setText("Local setup · no device data was transferred");
+        ask("Hi, I’m Sarah. Nice to meet you. What is your name?");
     }
 
     private void submitAnswer() {
@@ -180,17 +204,36 @@ public final class OnboardingActivity extends Activity {
                     return;
                 }
                 memoryConsent = consent;
-                finishOnboarding();
+                persistProfile();
+                step = STEP_EMAIL;
+                ask("Your local profile is ready. Would you like to connect Gmail now so I can look for travel confirmations you choose to let me view? Google will handle the sign-in and ask for read-only access. I will never ask for your Gmail password. You can say yes, no, or later and change this in Settings.");
+                break;
+            case STEP_EMAIL:
+                Boolean connectEmail = isSkip(answer) ? Boolean.FALSE : parseYesNo(answer);
+                if (connectEmail == null) {
+                    String lower = answer.toLowerCase(Locale.US);
+                    if (lower.contains("later") || lower.contains("not now")) {
+                        connectEmail = Boolean.FALSE;
+                    } else {
+                        ask("Please say yes to open Google’s read-only connection, or say no or later. You can always connect from Settings.");
+                        return;
+                    }
+                }
+                finishOnboarding(connectEmail);
                 break;
             default:
                 break;
         }
     }
 
-    private void finishOnboarding() {
-        step = STEP_DONE;
+    private void persistProfile() {
+        if (profileSaved) return;
+        profileSaved = true;
         boolean ageKnown = age >= 1 && age <= 120;
         db.saveProfile(name, home, age, ageKnown, firstFlight, interests, worries, memoryConsent);
+        PersonProfileStore profiles = new PersonProfileStore(this);
+        try { profiles.ensureOwner(db.getProfile()); }
+        finally { profiles.close(); }
         if (memoryConsent) {
             db.addMemory("profile", "Name: " + name, "First conversation with Sarah");
             db.addMemory("profile", "From: " + home, "First conversation with Sarah");
@@ -199,11 +242,23 @@ public final class OnboardingActivity extends Activity {
             if (!interests.isEmpty()) db.addMemory("interest", interests, "First conversation with Sarah");
             if (!worries.isEmpty()) db.addMemory("travel_need", worries, "First conversation with Sarah");
         }
+    }
 
-        ask("Thank you, " + name + ". That’s enough for now. I’ll learn the rest naturally while we talk.");
+    private void finishOnboarding(boolean connectEmail) {
+        step = STEP_DONE;
+        persistProfile();
+
+        ask("Thank you, " + name + ". That’s enough for now. I’ll learn the rest naturally while we talk."
+                + (connectEmail
+                    ? " I’ll open Google’s read-only email connection next."
+                    : " Gmail remains disconnected and can be added later in Settings."));
         composer.setVisibility(View.GONE);
         beginButton.setVisibility(View.VISIBLE);
         beginButton.requestFocus();
+        if (connectEmail) {
+            beginButton.postDelayed(() -> startActivity(
+                    new Intent(this, GmailAuthorizationActivity.class)), 350L);
+        }
     }
 
     private void ask(String text) {
@@ -224,6 +279,7 @@ public final class OnboardingActivity extends Activity {
             case STEP_INTERESTS: hint = "Things you enjoy, or skip"; break;
             case STEP_WORRIES: hint = "Worries or needs, or skip"; break;
             case STEP_MEMORY: hint = "Yes or no"; break;
+            case STEP_EMAIL: hint = "Yes, no, or later"; break;
             default: hint = "";
         }
         input.setHint(hint);
@@ -265,6 +321,11 @@ public final class OnboardingActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_FIRST_RUN_SYNC) {
+            syncActivityPending = false;
+            beginProfileQuestions();
+            return;
+        }
         if (requestCode == REQ_SPEECH && resultCode == RESULT_OK && data != null) {
             ArrayList<String> results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
             if (results != null && !results.isEmpty()) {
@@ -291,6 +352,9 @@ public final class OnboardingActivity extends Activity {
         out.putString("interests", interests);
         out.putString("worries", worries);
         out.putBoolean("memoryConsent", memoryConsent);
+        out.putBoolean("discoveryResolved", discoveryResolved);
+        out.putBoolean("syncActivityPending", syncActivityPending);
+        out.putBoolean("profileSaved", profileSaved);
     }
 
     private void restoreState(Bundle state) {
@@ -302,6 +366,20 @@ public final class OnboardingActivity extends Activity {
         interests = state.getString("interests", "");
         worries = state.getString("worries", "");
         memoryConsent = state.getBoolean("memoryConsent", true);
+        discoveryResolved = state.getBoolean("discoveryResolved", step != STEP_NAME);
+        syncActivityPending = state.getBoolean("syncActivityPending", false);
+        profileSaved = state.getBoolean("profileSaved", step >= STEP_EMAIL);
+        if (syncActivityPending) {
+            composer.setVisibility(View.GONE);
+            beginButton.setVisibility(View.GONE);
+            status.setText("Finish or cancel the two-device check, then local setup will continue.");
+            return;
+        }
+        if (!discoveryResolved) {
+            beginDiscoveryBeforeProfile();
+            return;
+        }
+        composer.setVisibility(View.VISIBLE);
         ask(questionForStep());
         if (step == STEP_DONE) {
             composer.setVisibility(View.GONE);
@@ -318,6 +396,7 @@ public final class OnboardingActivity extends Activity {
             case STEP_INTERESTS: return "What kinds of things do you enjoy? You can also say ‘skip.’";
             case STEP_WORRIES: return "Any travel worries, sensory needs, or accessibility needs? You can say ‘skip.’";
             case STEP_MEMORY: return "May I remember useful preferences and trips on this phone? Yes or no?";
+            case STEP_EMAIL: return "Would you like to connect Gmail read-only now? You can say yes, no, or later.";
             default: return "We’re ready to start talking.";
         }
     }

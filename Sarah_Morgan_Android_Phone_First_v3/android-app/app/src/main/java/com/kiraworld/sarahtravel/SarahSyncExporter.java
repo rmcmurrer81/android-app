@@ -56,10 +56,32 @@ public final class SarahSyncExporter {
         }
     }
 
+    /** Exact owner-review boundary used by post-trust device continuity. */
+    public static JSONObject exportOwnerReview(Context context) throws Exception {
+        JSONObject output=export(context);
+        output.put("photos",new JSONArray());
+        output.put("mind_events",new JSONArray());
+        output.put("discoveries",new JSONArray());
+        JSONObject profile=output.optJSONObject("profile");
+        JSONObject safeProfile=new JSONObject();
+        if(profile!=null)for(String key:new String[]{"name","age","age_known","hometown","interests","memory_consent"})
+            if(profile.has(key)&&!profile.isNull(key))safeProfile.put(key,profile.get(key));
+        output.put("profile",safeProfile);
+        JSONObject boundary=new JSONObject();
+        boundary.put("included",strings("profile","messages","memories","trips","wishes"));
+        boundary.put("excluded",strings("gmail_oauth_tokens","provider_tokens","model_tokens","voice_tokens","raw_private_photos","private_mind","discoveries","other_people"));
+        output.put("transfer_boundary",boundary);
+        return output;
+    }
+
     private static JSONArray array(List<Map<String, String>> rows) {
         JSONArray array = new JSONArray();
         for (Map<String, String> row : rows) array.put(new JSONObject(row));
         return array;
+    }
+
+    private static JSONArray strings(String... values) {
+        JSONArray result=new JSONArray();for(String value:values)result.put(value);return result;
     }
 
     private static JSONArray memories(List<Map<String, String>> rows) {

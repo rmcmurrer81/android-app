@@ -65,9 +65,9 @@ def app_home() -> Path:
     if override:
         root = Path(override).expanduser().resolve()
     else:
-        # The R2 owner-acceptance candidate is deliberately side-by-side with
-        # the preserved R1 Windows build, including its writable data root.
-        # Phone pairing/sync is the explicit path for sharing accepted data.
+        # R3 preserves the established R2-candidate data root so a repair
+        # install cannot silently discard an owner-entered activation/profile.
+        # The installed R3 executable itself remains side-by-side with R1.
         root = Path(os.environ.get("APPDATA", Path.home())) / "SarahMorgan-R2-Candidate"
     root.mkdir(parents=True, exist_ok=True)
     (root / "photos").mkdir(exist_ok=True)
@@ -159,6 +159,41 @@ def runtime_setting(
     if user_value:
         return user_value
     return safe_text(load_bundled_event_config(bundled_path).get(name)) or default
+
+
+def online_access_status(
+    validated_internet: bool,
+    root: Path | None = None,
+    bundled_path: Path | None = None,
+) -> dict[str, Any]:
+    """Truthful owner state: internet does not imply authenticated Sarah access."""
+    endpoint = runtime_setting(
+        "SARAH_MODEL_BACKEND_URL", root=root, bundled_path=bundled_path,
+    )
+    token = runtime_setting(
+        "SARAH_MODEL_BACKEND_TOKEN", root=root, bundled_path=bundled_path,
+    )
+    protected_address = endpoint.startswith("https://")
+    activated = protected_address and bool(token)
+    if not validated_internet:
+        label = "Offline mind ready - no validated internet"
+        action = "none"
+    elif not protected_address:
+        label = "Internet is ready - Sarah's protected service address is missing"
+        action = "advanced_connection_setup"
+    elif not token:
+        label = "Internet is ready - enter your private Sarah access code once"
+        action = "enter_owner_access_code"
+    else:
+        label = "Internet is ready - checking Sarah's protected connection"
+        action = "verify_and_retry"
+    return {
+        "validated_internet": bool(validated_internet),
+        "protected_address": protected_address,
+        "activated": activated,
+        "label": label,
+        "action": action,
+    }
 
 
 def save_runtime_config(values: dict[str, Any], root: Path | None = None) -> Path:
@@ -895,10 +930,18 @@ class SarahDatabase:
                 self._merge_person_rows(db, "trips", old_id, new_id)
                 self._merge_person_rows(db, "wishes", old_id, new_id)
                 self._merge_person_rows(db, "discoveries", old_id, new_id)
+                try:
+                    from sarah_calendar import migrate_calendar_person_rows
+                except ImportError:
+                    migrate_calendar_person_rows = None
+                if migrate_calendar_person_rows is not None:
+                    migrate_calendar_person_rows(db, old_id, new_id)
 
                 for prefix in (
                     "current_area", "nearby_discoveries", "background_research",
-                    "voice_route_receipt", "research_receipt",
+                    "voice_route_receipt", "research_receipt", "gmail_monitor_enabled",
+                    "gmail_monitor_last_attempt_epoch", "gmail_monitor_backoff_seconds",
+                    "gmail_profile_offer_shown",
                 ):
                     old_key, new_key = f"{prefix}:{old_id}", f"{prefix}:{new_id}"
                     old_value = db.execute("SELECT value FROM settings WHERE key=?", (old_key,)).fetchone()
@@ -1749,13 +1792,14 @@ class ModelClient:
             )
         endpoint = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root)
         token = runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.db.root)
+        activation_required = bool(endpoint and not token)
         requested_provider = runtime_setting("SARAH_MODEL_PROVIDER", "workers-ai", self.db.root)
         requested_model = runtime_setting("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it", self.db.root)
         web_requested = needs_current_sources(message)
         attempted_route = connected_route(requested_provider)
         connected_failed = False
         last_request_started_at = submitted_at
-        if endpoint:
+        if endpoint and token:
             try:
                 prompt = self._prompt(message, attempted_route, profile)
                 history_rows = self.db.recent_messages(24, person_id=bound_person_id)
@@ -1844,10 +1888,17 @@ class ModelClient:
         if web_requested:
             completed_at = now_ms()
             route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "TOOL_UNAVAILABLE"
+            unavailable_spoken = ("I cannot verify current information until this computer activates "
+                                  "Sarah's protected online connection. Enter your private Sarah "
+                                  "access code once; after that I will retry automatically."
+                                  if activation_required else
+                                  offline_useful_reply(message, profile, connected_failed))
             unavailable = ChannelResponse(
-                offline_useful_reply(message, profile, connected_failed),
+                unavailable_spoken,
                 "Sarah is staying useful without inventing current information.",
-                "No verified current-source receipt was available, so no current claim or search result was displayed.",
+                ("Sarah's protected service address is present, but no owner access code is activated. "
+                 if activation_required else "")
+                + "No verified current-source receipt was available, so no current claim or search result was displayed.",
                 "RUNTIME_STATE_ERROR" if connected_failed else "TRUTHFUL_STATEMENT",
                 True,
                 route,
@@ -1856,7 +1907,7 @@ class ModelClient:
                 unavailable,
                 text_turn_receipt(
                     route=route,
-                    attempted_provider=requested_provider if endpoint else "none",
+                    attempted_provider=requested_provider if endpoint and token else "none",
                     actual_provider="on-device",
                     actual_model="bounded-current-source-gate",
                     web_requested=True,
@@ -1916,10 +1967,17 @@ class ModelClient:
                 connected_failed = connected_failed or bool(endpoint)
         completed_at = now_ms()
         route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "OFFLINE_LOCAL"
+        offline_spoken = ("I can keep talking offline, but this computer has not activated "
+                          "Sarah's protected online connection yet. Enter your private Sarah "
+                          "access code once; after that I will retry online automatically."
+                          if activation_required else
+                          offline_useful_reply(message, profile, connected_failed))
         offline = ChannelResponse(
-            offline_useful_reply(message, profile, connected_failed),
+            offline_spoken,
             "Sarah wants to remain useful without pretending a model answered.",
-            ("The protected online call failed and no local Ollama endpoint answered. " if connected_failed else "No connected model or local Ollama endpoint is configured. ")
+            ("Sarah's protected service address is present, but no owner access code is activated. "
+             if activation_required else
+             ("The protected online call failed and no local Ollama endpoint answered. " if connected_failed else "No connected model or local Ollama endpoint is configured. "))
             + "No research, booking or external action occurred.",
             "RUNTIME_STATE_ERROR" if connected_failed else "TRUTHFUL_STATEMENT",
             True,
@@ -1929,7 +1987,7 @@ class ModelClient:
             offline,
             text_turn_receipt(
                 route=route,
-                attempted_provider=requested_provider if endpoint else "none",
+                    attempted_provider=requested_provider if endpoint and token else "none",
                 actual_provider="on-device",
                 actual_model="bounded-offline-reply",
                 web_requested=False,

@@ -39,6 +39,7 @@ public final class OwnerProfileDataMigrator {
 
         return TravelerNeedsStore.moveProfile(context, oldPersonId, newPersonId)
                 && LoyaltyVaultStore.moveProfile(context, oldPersonId, newPersonId)
+                && TicketPassVaultStore.moveProfile(context, oldPersonId, newPersonId)
                 && RoadTripProfileStore.moveProfile(context, oldPersonId, newPersonId)
                 && HotelSearchState.moveProfile(context, oldPersonId, newPersonId)
                 && ProactiveResearchReceiptStore.moveProfile(context, oldPersonId, newPersonId)

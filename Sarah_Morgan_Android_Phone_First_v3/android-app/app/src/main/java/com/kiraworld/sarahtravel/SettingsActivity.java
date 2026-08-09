@@ -3,6 +3,7 @@ package com.kiraworld.sarahtravel;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class SettingsActivity extends Activity {
+    public static final String EXTRA_OPEN_ONLINE_ACCESS =
+            "com.kiraworld.sarahtravel.OPEN_ONLINE_ACCESS";
     public static final String PREFS = "sarah_settings";
     private static final String KEY_MODE = "conversation_mode";
     private static final String KEY_MODE_MIGRATED = "automatic_mode_migrated_v1";
@@ -30,6 +33,7 @@ public final class SettingsActivity extends Activity {
     private ApproximateLocationCoordinator locationCoordinator;
     private SarahLocationStore locationStore;
     private TextView locationStatus;
+    private TextView gmailConnectionStatus;
     private android.widget.EditText nearbyArea;
     private String activePersonId = "unknown_profile";
 
@@ -135,6 +139,14 @@ public final class SettingsActivity extends Activity {
         TextView voiceStatus = findViewById(R.id.voiceRouteStatus);
         updateVoiceStatus(voiceStatus);
 
+        gmailConnectionStatus = findViewById(R.id.gmailConnectionStatus);
+        Button manageGmail = findViewById(R.id.manageGmailConnectionButton);
+        String gmailProfileId = EventTripStore.activePersonId(this);
+        refreshGmailConnectionStatus();
+        manageGmail.setEnabled(!gmailProfileId.isEmpty());
+        manageGmail.setOnClickListener(v -> startActivity(
+                new Intent(this, GmailAuthorizationActivity.class)));
+
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
         CheckBox nearbyDiscoveries = findViewById(R.id.nearbyDiscoveryCheck);
@@ -194,6 +206,11 @@ public final class SettingsActivity extends Activity {
                 onlineMindStatus,
                 voiceStatus,
                 refreshResearchAvailability));
+        if (getIntent().getBooleanExtra(EXTRA_OPEN_ONLINE_ACCESS, false)
+                && confirmedOwnerCanConfigure
+                && !SecureStore.hasSarahBackendAccess(this)) {
+            configureOnlineMind.post(configureOnlineMind::performClick);
+        }
         ProtectedBackendCapabilities.refreshAsync(this, decision -> {
             updateOnlineMindAccessStatus(
                     onlineMindStatus,
@@ -588,6 +605,28 @@ public final class SettingsActivity extends Activity {
             locationStatus.setText(CurrentLocationPolicy.settingsStatus(
                     area, locationStore.source(activePersonId)));
         }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        refreshGmailConnectionStatus();
+    }
+
+    private void refreshGmailConnectionStatus() {
+        if (gmailConnectionStatus == null) return;
+        String gmailProfileId = EventTripStore.activePersonId(this);
+        GmailTokenVault gmailVault = new GmailTokenVault(this);
+        boolean gmailConnected = !gmailProfileId.isEmpty()
+                && gmailVault.hasAuthorizedGrant(gmailProfileId);
+        gmailConnectionStatus.setText(gmailConnected
+                ? "Gmail read-only: " + gmailVault.accountEmail(gmailProfileId)
+                    + " · monitoring "
+                    + (gmailVault.monitoringEnabled(gmailProfileId) ? "on" : "off")
+                    + " · last check "
+                    + (gmailVault.lastSyncAt() == 0L ? "never"
+                        : java.time.Instant.ofEpochMilli(gmailVault.lastSyncAt()))
+                    + (gmailVault.reauthorizationRequired() ? " · reconnect required" : "")
+                : "Gmail not connected · monitoring off. Google—not Sarah—handles sign-in; Sarah never asks for your Gmail password.");
     }
 
     private String activePersonId() {

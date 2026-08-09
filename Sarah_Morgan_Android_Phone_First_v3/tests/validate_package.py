@@ -17,6 +17,10 @@ required=[
     REPO/'.github/workflows/build-apk.yml',
     REPO/'.github/workflows/sarah-2-2-ci.yml',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TurnRoute.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahPairingProtocol.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahPairingTransport.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahDeviceDiscovery.java',
+    ROOT/'tests/SarahPairingProtocolTest.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationArchiveStore.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/CurrentLocationPolicy.java',
@@ -29,6 +33,12 @@ required=[
     APP/'app/src/main/java/com/kiraworld/sarahtravel/OwnerProfileDataMigrator.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TextTurnReceipt.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTravelConnection.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyPolicy.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTokenVault.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyClient.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailAuthorizationActivity.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailMonitorScheduler.java',
+    APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTravelMonitorWorker.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TravelPlanningConversationPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java',
     APP/'app/src/main/java/com/kiraworld/sarahtravel/TravelSearchQueryPolicy.java',
@@ -55,6 +65,7 @@ required=[
     ROOT/'tests/EventTripProfilePolicyTest.java',
     ROOT/'tests/EventTripPreUpgradeVersionPolicyTest.java',
     ROOT/'tests/ProtectedBackendCapabilityPolicyTest.java',
+    ROOT/'tests/GmailReadOnlyPolicyTest.java',
     REPO/'GOOGLE_GMAIL_SETUP.md',
 ]
 for p in required:
@@ -94,6 +105,8 @@ for phrase in ['talk about anything','pre-request route plan','not proof of the 
 
 main=(APP/'app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java').read_text(encoding='utf-8')
 for phrase in ['RecognizerIntent','ACTION_PICK_IMAGES','MemoryExtractor.extract','CloudVoiceClient.speak','showCalmMenu','startTriviaGame','connectedReplyWithRetry','ensureApproximateAreaForTurn','finalTurnRoute','ReplyTruthGuard.enforce','VoiceRoutePolicy.shouldAttemptPremium','connected.hasVerifiedWebReceipt()','TextTurnReceipt.build','findViewById(R.id.bottomNavigation)','findViewById(R.id.bottomControls)','actualProvider = connected.provider','actualModel = connected.model','BOUNDED_LOCAL_PLANNING_DRAFT','lower.contains("cheapest")','TravelSearchQueryPolicy.build','ownerSourceDetails','tap for source details','turnId','OfflineTuringPolicy.answer','PublicOnlineFallback.answerResult','sourceBackedEvent.turnRoute()','connectedRouteProven = true','if (changed) connectedRouteProven = false','Last reply:','Next:','ProtectedBackendCapabilities.voiceReady(this)','Generating Sarah’s online voice']:
+    if phrase == 'findViewById(R.id.bottomNavigation)':
+        continue  # Deliberately removed from the conversation-first owner surface.
     assert phrase in main, phrase
 assert 'if (connected) lastSmartCallFailed = false' not in main
 
@@ -111,7 +124,20 @@ assert 'parseInt(ownerProfile.get("age"), 18)' not in people
 for phrase in ['DB_VERSION = 2','person_memory_provenance','preserveMemoryProvenance','original_created_at','placeholder_owner_merge']:
     assert phrase in people, phrase
 demo=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DemoSarah.java').read_text(encoding='utf-8')
+assert 'lower.matches(".*\\\\bai\\\\b.*")' in demo, \
+        'DemoSarah must recognize AI only as a complete term'
+assert '"technology", "ai", "robot"' not in demo, \
+        'DemoSarah must not classify email/air/train as AI by substring'
 assert 'I’m with you. We can stay with this subject.' not in demo
+destination_parser=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java').read_text(encoding='utf-8')
+assert 'traveling to|travelling to' in destination_parser
+assert 'KNOWN.put("New Zealand", new String[]{"new zealand", "aotearoa"})' in destination_parser
+planner=(APP/'app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java').read_text(encoding='utf-8')
+assert 'i am traveling to' in planner and 'i am travelling to' in planner
+assert 'I have not read your mailbox in this turn' in planner
+main_layout=(APP/'app/src/main/res/layout/activity_main.xml').read_text(encoding='utf-8')
+for owner_control in ['ExploreButton', 'TravelHubButton', 'ProactiveDiscoveryButton', 'TrustedSyncButton']:
+    assert owner_control in main_layout, owner_control + ' must remain visible from the main owner surface'
 manifest=(APP/'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 assert 'ACCESS_COARSE_LOCATION' in manifest
 assert 'application/pdf' in manifest
@@ -126,9 +152,11 @@ assert 'android:checked="false"' in auto_research_xml
 for group in ['Profile','Location','Email and bookings','Online and offline mind','Sarah\'s voice','Devices and synchronization','Memory and privacy']:
     assert group in settings, group
 build=(APP/'app/build.gradle').read_text(encoding='utf-8')
-assert "versionName '2.5-r2-owner-repair'" in build
+assert "versionCode 27" in build
+assert "versionName '2.5-r3-owner-repair'" in build
 assert "applicationId 'com.kiraworld.sarahtravel'" in build
 assert 'com.kiraworld.sarahtravel.r2candidate' not in build
+assert 'com.kiraworld.sarahtravel.r3candidate' not in build
 assert "buildConfigField 'String', 'SARAH_TAVILY_API_KEY', '\"\"'" in build
 assert "System.getenv('SARAH_TAVILY_API_KEY')" not in build
 assert "androidx.media3:media3-exoplayer:1.9.4" in build
@@ -215,8 +243,8 @@ backend_worker=(REPO/'services/sarah-model-proxy/src/index.js').read_text(encodi
 assert 'annotation.type === "url_citation"' in backend_worker
 assert 'item.status === "completed"' in backend_worker
 sponsors=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SponsorConnectionsActivity.java').read_text(encoding='utf-8')
-assert 'GmailTravelConnection.status()' in sponsors
 assert 'GmailTravelConnection.privacySummary()' in sponsors
+assert 'GmailTokenVault' in sponsors and 'GmailAuthorizationActivity.class' in sponsors
 assert 'BookingImportActivity.class' in sponsors
 migrator=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OwnerProfileDataMigrator.java').read_text(encoding='utf-8')
 for store in ['TripPlanStore','StayRequestStore','TravelerNeedsStore','LoyaltyVaultStore','RoadTripProfileStore','HotelSearchState','SarahLocationStore','ProactiveDiscoveryStore','ProactiveResearchReceiptStore','VoiceReceiptStore','EventTripStore']:
@@ -268,7 +296,7 @@ voice_receipts=(APP/'app/src/main/java/com/kiraworld/sarahtravel/VoiceReceiptSto
 for phrase in ['voice_receipt_event_','turn_id','commit()','moveProfile','scanEvents']:
     assert phrase in voice_receipts, phrase
 booking_import=(APP/'app/src/main/java/com/kiraworld/sarahtravel/BookingImportActivity.java').read_text(encoding='utf-8')
-for phrase in ['Intent.ACTION_OPEN_DOCUMENT','application/pdf','pending review','clearBookingImportsAndDerivatives','Connect Gmail (setup required)','getCanonicalFile()','count = in.read(buffer)) != -1','exact.delete()',
+for phrase in ['Intent.ACTION_OPEN_DOCUMENT','application/pdf','pending review','clearBookingImportsAndDerivatives','Connect Gmail read-only','getCanonicalFile()','count = in.read(buffer)) != -1','exact.delete()',
                'BookingImportTextPolicy.accepted', 'Review shared booking text',
                'Nothing has been saved or scheduled',
                'launchedFromShare && !externalShareReviewed',
@@ -300,7 +328,48 @@ for phrase in ['MAX_CHARS = 16_384', 'MAX_UTF8_BYTES = 32_768',
                'StandardCharsets.UTF_8', 'clean.length() <= MAX_CHARS']:
     assert phrase in booking_text_policy, phrase
 gmail=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTravelConnection.java').read_text(encoding='utf-8')
-assert 'implementationAvailable() { return false; }' in gmail
+assert 'implementationAvailable() { return true; }' in gmail
+gmail_policy=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyPolicy.java').read_text(encoding='utf-8')
+gmail_client=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyClient.java').read_text(encoding='utf-8')
+gmail_activity=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailAuthorizationActivity.java').read_text(encoding='utf-8')
+gmail_worker=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTravelMonitorWorker.java').read_text(encoding='utf-8')
+gmail_scheduler=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailMonitorScheduler.java').read_text(encoding='utf-8')
+gmail_vault=(APP/'app/src/main/java/com/kiraworld/sarahtravel/GmailTokenVault.java').read_text(encoding='utf-8')
+manifest=(APP/'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+app_gradle=(APP/'app/build.gradle').read_text(encoding='utf-8')
+assert 'https://www.googleapis.com/auth/gmail.readonly' in gmail_policy
+assert 'MAX_CANDIDATES = 10' in gmail_policy and 'MAX_RESPONSE_BYTES = 512 * 1024' in gmail_policy
+assert 'setRequestMethod("GET")' in gmail_client
+assert 'format=full' in gmail_client and 'fields=id,threadId,internalDate,snippet,payload(headers)' in gmail_client
+assert 'bounded_snippet_read' in gmail_client and 'message_modified' in gmail_client
+for forbidden in ['setRequestMethod("POST")','setRequestMethod("PUT")',
+                  'setRequestMethod("PATCH")','setRequestMethod("DELETE")',
+                  'requestOfflineAccess','client_secret']:
+    assert forbidden not in gmail_client + gmail_activity + gmail_worker, forbidden
+for phrase in ['"body_read", false','"message_modified", false',
+               '"fetched_at_epoch_ms"','"message_id"','"exact_query"','"source_endpoint"']:
+    assert phrase in gmail_client, phrase
+assert 'AES/GCM/NoPadding' in gmail_vault and 'AndroidKeyStore' in gmail_vault
+assert 'refresh_token' not in gmail_vault.lower()
+assert 'setOptOutIncludingGrantedScopes(true)' in gmail_activity and 'setOptOutIncludingGrantedScopes(true)' in gmail_worker
+assert 'monitoringEnabled(profileId)' in gmail_worker and 'setRequiresBatteryNotLow(true)' in gmail_scheduler
+assert 'GmailAuthorizationActivity' in manifest and 'android:exported="false"' in manifest
+assert 'play-services-auth:21.6.0' in app_gradle and 'work-runtime:2.11.2' in app_gradle
+onboarding=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java').read_text(encoding='utf-8')
+auto_pair=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahAutoPairCoordinator.java').read_text(encoding='utf-8')
+assert 'else beginDiscoveryBeforeProfile();' in onboarding
+assert 'runBeforeProfileQuestions(' in onboarding and 'runBeforeProfileQuestions(' in auto_pair
+assert onboarding.index('beginDiscoveryBeforeProfile();') < onboarding.index('What is your name?')
+for phrase in ['if (!SarahDeviceDiscovery.isOnWifi(activity))',
+               '"No - continue setup"',
+               'prompt.setOnCancelListener(dialog -> continueOnce.run())',
+               'activity.runOnUiThread(continueOnce)']:
+    assert phrase in auto_pair, phrase
+memory_to_email=onboarding.split('case STEP_MEMORY:',1)[1].split('case STEP_EMAIL:',1)[0]
+assert memory_to_email.index('persistProfile();') < memory_to_email.index('step = STEP_EMAIL;')
+assert 'Would you like to connect Gmail now' in onboarding and 'no, or later' in onboarding
+assert 'optBoolean("monitoring_enabled", false)' in gmail_vault
+assert 'canMonitor(true, false)' in (ROOT/'tests/SarahR2PolicyTest.java').read_text(encoding='utf-8')
 gmail_setup=(REPO/'GOOGLE_GMAIL_SETUP.md').read_text(encoding='utf-8')
 for phrase in ['gmail.readonly','com.kiraworld.sarahtravel','supervised read-only test','Disconnect','Clear imported booking data']:
     assert phrase.lower() in gmail_setup.lower(), phrase
@@ -326,12 +395,12 @@ for phrase in ['url.pathname === "/search"','runProtectedSearch','current_source
                'constantTimeEqual(suppliedToken, env.SARAH_BACKEND_TOKEN)']:
     assert phrase in worker, phrase
 workflow=(REPO/'.github/workflows/sarah-2.5-online-judge-build.yml').read_text(encoding='utf-8')
-for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R2 source and pure-policy acceptance','CURRENT_SOURCE_ACCEPTANCE_BLOCKED','SARAH_TAVILY_API_KEY: \'\'','sarah-contextual-chat-request.json','CANDIDATE_PENDING_OWNER_ACCEPTANCE','physical_galaxy_a17_acceptance','full_16_gate_owner_acceptance','physical_8gb_laptop_acceptance','media3_progressive_one_shot_post','protected_voice_route_receipt_required','first_network_byte','player_ready','response_complete','pending_physical_galaxy_a17_measurement','sarah-r2-${{ github.run_id }}-${{ github.run_attempt }}','id: signing_cache','steps.signing_cache.outputs.cache-hit','SARAH_R1_SIGNING_CERT_SHA256','SARAH_R1_APK_SHA256','apksigner verify --print-certs','BuildConfig.java','build/r2-apk-secret-scan','r1_signer_sha256','r2_signer_sha256','same-package-in-place-only',
+for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R3 source and pure-policy acceptance','CURRENT_SOURCE_ACCEPTANCE_BLOCKED','SARAH_TAVILY_API_KEY: \'\'','sarah-contextual-chat-request.json','CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE','physical_galaxy_a17_acceptance','full_16_gate_owner_acceptance','physical_8gb_laptop_acceptance','media3_progressive_one_shot_post','protected_voice_route_receipt_required','first_network_byte','player_ready','response_complete','pending_physical_galaxy_a17_measurement','sarah-r3-${{ github.run_id }}-${{ github.run_attempt }}','id: signing_cache','steps.signing_cache.outputs.cache-hit','SARAH_R1_SIGNING_CERT_SHA256','SARAH_R1_APK_SHA256','apksigner verify --print-certs','BuildConfig.java','build/r3-apk-secret-scan','r1_signer_sha256','r3_signer_sha256','same-package-in-place-only',
                'sarah-capabilities-absent.json','sarah-capabilities-wrong.json',
                'sarah-capabilities-exact.json',
                'Authenticated Sarah capability contract passed']:
     assert phrase in workflow, phrase
-assert 'strings Sarah-Morgan-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE.apk' not in workflow
+assert 'strings Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk' not in workflow
 for phrase in ['d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c',
                'be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314',
                'live_vision_solid_red_jpeg_smoke_test','candidate_worker_deployments',
@@ -486,7 +555,8 @@ assert 'Robert' not in onboarding_source and 'Newark' not in onboarding_source
 hackathon_demo=(APP/'app/src/main/java/com/kiraworld/sarahtravel/HackathonDemoActivity.java').read_text(encoding='utf-8')
 assert 'Robert' not in hackathon_demo
 travel_hub=(APP/'app/src/main/java/com/kiraworld/sarahtravel/TravelHubActivity.java').read_text(encoding='utf-8')
-assert 'TravelUi.makeSectionsCollapsible(root)' in travel_hub and '"Add dates"' in travel_hub
+assert 'TravelUi.makeSectionsCollapsible(root)' not in travel_hub and '"Add dates"' in travel_hub
+assert '"Event partner connections"' in travel_hub and 'SponsorConnectionsActivity.class' in travel_hub
 discovery=(APP/'app/src/main/java/com/kiraworld/sarahtravel/DiscoveryActivity.java').read_text(encoding='utf-8')
 for phrase in ['availabilityStatus','owner_requested_immediate','ProactiveResearchReceiptStore.latest','Research did not complete','SafeAreaInsets.apply']:
     assert phrase in discovery, phrase
@@ -575,9 +645,58 @@ for phrase in ['PORT = 8769','bytes[0] == 10','bytes[0] == 127','bytes[0] == 169
 trusted_sync=(APP/'app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncClient.java').read_text(encoding='utf-8')
 for phrase in ['TrustedLanEndpointPolicy.requireLocalHost','TrustedSyncProtocol.encrypt','TrustedSyncProtocol.signature','X-Sarah-Device-Token','MAX_RESPONSE_BYTES','isTransportAccepted() { return false; }','requireAcceptedTransport()','Device sync is disabled']:
     assert phrase in trusted_sync, phrase
+pairing_protocol=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahPairingProtocol.java').read_text(encoding='utf-8')
+for phrase in ['sarah-device-pairing-x25519-sas-v1','SarahDevicePairingV1\\0',
+               'x25519(byte[] scalarInput','hkdf(shared, salt',
+               'approval_required_on_both_devices','localConfirmation(',
+               'acceptPeerConfirmation(','Both devices must explicitly confirm',
+               'invalid all-zero shared secret','cannot be replayed']:
+    assert phrase in pairing_protocol, phrase
+pairing_transport=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahPairingTransport.java').read_text(encoding='utf-8')
+for phrase in ['writeInt(encoded.length)','readInt()','MAX_FRAME_BYTES',
+               'requireExactPeer','TrustedLanEndpointPolicy.requireLocalHost',
+               'response does not match the discovered Sarah device',
+               'session.localConfirmation','session.acceptPeerConfirmation']:
+    assert phrase in pairing_transport, phrase
+for forbidden in ['SarahSyncExporter','GmailTravelConnection','SarahModelConfig',
+                  'CloudVoiceClient','MODEL_BACKEND','ELEVENLABS','X-Sarah-Device-Token']:
+    assert forbidden not in pairing_transport, forbidden
+device_discovery=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahDeviceDiscovery.java').read_text(encoding='utf-8')
+for phrase in ['DISCOVERY_PORT = 8771','SARAH_DISCOVER_V2',
+               'sarah-device-discovery-v2','approval_required_on_both_devices',
+               'expires > nowSeconds + 60L','TrustedLanEndpointPolicy.requireLocalHost']:
+    assert phrase in device_discovery, phrase
+trusted_devices=(APP/'app/src/main/java/com/kiraworld/sarahtravel/TrustedDeviceStore.java').read_text(encoding='utf-8')
+for phrase in ['saveFinalizedPeer','SarahPairingProtocol.Credential',
+               'pairing_protocol','ANDROID_KEYSTORE',
+               'Only a finalized two-device X25519 pairing credential may be stored']:
+    assert phrase in trusted_devices, phrase
 trusted_sync_activity=(APP/'app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncActivity.java').read_text(encoding='utf-8')
-for phrase in ['network sync is disabled','scan.setEnabled(false)','request.setEnabled(false)','manualPair.setEnabled(false)','selected.setEnabled(false)','all.setEnabled(false)']:
+for phrase in ['Is this your device?','same short-lived code','approve it on both devices',
+               'pairingPort <= 0','Nothing was shared',
+               'encrypted preview','Nothing imports automatically',
+               'Review continuity from selected device',
+               'saveFinalizedPeer']:
     assert phrase in trusted_sync_activity, phrase
+secure_sync=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SecureSyncPreviewClient.java').read_text(encoding='utf-8')
+for phrase in ['sarah-secure-sync-v2','owner_import_required',
+               'rejectNonOwnerData','photos','mind_events','discoveries',
+               'Pair and approve this exact Sarah device first']:
+    assert phrase in secure_sync, phrase
+sync_provenance=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SyncImportProvenance.java').read_text(encoding='utf-8')
+for phrase in ['OWNER_APPROVED_SECURE_SYNC_IMPORT','secure_sync_import_history.jsonl',
+               'APPEND_NEW_KEEP_EXISTING_RECORD_CONFLICTS']:
+    assert phrase in sync_provenance, phrase
+reverse_sync=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahReverseSyncResponder.java').read_text(encoding='utf-8')
+for phrase in ['SarahPairingProtocol.respond','acceptPeerConfirmation','finalizeCredential',
+               'saveFinalizedPeer','ANDROID_TO_WINDOWS_PULL_ONLY','owner_import_required',
+               'secure-sync-request:','exportOwnerReview']:
+    assert phrase in reverse_sync, phrase
+pairing_test=(ROOT/'tests/SarahPairingProtocolTest.java').read_text(encoding='utf-8')
+for phrase in ['exactPythonInteroperabilityVector','EXPECTED_SAS = "488550"',
+               'twoExplicitApprovalsAreRequired','expiryTamperAndReplayFailClosed',
+               'allZeroSharedSecretIsRejected']:
+    assert phrase in pairing_test, phrase
 
 all_android_java='\n'.join(
     path.read_text(encoding='utf-8')
@@ -639,11 +758,11 @@ main_layout=(APP/'app/src/main/res/layout/activity_main.xml').read_text(encoding
 assert '@+id/bottomControls' in main_layout and 'android:minHeight="48dp"' in main_layout
 sponsor=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SponsorConnectionsActivity.java').read_text(encoding='utf-8')
 for phrase in ['Use my current location','locationCoordinator.resolve','SOURCE_DEVICE_RESOLVED',
-               'Connect Gmail · setup required',
-               'Disconnect Gmail · not connected','Clear Gmail-derived data · none stored']:
+               'Connect Gmail read-only','GmailAuthorizationActivity.class',
+               'Review Gmail connection and receipts','Gmail not connected · monitoring off']:
     assert phrase in sponsor, phrase
 for activity_name in ['TravelNotebookActivity.java','SponsorConnectionsActivity.java','TrustedSyncActivity.java','TravelExplorerActivity.java','HackathonDemoActivity.java']:
     activity=(APP/'app/src/main/java/com/kiraworld/sarahtravel'/activity_name).read_text(encoding='utf-8')
     assert 'SafeAreaInsets.apply' in activity, activity_name
 
-print('STATIC_PACKAGE_VALIDATION_PASS_R2')
+print('STATIC_PACKAGE_VALIDATION_PASS_R3')

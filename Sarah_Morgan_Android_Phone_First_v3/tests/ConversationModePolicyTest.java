@@ -1,4 +1,5 @@
 import com.kiraworld.sarahtravel.ConversationModePolicy;
+import com.kiraworld.sarahtravel.OwnerOnlineActivationPolicy;
 
 public final class ConversationModePolicyTest {
     public static void main(String[] args) {
@@ -47,6 +48,20 @@ public final class ConversationModePolicyTest {
                 ConversationModePolicy.MODE_AUTO, false, false, false, false);
         require(offline.startsWith("Offline mind ready"),
                 "no internet must remain clearly offline");
+
+        require(OwnerOnlineActivationPolicy.needsActivation(
+                        true, true, "https://sarah.example.test", ""),
+                "validated internet plus a suggested route must request one owner activation");
+        require(!OwnerOnlineActivationPolicy.needsActivation(
+                        true, true, "https://sarah.example.test", "saved-token"),
+                "a saved access code must not keep prompting");
+        require(!OwnerOnlineActivationPolicy.needsActivation(
+                        true, false, "https://sarah.example.test", ""),
+                "a non-owner must never receive the activation prompt");
+        require(OwnerOnlineActivationPolicy.status(
+                        true, true, "https://sarah.example.test", "")
+                        .contains("access code once"),
+                "missing activation must be actionable instead of saying only online unavailable");
 
         System.out.println("ConversationModePolicyTest passed");
     }

@@ -1,4 +1,4 @@
-# Sarah Morgan Windows Companion 2.5 R2 owner-acceptance candidate
+# Sarah Morgan Windows Companion 2.5 R3 current owner-test candidate
 
 Sarah on Windows is another embodiment of the same continuing Sarah used on Android. It is designed for a desktop or laptop with more room for conversation, research, trip planning, source cards, photos, backups and an offline/local model.
 
@@ -7,7 +7,7 @@ Sarah on Windows is another embodiment of the same continuing Sarah used on Andr
 - movable, always-on-top adult Sarah portrait window with continuous CPU-only
   2D rendering, naturalized blinks, restrained eye/head idle motion, and
   decoded-audio mouth motion while ElevenLabs audio plays;
-- full dashboard for chat, discoveries, trips, photos, trusted devices, backups and factual activity;
+- one dark conversation-first owner shell with a restored Travel Workbench for maps, public media, trips, connected services, encrypted loyalty cards, and owner-selected ticket/QR passes;
 - optional notification-area/hidden-icons operation;
 - Sarah Morgan ElevenLabs voice with an identity-bound, owner-managed local cache;
 - Windows offline speech fallback;
@@ -20,6 +20,7 @@ Sarah on Windows is another embodiment of the same continuing Sarah used on Andr
   pairing key can be transported with authenticated TLS or a reviewed key
   agreement;
 - device revocation;
+- an active-profile owner wallet whose AES-256-GCM record key is wrapped for the current Windows user, with metadata-stripped bounded PNG images decrypted only in memory for viewing;
 - password-encrypted `.sarahmind` backup;
 - optional upload of the already-encrypted archive to Google Drive `appDataFolder` using the owner's OAuth desktop client;
 - automated tests and a GitHub Actions Windows executable build.
@@ -45,16 +46,16 @@ SARAH_OLLAMA_MODEL=qwen3.5:9b
 
 Do not put provider credentials into source. Use Windows environment variables, a local `.env` loader outside source control, or a protected backend. The online-judge workflow uses one repository Actions secret named `SARAH_MODEL_BACKEND_TOKEN` as the event app-to-Worker credential; it is not a provider key.
 
-The event-ready UI has a **Connection** button. The R2 candidate writes settings
+The event-ready UI has a **Connection** button. The R3 candidate preserves settings
 only to `%APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json`; on Windows,
 credential values in that file are protected for the current Windows account
 with DPAPI and are never stored as plaintext. Its installer, executable,
 shortcuts, registry entry, and writable data root are side-by-side with the
-preserved R1 Windows artifact. R2 does not start or advertise the legacy
+preserved R1 Windows artifact. R3 does not start or advertise the legacy
 plain-HTTP LAN sync service; **Devices** shows `Setup required`. The online-judge
 CI build bundles a workflow-generated `sarah-event-config.json` containing only
 non-secret URL/model/voice defaults. Resolution order is environment variable,
-then R2 per-user runtime config, then those non-secret bundled defaults.
+then the preserved per-user runtime config, then those non-secret bundled defaults.
 
 No app token or provider key is bundled in the APK or EXE. The event build may
 include a public Worker URL, provider/model identity, and approved voice IDs;
@@ -117,16 +118,12 @@ Robert's physical 8 GB Windows laptop; that owner-visible run remains required.
 
 ## Android/Windows transfer boundary
 
-Do not attempt phone pairing in R2. **Devices & backup** reports `Setup
-required` and keeps the network listener off. Use a password-encrypted owner
-backup for a deliberate manual transfer, and wait for a later authenticated
-sync transport before enabling automatic phone/Windows exchange.
-
-The candidate does not send pairing material or profile data over local HTTP.
-Its retained loopback server exists only for a bounded self-test and rejects a
-non-loopback bind. A future phone-sync path needs authenticated TLS or a
-reviewed key agreement before the UI may enable it. All public model, search,
-and voice endpoints remain HTTPS-only.
+R3 uses a reviewed ephemeral X25519/HKDF pairing exchange, a matching short
+code, and approval on both devices before trust can be saved. Continuity data
+is presented as an encrypted preview and still requires an explicit owner
+import; discovery or pairing alone moves no profile/trip/conversation data.
+Physical same-LAN and firewall acceptance remains pending. All public model,
+search, and voice endpoints remain HTTPS-only.
 
 ## Truth boundary
 
@@ -136,5 +133,20 @@ The owner-approved adult portrait asset is implemented and hash-validated.
 Bounded 2D facial presence animation and decoded-audio-driven mouth motion are
 implemented and covered by automated tests. This is not a 3D body or full
 facial-performance rig, and it has not passed physical owner visual/hearing
-acceptance. The R2 installer remains pending physical operation on Robert's
+acceptance. The R3 installer remains pending physical operation on Robert's
 8 GB no-GPU laptop.
+
+## Loyalty cards, tickets, and QR passes
+
+Open **Travel Workbench -> Loyalty cards, tickets & passes**. Loyalty records
+may contain a program name, member identifier, tier, exact official HTTPS
+website, and an optional owner-selected QR/barcode image. Ticket/pass records
+require an owner-selected image, title, and exact official HTTPS event or
+issuer link. Sarah sanitizes images to bounded metadata-free PNG before
+encrypting them. Passwords, PIN/CVV values, provider/API credentials, bank
+details, and payment-card numbers are rejected.
+
+Saving a record does not mean it was purchased, paid, valid, used, or accepted
+for admission. Sarah can open the exact stored official website, but no **Buy**
+action exists in the wallet. Removing a record disables logical application
+recovery; forensic storage recovery has not been assessed.

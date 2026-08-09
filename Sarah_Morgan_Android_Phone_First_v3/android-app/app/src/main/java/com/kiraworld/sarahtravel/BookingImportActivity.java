@@ -25,6 +25,7 @@ import java.util.UUID;
 /** Owner-selected booking import and truthful fail-closed Gmail connection surface. */
 public final class BookingImportActivity extends Activity {
     private static final int REQUEST_DOCUMENT = 801;
+    private static final int REQUEST_GMAIL_CONNECTION = 802;
     private static final int MAX_SHARED_FILE_BYTES = 12_000_000;
     private boolean launchedFromShare;
     private EditText sharedText;
@@ -79,24 +80,49 @@ public final class BookingImportActivity extends Activity {
         scroll.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        String gmailProfileId = EventTripStore.activePersonId(this);
+        GmailTokenVault gmailVault = new GmailTokenVault(this);
+        boolean gmailConnected = !gmailProfileId.isEmpty()
+                && gmailVault.hasAuthorizedGrant(gmailProfileId);
+        boolean gmailReady = gmailConnected && !gmailVault.reauthorizationRequired();
         add(root, "Gmail and booking imports", 24);
-        add(root, GmailTravelConnection.status(), 16);
-        add(root, "Gmail OAuth is not installed in this build. Sarah cannot read, send, delete, search, or monitor mailbox messages. You can still share only the booking material you choose.", 14);
+        add(root, gmailConnected
+                ? "Gmail read-only: " + gmailVault.accountEmail(gmailProfileId)
+                    + " · monitoring " + (gmailVault.monitoringEnabled(gmailProfileId) ? "on" : "off")
+                : "Gmail not connected · monitoring off", 16);
+        add(root, "Google handles account selection and consent. Sarah never asks for your Gmail password and cannot send, delete, modify, mark read, draft, or change settings. Owner-selected text, images and PDFs remain available without Gmail.", 14);
 
         Button connect = new Button(this);
-        connect.setText("Connect Gmail (setup required)");
-        connect.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("Gmail is not connected")
-                .setMessage("A maintainer must complete the Google OAuth steps in GOOGLE_GMAIL_SETUP.md and pass a supervised read-only test. Sarah will never ask for your Gmail password.")
-                .setPositiveButton("OK", null).show());
+        connect.setText(gmailConnected
+                ? "Open Gmail connection and receipts"
+                : "Connect Gmail read-only");
+        connect.setOnClickListener(v -> startActivityForResult(
+                new Intent(this, GmailAuthorizationActivity.class),
+                REQUEST_GMAIL_CONNECTION));
         root.addView(connect);
 
         CheckBox monitoring = new CheckBox(this);
-        monitoring.setText("Background travel-email monitoring (unavailable and off)");
-        monitoring.setChecked(false);
-        monitoring.setEnabled(false);
+        monitoring.setText("Bounded travel-message checks about every 6 hours");
+        monitoring.setChecked(gmailReady
+                && gmailVault.monitoringEnabled(gmailProfileId));
+        monitoring.setEnabled(gmailReady);
+        monitoring.setOnCheckedChangeListener((button, enabled) -> {
+            try {
+                GmailMonitorScheduler.setEnabled(
+                        this, gmailProfileId, enabled);
+            } catch (Exception error) {
+                monitoring.setChecked(false);
+                Toast.makeText(this,
+                        "Gmail monitoring was not changed: " + error.getMessage(),
+                        Toast.LENGTH_LONG).show();
+            }
+        });
         root.addView(monitoring);
-        add(root, "Last Gmail sync: never", 14);
+        long lastGmailSync = gmailVault.lastSyncAt();
+        add(root, "Last Gmail check: " + (lastGmailSync == 0L
+                ? "never"
+                : java.time.Instant.ofEpochMilli(lastGmailSync))
+                + " · metadata first · messages unchanged", 14);
 
         Button choose = new Button(this);
         choose.setText("Choose a booking screenshot or PDF");
@@ -118,10 +144,13 @@ public final class BookingImportActivity extends Activity {
         clear.setText("Clear imported booking data");
         clear.setOnClickListener(v -> confirmClearImports());
         root.addView(clear);
-        Button disconnect = new Button(this);
-        disconnect.setText("Disconnect Gmail (already disconnected)");
-        disconnect.setEnabled(false);
-        root.addView(disconnect);
+        Button manageGmail = new Button(this);
+        manageGmail.setText("Review or disconnect Gmail");
+        manageGmail.setEnabled(gmailConnected);
+        manageGmail.setOnClickListener(v -> startActivityForResult(
+                new Intent(this, GmailAuthorizationActivity.class),
+                REQUEST_GMAIL_CONNECTION));
+        root.addView(manageGmail);
         Button close = new Button(this);
         close.setText("Back to Sarah");
         close.setOnClickListener(v -> finish());
@@ -141,6 +170,10 @@ public final class BookingImportActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_GMAIL_CONNECTION) {
+            showConnectionsUi();
+            return;
+        }
         if (requestCode != REQUEST_DOCUMENT || resultCode != RESULT_OK || data == null) return;
         Uri uri = data.getData();
         if (uri == null) return;

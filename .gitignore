@@ -1,2 +1,14 @@
 # Workflow-generated event credentials must never be committed as plain files.
 windows-companion/**/sarah-event-config.json
+
+# Local validation and packaging output. Release artifacts are produced by
+# the gated GitHub workflows and must not be mistaken for editable source.
+**/__pycache__/
+**/.pytest_cache/
+build/
+windows-companion/build/
+windows-companion/dist/
+windows-companion/*.spec
+windows-companion/evidence/
+Sarah_Morgan_Android_Phone_First_v3/android-app/.gradle/
+Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/

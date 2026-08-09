@@ -4,7 +4,7 @@
 
 This document is for the hackathon team. People who install Sarah **do not** choose a provider, type a model ID, or supply an API key in the app.
 
-Sarah R2 is source-configured for:
+Sarah R3 is source-configured for:
 
 ```text
 Provider: Cloudflare Workers AI through Sarah's protected candidate Worker
@@ -42,7 +42,7 @@ Important files:
 |---|---|
 | `SarahModelConfig.java` | Provider ID, model ID, and build-owned connection values |
 | `ConnectedModelGateway.java` | One routing point for all model providers |
-| `OpenAIClient.java` | Preserved optional rollback adapter; not the R2 event default |
+| `OpenAIClient.java` | Preserved optional rollback adapter; not the R3 event default |
 | `SarahBackendClient.java` | HTTPS adapter for the protected Sarah Worker |
 | `SarahPromptBuilder.java` | Sarah's identity, behavior, memory, travel, truth, and media instructions |
 | `app/build.gradle` | Converts build environment variables into private-test `BuildConfig` values |
@@ -133,7 +133,7 @@ build using:
 SARAH_OPENAI_API_KEY
 ```
 
-This is disabled in the R2 Workers AI candidate and is not required for the
+This is disabled in the R3 Workers AI candidate and is not required for the
 event. `app/build.gradle` can insert it only into an explicitly selected private
 rollback build.
 
@@ -235,25 +235,25 @@ For a public release:
 - production-sign the APK;
 - complete security and store-policy review.
 
-## 9. R2 build verification
+## 9. R3 build verification
 
 The GitHub workflow must produce:
 
 ```text
-Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-APK
-Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-Windows-EXE
+Sarah-2.5-R3-CURRENT-OWNER-TEST-Android-APK
+Sarah-2.5-R3-CURRENT-OWNER-TEST-Windows-ElevenLabs-Candidate
 ```
 
 The APK inside the GitHub Actions artifact must be:
 
 ```text
-Sarah-Morgan-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE.apk
+Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk
 ```
 
 Verify on the phone under Sarah Settings:
 
 ```text
-Build 2.5 R2 owner-acceptance candidate + exact commit
+Build 2.5 R3 current owner-test candidate + exact commit
 ```
 
 A successful connected turn should show:

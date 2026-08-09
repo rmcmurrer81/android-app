@@ -1165,10 +1165,11 @@ def test_windows_current_info_raw_prose_is_withheld_without_web_receipt(monkeypa
         database.ensure_profile("Robert", 45, "Newark", "travel", True)
         save_runtime_config({
             "SARAH_MODEL_BACKEND_URL": "https://sarah.example.test",
+            "SARAH_MODEL_BACKEND_TOKEN": "test-owner-access-code",
             "SARAH_MODEL_PROVIDER": "workers-ai",
             "SARAH_MODEL_ID": "workers-model",
         }, root)
-        for name in ("SARAH_MODEL_BACKEND_URL", "SARAH_MODEL_PROVIDER", "SARAH_MODEL_ID"):
+        for name in ("SARAH_MODEL_BACKEND_URL", "SARAH_MODEL_BACKEND_TOKEN", "SARAH_MODEL_PROVIDER", "SARAH_MODEL_ID"):
             monkeypatch.delenv(name, raising=False)
 
         captured = {}

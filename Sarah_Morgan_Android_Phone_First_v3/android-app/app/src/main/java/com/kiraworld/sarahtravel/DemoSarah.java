@@ -188,7 +188,13 @@ public final class DemoSarah {
             return "I can talk about that as its own subject. Tell me the title or the part you are interested in, and I will not force it back into trip planning.";
         }
 
-        if (containsAny(lower, "computer", "technology", "ai", "robot", "coding", "programming")) {
+        // `ai` must be a complete term. A substring check routes ordinary
+        // travel words such as `email`, `air`, and `train` into the technology
+        // reply, which is exactly what the owner observed for a New Zealand
+        // itinerary stored in email.
+        if (containsAny(lower, "computer", "technology", "artificial intelligence",
+                "robot", "coding", "programming")
+                || lower.matches(".*\\bai\\b.*")) {
             return "We can stay with technology instead of travel. I can help organize an idea, compare approaches, explain a concept, or think through what you want to build.";
         }
 

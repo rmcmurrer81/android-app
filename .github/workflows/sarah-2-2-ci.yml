@@ -1,8 +1,8 @@
-name: Sarah 2.2 Android and Windows release CI
+name: LEGACY EVIDENCE - Sarah 2.2 - DO NOT INSTALL
 
 on:
-  pull_request:
-    branches: [main]
+  # Retained as manually reproducible historical evidence. Sarah 2.2 must not
+  # publish install-looking artifacts on current 2.5 pull requests.
   workflow_dispatch:
 
 permissions:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   android:
+    name: LEGACY Android evidence - DO NOT INSTALL
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -32,17 +33,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Build versioned Android APK
+      - name: Build legacy Android evidence - DO NOT INSTALL
         run: |
           gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
-          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.2-phone-windows-continuity.apk
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-2.2-Android-APK
-          path: Sarah-Morgan-2.2-phone-windows-continuity.apk
+          name: LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-2.2-Android
+          path: LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.2.apk
           if-no-files-found: error
+          retention-days: 14
 
   windows:
+    name: LEGACY Windows evidence - DO NOT INSTALL
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -63,17 +66,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows source tests failed.' }
           python -m py_compile sarah_core.py sarah_sync_server.py google_drive_backup.py sarah_windows.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows source compilation failed.' }
-      - name: Build Windows executable
+      - name: Build legacy Windows evidence - DO NOT INSTALL
         shell: pwsh
         working-directory: windows-companion
         run: |
           pyinstaller --noconfirm --clean --onefile --windowed --name Sarah-Morgan-Windows --collect-all pystray --collect-all PIL sarah_windows.py
+          Rename-Item -LiteralPath dist\Sarah-Morgan-Windows.exe -NewName LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-Windows.exe
+          Copy-Item ..\docs\SARAH_WINDOWS_ARTIFACT_LINEAGE_20260808.md dist\READ_THIS_FIRST_DO_NOT_INSTALL.md
           Copy-Item README_WINDOWS.md dist\README_WINDOWS.md
           Copy-Item SETUP_SARAH_WINDOWS.bat dist\SETUP_SARAH_WINDOWS.bat
           Copy-Item START_SARAH_WINDOWS.bat dist\START_SARAH_WINDOWS.bat
-          Compress-Archive -Path dist\* -DestinationPath Sarah-Morgan-Windows-2.2.zip
+          Compress-Archive -Path dist\* -DestinationPath LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-Windows-2.2.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-Windows-2.2
-          path: windows-companion/Sarah-Morgan-Windows-2.2.zip
+          name: LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-2.2-Windows
+          path: windows-companion/LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-Windows-2.2.zip
           if-no-files-found: error
+          retention-days: 14

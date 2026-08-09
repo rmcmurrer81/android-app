@@ -1,8 +1,8 @@
-# Sarah 2.5 online mind and owner-acceptance candidate build
+# Sarah 2.5 R3 online mind and current owner-test build
 
-## Owner-use R2 route truth
+## Owner-use R3 route truth
 
-R2 treats online/offline state as application-owned evidence for each turn.
+R3 treats online/offline state as application-owned evidence for each turn.
 The saved values are `ONLINE_WORKERS_AI`, `OFFLINE_LOCAL`,
 `ONLINE_FAILED_FELL_BACK_OFFLINE`, `TOOL_RESULT`, `TOOL_UNAVAILABLE`, or
 `UNKNOWN_LEGACY`. Android and Windows persist this value instead of guessing
@@ -51,19 +51,27 @@ The workflow `.github/workflows/sarah-2.5-online-judge-build.yml`:
    bindings, public Worker health, and exact-token authentication on the
    bounded `/capabilities` route used by the installed clients;
 5. receives exactly `ONLINE_READY` from the selected Workers AI model;
-6. proves protected `/search`, then proves the real chat route applies the
+6. runs four bounded live turns through the same Windows `ModelClient` used by
+   the owner surface, requiring the exact Workers AI route and recording only
+   aggregate text-latency results in the public artifact manifest; raw/private
+   turn evidence remains ephemeral and is not uploaded;
+7. proves protected `/search`, then proves the real chat route applies the
    Android-style contextual `search_query` and returns exact HTTPS receipts;
-7. generates a short real ElevenLabs audio response through the protected `/voice` route without playback;
-8. builds the Android APK with the tested Worker URL and public identity, but no
+8. generates a short real ElevenLabs audio response through the protected `/voice` route without playback and records first-byte and response-complete latency separately;
+9. builds the Android APK with the tested Worker URL and public identity, but no
    access code or provider credential;
-9. builds and self-tests a Windows event installer whose CI-generated bundled
+10. builds and self-tests a Windows event installer whose CI-generated bundled
    configuration contains only the tested URL, provider/model, and voice IDs;
-10. verifies that no provider, protected-backend, voice, travel-commerce, or
+11. verifies that no provider, protected-backend, voice, travel-commerce, or
     concierge credential was placed in either client;
-11. uploads only clearly labeled candidate artifacts with hashes and manifests.
+12. uploads only clearly labeled candidate artifacts with hashes and manifests.
 
 This workflow does not simulate or waive the 16 physical owner-acceptance
 gates. A successful build or service smoke test is not owner acceptance.
+
+The workflow's network/synthesis timings do not prove audible playback timing
+on the Galaxy A17 or 8 GB event laptop. Physical owner-hearing acceptance
+remains required.
 
 Text chat remains independent of voice. If ElevenLabs fails in ordinary use, Android local speech is the fallback and text must remain available.
 
@@ -86,7 +94,7 @@ and signer certificate
 `d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c`.
 They are bound directly in the candidate workflow. The build stops if the
 preserved signing-key cache is not an
-exact hit or the built R2 signer differs from the recorded installed R1 signer.
+exact hit or the built R3 signer differs from the recorded installed R1 signer.
 Never uninstall the populated R1 app to bypass that gate.
 
 `CLOUDFLARE_API_TOKEN` must be a restricted deployment token for the intended account, not a browser session value or global API key.
@@ -137,9 +145,9 @@ private transfer. It is never a Cloudflare, OpenAI, ElevenLabs, or Tavily key.
 3. Select `workers-ai`.
 4. Keep `@cf/google/gemma-4-26b-a4b-it`, or enter another current Workers AI model ID deliberately.
 5. Run the workflow and wait for both `deploy-smoke-test-and-build` and `build-tested-windows-event-installer`.
-6. Download `Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-APK` only after the job passes.
+6. Download `Sarah-2.5-R3-CURRENT-OWNER-TEST-Android-APK` only after the job passes.
 7. Keep the included manifest and SHA-256 with the APK.
-8. Download `Sarah-2.5-R2-OWNER-ACCEPTANCE-CANDIDATE-Windows-EXE` for the event laptop and keep its manifest and SHA-256 with it.
+8. Download `Sarah-2.5-R3-CURRENT-OWNER-TEST-Windows-ElevenLabs-Candidate` for the event laptop and keep its manifest and SHA-256 with it. Do not install any artifact whose name contains `LEGACY-EVIDENCE`, `ENGINEERING-EVIDENCE`, or `DO-NOT-INSTALL`.
 9. Run the manifest's pending physical gates before calling either artifact
    judge-ready, replacing the preserved installation, or distributing it.
 
@@ -212,7 +220,7 @@ access code. CI creates a non-source `sarah-event-config.json` containing only
 the tested Worker URL, provider/model selection, and approved voice/model IDs.
 The build fails if a token, API-key, password, or secret field is added.
 
-1. Install `SarahMorganTravelOS-R2-Candidate-Setup.exe` from the Windows
+1. Install `SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe` from the Windows
    owner-acceptance candidate artifact. Its executable, shortcuts, uninstall
    entry, and data root remain side-by-side with the preserved R1 Windows build.
 2. Start Sarah and use **Connection** to enter the privately transferred,
@@ -226,17 +234,19 @@ Settings are stored for the current user in:
 %APPDATA%\SarahMorgan-R2-Candidate\runtime-config.json
 ```
 
-That local file is outside the EXE and repository. Credential values are
+The R3 application deliberately retains this compatibility data root so a
+repair install does not silently discard a prior per-user activation. That
+local file is outside the EXE and repository. Credential values are
 Windows-DPAPI protected for the current Windows account rather than stored as
 plaintext. Do not distribute the file.
-Resolution order is environment variable, then R2 per-user runtime config,
+Resolution order is environment variable, then the preserved per-user runtime config,
 then non-secret bundled event defaults. The access code is not extractable
 from the installed binary because it is entered only after installation.
 Rotate it if the private transfer or installed per-user credential is exposed.
-The side-by-side Windows candidate does not silently
-inherit R1's private database. Network device sync is disabled in the R2
-candidate pending an accepted TLS or authenticated key-agreement transport;
-only an owner-selected verified backup/restore path may move private data.
+The side-by-side Windows candidate does not silently inherit R1's private
+database. R3's authenticated key-agreement and encrypted preview/import path is
+implemented in source, but same-LAN Windows/phone acceptance remains pending;
+no discovery or pairing event alone may move private data.
 
 ## Online, offline, and automatic-reconnection acceptance
 
@@ -321,11 +331,11 @@ the provider key into Android BuildConfig to bypass the protected route.
 
 ### Android refuses an update
 
-The R2 APK deliberately retains application ID `com.kiraworld.sarahtravel` so
+The R3 APK deliberately retains application ID `com.kiraworld.sarahtravel` so
 its migration runs against Robert's populated R1 app sandbox. The candidate has
 a distinct filename/version and the R1 APK/hash remains preserved, but it is an
 in-place Android update rather than a side-by-side app. CI now requires an
-exact signing-cache hit, compares the built R2 certificate SHA-256 with the
+exact signing-cache hit, compares the built R3 certificate SHA-256 with the
 recorded installed R1 signer, records both signer hashes plus the R1 APK hash,
 and stops before upload on any mismatch. If Android reports a signature
 conflict, preserve Sarah's data and do not uninstall the populated app.

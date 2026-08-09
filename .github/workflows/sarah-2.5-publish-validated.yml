@@ -1,24 +1,19 @@
-name: Publish Validated Sarah 2.5 Installers
+name: LEGACY EVIDENCE - Sarah 2.5 validated installers - DO NOT INSTALL
 
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/sarah-2.5-event-ready]
-    paths:
-      - '.github/workflows/sarah-2.5-publish-validated.yml'
-      - 'public-release/2.5/PUBLISH_VALIDATED_KICKOFF.json'
 
 permissions:
   actions: read
   contents: write
 
 concurrency:
-  group: publish-validated-sarah-2-5
+  group: legacy-evidence-publish-validated-sarah-2-5
   cancel-in-progress: true
 
 env:
   VALIDATED_RUN_ID: '31138711432'
-  RELEASE_TAG: 'sarah-travel-os-v2.5-event-ready'
+  RELEASE_TAG: 'legacy-evidence-do-not-install-sarah-travel-os-v2.5'
 
 jobs:
   publish:
@@ -39,19 +34,21 @@ jobs:
           mkdir -p release
           gh run download "$VALIDATED_RUN_ID" --repo "$GITHUB_REPOSITORY" --name 'Sarah-2.5-validated-APK' --dir release
           gh run download "$VALIDATED_RUN_ID" --repo "$GITHUB_REPOSITORY" --name 'Sarah-2.5-validated-Windows-EXE' --dir release
+          mv release/Sarah-Morgan-2.5-event-ready.apk release/LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.5.apk
+          mv release/SarahMorganTravelOS-Setup.exe release/LEGACY-EVIDENCE-DO-NOT-INSTALL-SarahMorganTravelOS-Setup.exe
           find release -maxdepth 2 -type f -print
 
       - name: Verify the exact public files again
         run: |
           set -euo pipefail
-          APK='release/Sarah-Morgan-2.5-event-ready.apk'
-          EXE='release/SarahMorganTravelOS-Setup.exe'
+          APK='release/LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.5.apk'
+          EXE='release/LEGACY-EVIDENCE-DO-NOT-INSTALL-SarahMorganTravelOS-Setup.exe'
           test -s "$APK"
           test -s "$EXE"
           python - <<'PY'
           from pathlib import Path
-          apk = Path('release/Sarah-Morgan-2.5-event-ready.apk')
-          exe = Path('release/SarahMorganTravelOS-Setup.exe')
+          apk = Path('release/LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.5.apk')
+          exe = Path('release/LEGACY-EVIDENCE-DO-NOT-INSTALL-SarahMorganTravelOS-Setup.exe')
           if apk.read_bytes()[:4] != b'PK\x03\x04':
               raise SystemExit('The Android asset is not an APK/ZIP package.')
           if exe.read_bytes()[:2] != b'MZ':
@@ -73,15 +70,15 @@ jobs:
           set -euo pipefail
           gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
           cat > release/README.txt <<'EOF'
-          Sarah Travel OS 2.5 — event-ready physical-test release
+          Sarah Travel OS 2.5 — LEGACY EVIDENCE — DO NOT INSTALL
 
-          INSTALL ONLY THE FILE FOR THAT DEVICE:
+          DO NOT INSTALL EITHER FILE. These are preserved historical artifacts.
 
           Android phone:
-          Sarah-Morgan-2.5-event-ready.apk
+          LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.5.apk
 
           Windows desktop or laptop:
-          SarahMorganTravelOS-Setup.exe
+          LEGACY-EVIDENCE-DO-NOT-INSTALL-SarahMorganTravelOS-Setup.exe
 
           These exact files passed GitHub's Android and Windows validation jobs. The APK is version code 25 with a 2.5-event-ready build identifier. The Windows file is a genuine x86-64 PE self-installer; the exact installer installed its bundled Sarah application and completed the application self-test.
 
@@ -95,11 +92,11 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target agent/sarah-2.5-event-ready \
-            --title 'Sarah Travel OS 2.5 — Event Ready' \
+            --title 'Sarah Travel OS 2.5 — LEGACY EVIDENCE — DO NOT INSTALL' \
             --notes-file release/README.txt \
             --prerelease \
-            release/Sarah-Morgan-2.5-event-ready.apk \
-            release/SarahMorganTravelOS-Setup.exe \
+            release/LEGACY-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.5.apk \
+            release/LEGACY-EVIDENCE-DO-NOT-INSTALL-SarahMorganTravelOS-Setup.exe \
             release/SHA256SUMS.txt \
             release/README.txt
 

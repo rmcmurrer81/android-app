@@ -261,6 +261,9 @@ public final class AgenticTravelPlanner {
                 reply.append("I have not added it to your permanent wish list. ");
             }
             reply.append("I’ll use reversible planning defaults and let you correct them later.");
+            if (containsAny(lower, "in my email", "in an email", "from my email", "gmail")) {
+                reply.append(" Your itinerary details may be imported only through the read-only Gmail connection or from the exact booking message you choose to share; I have not read your mailbox in this turn.");
+            }
             return new Plan(reply.toString(), actions);
         }
 
@@ -304,6 +307,8 @@ public final class AgenticTravelPlanner {
     private static boolean isPlanningStatement(String lower) {
         return containsAny(lower,
                 "thinking about going", "thinking of going", "planning on going", "planning to go", "planning a trip to",
+                "i am traveling to", "i'm traveling to", "i am travelling to", "i'm travelling to",
+                "we are traveling to", "we're traveling to", "we are travelling to", "we're travelling to",
                 "want to go", "want to visit", "would love to travel", "would love to visit",
                 "always wanted to visit", "always wanted to go", "dream of visiting",
                 "dreamed of visiting", "bucket list");

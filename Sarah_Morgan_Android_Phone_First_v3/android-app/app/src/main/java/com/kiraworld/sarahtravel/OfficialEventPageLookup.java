@@ -225,7 +225,12 @@ public final class OfficialEventPageLookup {
                     ? " I could not extract a verified date from the page yet, so I saved the official source for the active profile without inventing one."
                     : " I could not extract a verified date from the page yet, and I did not attach the source to a profile.");
         }
-        reply.append(" Use Explore for the map, public photos, videos, and route options.");
+        if (!result.officialUrl.isEmpty()) {
+            reply.append(" Official website or ticket source: ")
+                    .append(result.officialUrl)
+                    .append(".");
+        }
+        reply.append(" Use Explore for the map, public photos, videos, and route options. Opening the source does not purchase a ticket.");
         return reply.toString();
     }
 
