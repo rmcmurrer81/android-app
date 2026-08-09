@@ -60,7 +60,7 @@ public final class ConnectedModelGateway {
         return respondDetailed(
                 providerId, apiKey, model, systemPrompt, history, message,
                 webSearch, searchQuery, imageJpeg, 1,
-                ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+                ConnectedTurnPolicy.maxNetworkWaitMs(webSearch));
     }
 
     public static ConnectedModelResponse respondDetailed(

@@ -166,8 +166,8 @@ assert 'people.stageOwnerCandidate(incomingProfile)' in sync_importer
 assert 'store.addSynced(' in sync_importer and 'row.optLong("source_time", 0L)' in sync_importer
 backend=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahBackendClient.java').read_text(encoding='utf-8')
 assert 'duplicateCurrentUser' in backend
-for phrase in ['ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs)',
-               'ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs)',
+for phrase in ['ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs, webSearch)',
+               'ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs, webSearch)',
                'MAX_RESPONSE_CHARS','response exceeded the bounded response limit']:
     assert phrase in backend, phrase
 for phrase in ['actualProvider.isEmpty()','actualModel.isEmpty()','onlineReceipt instanceof Boolean','required actual provider/model/online route receipt']:
@@ -182,17 +182,25 @@ def int_constant(source, name):
     return int(match.group(1).replace('_',''))
 connect_timeout=int_constant(turn_policy, 'CONNECT_TIMEOUT_MS')
 read_timeout=int_constant(turn_policy, 'READ_TIMEOUT_MS')
+source_read_timeout=int_constant(turn_policy, 'SOURCE_READ_TIMEOUT_MS')
 attempts=int_constant(turn_policy, 'ATTEMPTS_PER_TURN')
 retry_backoff=int_constant(turn_policy, 'RETRY_BACKOFF_MS')
 minimum_retry_budget=int_constant(turn_policy, 'MIN_SECOND_ATTEMPT_BUDGET_MS')
 maximum_wait=int_constant(turn_policy, 'MAX_NETWORK_WAIT_MS')
+source_maximum_wait=int_constant(turn_policy, 'SOURCE_MAX_NETWORK_WAIT_MS')
 assert attempts == 2
 assert 11_000 <= read_timeout <= 12_000
+assert source_read_timeout == 18_000
 assert connect_timeout + read_timeout <= maximum_wait <= 15_000
+assert maximum_wait == 15_000
+assert connect_timeout + source_read_timeout <= source_maximum_wait == 25_000
 assert retry_backoff + minimum_retry_budget < maximum_wait
 for phrase in ['status == 404', 'status == 408', 'status == 429',
                'status >= 500', 'SSLHandshakeException', 'isRetryableFailure(failure)',
                'deadlineNanos(long startedAtNanos)',
+               'deadlineNanos(long startedAtNanos, boolean currentSourceRequest)',
+               'maxNetworkWaitMs(boolean currentSourceRequest)',
+               'maxReadTimeoutMs(boolean currentSourceRequest)',
                'remainingUntilDeadlineMs(long deadlineNanos, long nowNanos)']:
     assert phrase in turn_policy, phrase
 truth_guard=(APP/'app/src/main/java/com/kiraworld/sarahtravel/ReplyTruthGuard.java').read_text(encoding='utf-8')

@@ -75,7 +75,7 @@ public final class SarahBackendClient {
         return respondDetailed(
                 endpoint, providerId, model, systemPrompt, history, message,
                 webSearch, searchQuery, imageJpeg, 1,
-                ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+                ConnectedTurnPolicy.maxNetworkWaitMs(webSearch));
     }
 
     public static ConnectedModelResponse respondDetailed(
@@ -133,8 +133,10 @@ public final class SarahBackendClient {
         String response;
         try {
             requireActive(worker);
-            connection.setConnectTimeout(ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs));
-            connection.setReadTimeout(ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs));
+            connection.setConnectTimeout(
+                    ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs, webSearch));
+            connection.setReadTimeout(
+                    ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs, webSearch));
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");

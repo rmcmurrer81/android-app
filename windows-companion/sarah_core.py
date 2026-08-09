@@ -2012,7 +2012,7 @@ class ModelClient:
         token: str,
         payload: Mapping[str, Any],
     ) -> tuple[Mapping[str, Any], int]:
-        """Make at most two attempts inside the route-specific turn budget.
+        """Make only the route-configured attempts inside its turn budget.
 
         A current-source turn performs a protected Tavily lookup and then
         source-coupled model inference in the same Worker request. Both normal

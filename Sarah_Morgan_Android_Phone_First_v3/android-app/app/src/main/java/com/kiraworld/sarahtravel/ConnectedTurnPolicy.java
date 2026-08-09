@@ -10,14 +10,21 @@ import java.util.List;
 import java.util.UUID;
 import javax.net.ssl.SSLHandshakeException;
 
-/** One useful connected attempt plus one fast-failure retry share a strict 15-second budget. */
+/**
+ * One useful connected attempt plus one fast-failure retry share a route-specific hard budget.
+ * Ordinary conversation remains capped at 15 seconds. A request that explicitly asks the
+ * protected backend for current sources receives a separate 25-second cap because the same
+ * request performs source retrieval before source-coupled inference.
+ */
 public final class ConnectedTurnPolicy {
     public static final int CONNECT_TIMEOUT_MS = 3_000;
     public static final int READ_TIMEOUT_MS = 11_500;
+    public static final int SOURCE_READ_TIMEOUT_MS = 18_000;
     public static final int ATTEMPTS_PER_TURN = 2;
     public static final int RETRY_BACKOFF_MS = 250;
     public static final int MIN_SECOND_ATTEMPT_BUDGET_MS = 4_000;
     public static final int MAX_NETWORK_WAIT_MS = 15_000;
+    public static final int SOURCE_MAX_NETWORK_WAIT_MS = 25_000;
 
     private ConnectedTurnPolicy() { }
 
@@ -49,17 +56,42 @@ public final class ConnectedTurnPolicy {
         return false;
     }
 
-    /** Socket connect timeout for this attempt; connect plus read never exceeds its budget. */
+    public static int maxNetworkWaitMs(boolean currentSourceRequest) {
+        return currentSourceRequest ? SOURCE_MAX_NETWORK_WAIT_MS : MAX_NETWORK_WAIT_MS;
+    }
+
+    public static int maxReadTimeoutMs(boolean currentSourceRequest) {
+        return currentSourceRequest ? SOURCE_READ_TIMEOUT_MS : READ_TIMEOUT_MS;
+    }
+
+    /** Socket connect timeout for an ordinary attempt. */
     public static int connectTimeoutMs(long remainingBudgetMs) {
-        long bounded = Math.max(2L, Math.min((long) MAX_NETWORK_WAIT_MS, remainingBudgetMs));
+        return connectTimeoutMs(remainingBudgetMs, false);
+    }
+
+    /** Socket connect timeout for this attempt; connect plus read never exceeds its class. */
+    public static int connectTimeoutMs(long remainingBudgetMs, boolean currentSourceRequest) {
+        long bounded = Math.max(2L, Math.min(
+                (long) maxNetworkWaitMs(currentSourceRequest), remainingBudgetMs));
         return (int) Math.min((long) CONNECT_TIMEOUT_MS, bounded - 1L);
     }
 
-    /** A normal Gemma reply gets a useful read window; a retry receives only what remains. */
+    /** A normal Gemma reply gets the ordinary read window. */
     public static int readTimeoutMs(long remainingBudgetMs) {
-        long bounded = Math.max(2L, Math.min((long) MAX_NETWORK_WAIT_MS, remainingBudgetMs));
-        long afterConnect = Math.max(1L, bounded - connectTimeoutMs(bounded));
-        return (int) Math.min((long) READ_TIMEOUT_MS, afterConnect);
+        return readTimeoutMs(remainingBudgetMs, false);
+    }
+
+    /**
+     * Current-source retrieval may use its longer useful read; every retry still receives only
+     * what remains inside the exact route-specific deadline.
+     */
+    public static int readTimeoutMs(long remainingBudgetMs, boolean currentSourceRequest) {
+        long bounded = Math.max(2L, Math.min(
+                (long) maxNetworkWaitMs(currentSourceRequest), remainingBudgetMs));
+        long afterConnect = Math.max(
+                1L, bounded - connectTimeoutMs(bounded, currentSourceRequest));
+        return (int) Math.min(
+                (long) maxReadTimeoutMs(currentSourceRequest), afterConnect);
     }
 
     /** Preserve owner route query/fragment while replacing reserved per-attempt fields. */
@@ -120,9 +152,22 @@ public final class ConnectedTurnPolicy {
         return remainingUntilDeadlineMs(deadlineNanos(startedAtNanos), nowNanos);
     }
 
+    public static long remainingBudgetMs(
+            long startedAtNanos,
+            long nowNanos,
+            boolean currentSourceRequest) {
+        return remainingUntilDeadlineMs(
+                deadlineNanos(startedAtNanos, currentSourceRequest), nowNanos);
+    }
+
     /** Absolute monotonic deadline survives executor and GC delays between call sites. */
     public static long deadlineNanos(long startedAtNanos) {
-        long budgetNanos = MAX_NETWORK_WAIT_MS * 1_000_000L;
+        return deadlineNanos(startedAtNanos, false);
+    }
+
+    /** Source-backed work receives a distinct deadline; ordinary work cannot inherit it. */
+    public static long deadlineNanos(long startedAtNanos, boolean currentSourceRequest) {
+        long budgetNanos = maxNetworkWaitMs(currentSourceRequest) * 1_000_000L;
         return startedAtNanos > Long.MAX_VALUE - budgetNanos
                 ? Long.MAX_VALUE : startedAtNanos + budgetNanos;
     }

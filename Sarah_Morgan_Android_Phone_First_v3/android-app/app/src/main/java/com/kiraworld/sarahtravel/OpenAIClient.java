@@ -39,7 +39,7 @@ public final class OpenAIClient {
     public static ConnectedModelResponse respondDetailed(String apiKey, String model, String systemPrompt, List<Map<String, String>> history, String message, boolean webSearch, byte[] imageJpeg) throws Exception {
         return respondDetailed(
                 apiKey, model, systemPrompt, history, message, webSearch,
-                imageJpeg, 1, ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS);
+                imageJpeg, 1, ConnectedTurnPolicy.maxNetworkWaitMs(webSearch));
     }
 
     public static ConnectedModelResponse respondDetailed(
@@ -90,8 +90,10 @@ public final class OpenAIClient {
         String response;
         try {
             requireActive(worker);
-            connection.setConnectTimeout(ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs));
-            connection.setReadTimeout(ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs));
+            connection.setConnectTimeout(
+                    ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs, webSearch));
+            connection.setReadTimeout(
+                    ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs, webSearch));
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Authorization", "Bearer " + apiKey);

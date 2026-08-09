@@ -216,17 +216,40 @@ public final class SarahR2PolicyTest {
         require(TurnRoute.sourceLabel(TurnRoute.ONLINE_OPENAI).equals("Online mind")
                         && TurnRoute.sourceLabel(TurnRoute.ONLINE_CONNECTED_OTHER).equals("Online mind"),
                 "normal owner chat hides provider jargon while exact audit telemetry remains intact");
-        require(ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS <= 15_000,
-                "both connected attempts share the same 15-second maximum as Windows");
-        require(ConnectedTurnPolicy.READ_TIMEOUT_MS >= 11_000,
-                "the first request gives a normal Gemma reply a useful read window");
+        require(ConnectedTurnPolicy.maxNetworkWaitMs(false) == 15_000,
+                "ordinary conversation retains its strict 15-second maximum");
+        require(ConnectedTurnPolicy.maxNetworkWaitMs(true) == 25_000,
+                "current-source work receives only its bounded 25-second maximum");
+        require(ConnectedTurnPolicy.maxReadTimeoutMs(false) == 11_500,
+                "ordinary Gemma conversation retains its useful 11.5-second read window");
+        require(ConnectedTurnPolicy.maxReadTimeoutMs(true) == 18_000,
+                "source retrieval and source-coupled inference receive at most 18 seconds to read");
         require(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS
                         + ConnectedTurnPolicy.READ_TIMEOUT_MS
                         <= ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS,
-                "one useful attempt fits inside the shared network budget");
+                "one useful ordinary attempt fits inside the ordinary network budget");
+        require(ConnectedTurnPolicy.CONNECT_TIMEOUT_MS
+                        + ConnectedTurnPolicy.SOURCE_READ_TIMEOUT_MS
+                        <= ConnectedTurnPolicy.SOURCE_MAX_NETWORK_WAIT_MS,
+                "one useful source-backed attempt fits inside the source network budget");
         require(ConnectedTurnPolicy.connectTimeoutMs(15_000L)
                         + ConnectedTurnPolicy.readTimeoutMs(15_000L) <= 15_000,
-                "socket timeouts cannot exceed the remaining owner-visible deadline");
+                "ordinary socket timeouts cannot exceed the owner-visible deadline");
+        require(ConnectedTurnPolicy.connectTimeoutMs(25_000L, true)
+                        + ConnectedTurnPolicy.readTimeoutMs(25_000L, true) <= 25_000,
+                "source socket timeouts cannot exceed the source-backed deadline");
+        for (boolean currentSourceRequest : new boolean[] {false, true}) {
+            int classCeiling = ConnectedTurnPolicy.maxNetworkWaitMs(currentSourceRequest);
+            for (long proposedBudget : new long[] {
+                    2L, 1_000L, 4_000L, 15_000L, 25_000L, Long.MAX_VALUE}) {
+                int socketBudget = ConnectedTurnPolicy.connectTimeoutMs(
+                        proposedBudget, currentSourceRequest)
+                        + ConnectedTurnPolicy.readTimeoutMs(
+                                proposedBudget, currentSourceRequest);
+                require(socketBudget <= classCeiling,
+                        "no socket budget may exceed its ordinary/source class ceiling");
+            }
+        }
         String reboundAttemptUrl = ConnectedTurnPolicy.endpointForAttempt(
                 "https://sarah.example.test/?acceptance_probe=production_modelclient"
                         + "&%73arah_attempt=99&sarah_nonce=stale#owner-fragment",
@@ -275,7 +298,26 @@ public final class SarahR2PolicyTest {
                 "a late failure cannot start a second attempt without useful remaining budget");
         require(ConnectedTurnPolicy.remainingBudgetMs(1_000_000L, 1_000_000L)
                         == ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS,
-                "monotonic connected-turn deadline starts with the full shared budget");
+                "ordinary monotonic deadline starts with the strict ordinary budget");
+        require(ConnectedTurnPolicy.remainingBudgetMs(
+                        1_000_000L, 1_000_000L, true)
+                        == ConnectedTurnPolicy.SOURCE_MAX_NETWORK_WAIT_MS,
+                "source monotonic deadline starts with the distinct source budget");
+        require(ConnectedTurnPolicy.deadlineNanos(1_000_000L, true)
+                        - ConnectedTurnPolicy.deadlineNanos(1_000_000L, false)
+                        == (ConnectedTurnPolicy.SOURCE_MAX_NETWORK_WAIT_MS
+                                - ConnectedTurnPolicy.MAX_NETWORK_WAIT_MS) * 1_000_000L,
+                "source and ordinary deadlines are separate exact monotonic ceilings");
+        long measuredSlowTurnNs = 19_990_000_000L;
+        require(ConnectedTurnPolicy.remainingBudgetMs(
+                        1_000_000L, 1_000_000L + measuredSlowTurnNs, true) == 5_010L,
+                "the measured 19.990-second source turn remains online inside its source budget");
+        require(ConnectedTurnPolicy.remainingBudgetMs(
+                        1_000_000L, 1_000_000L + measuredSlowTurnNs, false) == 0L,
+                "the same delay cannot leak the source budget into ordinary conversation");
+        require(ConnectedTurnPolicy.remainingBudgetMs(
+                        1_000_000L, 1_000_000L + 25_001_000_000L, true) == 0L,
+                "source-backed work still fails closed after its exact 25-second ceiling");
         long queuedDeadline = ConnectedTurnPolicy.deadlineNanos(1_000_000L);
         long socketBudgetAfterQueueDelay = ConnectedTurnPolicy.remainingUntilDeadlineMs(
                 queuedDeadline, 1_000_000L + 4_000_000_000L);

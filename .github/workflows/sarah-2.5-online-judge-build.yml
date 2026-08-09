@@ -1112,12 +1112,26 @@ jobs:
           latencies = sorted(int(turn.get('wall_latency_ms') or 0) for turn in online_turns)
           if any(value <= 0 or value > 30_000 for value in latencies):
               raise SystemExit(f'Live text latency escaped the bounded acceptance window: {latencies}')
+          max_turn = max(online_turns, key=lambda turn: int(turn.get('wall_latency_ms') or 0))
+          max_turn_id = str(max_turn.get('turn_id') or '')
+          if not max_turn_id or any(not (char.islower() or char.isdigit() or char == '_') for char in max_turn_id):
+              raise SystemExit('Maximum-latency turn ID is missing or not safe for artifact metadata.')
+          max_turn_route = str(max_turn.get('route') or '')
+          if max_turn_route != 'ONLINE_WORKERS_AI':
+              raise SystemExit('Maximum-latency turn escaped the exact Workers AI route.')
+          max_turn_receipt = max_turn.get('receipt') or {}
+          max_turn_web_requested = (
+              str(max_turn_receipt.get('web_search_requested') or '').lower() == 'true'
+          )
           middle = len(latencies) // 2
           median = latencies[middle] if len(latencies) % 2 else (latencies[middle - 1] + latencies[middle]) // 2
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
               output.write('objective=passed_10_of_10_with_online_offline_restore\n')
               output.write(f'text_median_ms={median}\n')
               output.write(f'text_max_ms={max(latencies)}\n')
+              output.write(f'text_max_turn_id={max_turn_id}\n')
+              output.write(f'text_max_route={max_turn_route}\n')
+              output.write(f'text_max_web_search_requested={str(max_turn_web_requested).lower()}\n')
           print(
               'Production ModelClient live 10-turn battery passed; transition:',
               actual_transition,
@@ -1176,6 +1190,9 @@ jobs:
           SARAH_LIVE_CONVERSATION_OBJECTIVE: ${{ steps.live_conversation.outputs.objective }}
           SARAH_LIVE_TEXT_MEDIAN_MS: ${{ steps.live_conversation.outputs.text_median_ms }}
           SARAH_LIVE_TEXT_MAX_MS: ${{ steps.live_conversation.outputs.text_max_ms }}
+          SARAH_LIVE_TEXT_MAX_TURN_ID: ${{ steps.live_conversation.outputs.text_max_turn_id }}
+          SARAH_LIVE_TEXT_MAX_ROUTE: ${{ steps.live_conversation.outputs.text_max_route }}
+          SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED: ${{ steps.live_conversation.outputs.text_max_web_search_requested }}
           SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
           SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
           EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
@@ -1374,6 +1391,11 @@ jobs:
               'live_production_modelclient_conversation': os.environ['SARAH_LIVE_CONVERSATION_OBJECTIVE'],
               'live_text_median_ms': int(os.environ['SARAH_LIVE_TEXT_MEDIAN_MS']),
               'live_text_max_ms': int(os.environ['SARAH_LIVE_TEXT_MAX_MS']),
+              'live_text_max_turn_id': os.environ['SARAH_LIVE_TEXT_MAX_TURN_ID'],
+              'live_text_max_route': os.environ['SARAH_LIVE_TEXT_MAX_ROUTE'],
+              'live_text_max_web_search_requested': (
+                  os.environ['SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED'].lower() == 'true'
+              ),
               'live_vision_solid_red_jpeg_smoke_test': 'passed_exact_red',
               'live_protected_elevenlabs_smoke_test': 'passed_transport_latency_gate',
               'live_protected_elevenlabs_first_byte_ms': int(os.environ['SARAH_LIVE_VOICE_FIRST_BYTE_MS']),

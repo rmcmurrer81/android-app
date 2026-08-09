@@ -649,7 +649,11 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
 
         for phrase in (
             "READ_TIMEOUT_MS = 11_500",
+            "SOURCE_READ_TIMEOUT_MS = 18_000",
             "MAX_NETWORK_WAIT_MS = 15_000",
+            "SOURCE_MAX_NETWORK_WAIT_MS = 25_000",
+            "maxNetworkWaitMs(boolean currentSourceRequest)",
+            "maxReadTimeoutMs(boolean currentSourceRequest)",
             "MIN_SECOND_ATTEMPT_BUDGET_MS = 4_000",
             "isRetryableFailure(failure)",
             "status == 404",
@@ -662,8 +666,8 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
 
         for client in (backend, openai):
             for phrase in (
-                "ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs)",
-                "ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs)",
+                "ConnectedTurnPolicy.connectTimeoutMs(remainingBudgetMs, webSearch)",
+                "ConnectedTurnPolicy.readTimeoutMs(remainingBudgetMs, webSearch)",
                 'setRequestProperty("Cache-Control", "no-cache")',
                 'setRequestProperty("Pragma", "no-cache")',
                 "new ConnectedTurnPolicy.HttpStatusException(",
@@ -687,8 +691,9 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
 
         self.assertIn("int attemptNumber,\n            long remainingBudgetMs", gateway)
         self.assertIn("attemptNumber,\n                    remainingBudgetMs", gateway)
+        self.assertIn("ConnectedTurnPolicy.maxNetworkWaitMs(webSearch)", gateway)
         for phrase in (
-            "final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime());",
+            "final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime(), web);",
             "final int attemptNumber = attempt;",
             "long socketBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(",
             "web, searchQuery, image, attemptNumber, socketBudgetMs",
@@ -715,6 +720,24 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
         self.assertLess(future_get, post_get_deadline)
         self.assertLess(post_get_deadline, online_receipt)
         self.assertLess(online_receipt, accepted_return)
+
+        event_research = source("EventResearchCoordinator.java")
+        booking_extraction = source("BookingExtractionCoordinator.java")
+        destination_knowledge = source("DestinationKnowledgeCoordinator.java")
+        self.assertIn(
+            "message,\n                true,\n                null",
+            event_research,
+        )
+        self.assertIn(
+            '"Extract the visible booking details from this screenshot.",\n'
+            "                        false,\n"
+            "                        image",
+            booking_extraction,
+        )
+        self.assertIn(
+            "message,\n                        false,\n                        null",
+            destination_knowledge,
+        )
 
     def test_startup_never_globally_deletes_misclassified_event_rows(self):
         application = source("SarahApplication.java")

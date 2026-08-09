@@ -1462,7 +1462,7 @@ public final class MainActivity extends Activity {
             boolean web,
             String searchQuery,
             byte[] image) throws Exception {
-        final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime());
+        final long deadlineNanos = ConnectedTurnPolicy.deadlineNanos(System.nanoTime(), web);
         Exception lastFailure = null;
         for (int attempt = 1; attempt <= ConnectedTurnPolicy.ATTEMPTS_PER_TURN; attempt++) {
             long preSubmitBudgetMs = ConnectedTurnPolicy.remainingUntilDeadlineMs(
