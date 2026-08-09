@@ -1164,9 +1164,9 @@ jobs:
           print('Built R3 APK version identity:', actual_code, actual_name)
           PY
           cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/eventCandidate/app-eventCandidate.apk \
-            Sarah-Morgan-Event-Candidate.apk
-          test -s Sarah-Morgan-Event-Candidate.apk
-          unzip -t Sarah-Morgan-Event-Candidate.apk >/dev/null
+            Sarah-Morgan-Event-Candidate-72H.apk
+          test -s Sarah-Morgan-Event-Candidate-72H.apk
+          unzip -t Sarah-Morgan-Event-Candidate-72H.apk >/dev/null
 
           expected_signer=$(printf '%s' "${SARAH_R1_SIGNING_CERT_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
           r1_apk_sha=$(printf '%s' "${SARAH_R1_APK_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
@@ -1184,7 +1184,7 @@ jobs:
             echo '::error::Android apksigner was not found.'
             exit 1
           fi
-          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate.apk 2>&1)
+          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate-72H.apk 2>&1)
           actual_signer=$(printf '%s\n' "$signer_output" | python -c 'import re,sys; s=sys.stdin.read(); m=re.search(r"SHA-?256\s+digest:\s*([0-9A-Fa-f:]{64,95})",s,re.I); print(m.group(1).replace(":","").lower() if m else "")')
           if ! [[ "$actual_signer" =~ ^[a-f0-9]{64}$ ]]; then
             printf '%s\n' "$signer_output"
@@ -1230,14 +1230,14 @@ jobs:
           PY
           rm -rf build/r3-apk-secret-scan
           mkdir -p build/r3-apk-secret-scan
-          unzip -q Sarah-Morgan-Event-Candidate.apk -d build/r3-apk-secret-scan
+          unzip -q Sarah-Morgan-Event-Candidate-72H.apk -d build/r3-apk-secret-scan
           if grep -aERq '(sk[_-][A-Za-z0-9_-]{20,}|xi-[A-Za-z0-9_-]{20,}|tvly-[A-Za-z0-9_-]{20,}|CLOUDFLARE_API_TOKEN=[A-Za-z0-9_-]+)' \
               "$build_config" build/r3-apk-secret-scan; then
             echo '::error::A provider credential-like value was found in generated BuildConfig or decompressed APK/dex contents.'
             exit 1
           fi
-          sha256sum Sarah-Morgan-Event-Candidate.apk \
-            | tee Sarah-Morgan-Event-Candidate.sha256
+          sha256sum Sarah-Morgan-Event-Candidate-72H.apk \
+            | tee Sarah-Morgan-Event-Candidate-72H.sha256
 
       - name: Record exactly what the owner-acceptance candidate contains
         env:
@@ -1260,7 +1260,10 @@ jobs:
           manifest = {
               'product': 'Sarah Morgan Travel OS',
               'repair_revision': 'R3_OWNER_REPAIR',
-              'artifact_status': 'EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE',
+              'distribution_label': '72-HOUR EVENT CANDIDATE',
+              'distribution_window_hours': 72,
+              'artifact_status': '72_HOUR_EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE',
+              'artifact_filename': 'Sarah-Morgan-Event-Candidate-72H.apk',
               'version': os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate',
               'version_code': int(os.environ['SARAH_R3_ANDROID_VERSION_CODE']),
               'source_version_name': os.environ['SARAH_R3_ANDROID_VERSION_NAME'],
@@ -1339,7 +1342,7 @@ jobs:
               'built_at_utc': datetime.now(timezone.utc).isoformat(),
               'note': 'This is a source/build/smoke-tested candidate, not a judge-ready or owner-accepted APK. Its extractable bootstrap capability is shared by the APK and EXE, limited to this unique Worker, and rejected after the recorded expiry.',
           }
-          with open('Sarah-Morgan-Event-Candidate-manifest.json', 'w', encoding='utf-8') as handle:
+          with open('Sarah-Morgan-Event-Candidate-72H-manifest.json', 'w', encoding='utf-8') as handle:
               json.dump(manifest, handle, indent=2)
           PY
 
@@ -1347,11 +1350,11 @@ jobs:
         id: upload_candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-Event-Candidate-Android-APK
+          name: Sarah-Morgan-Event-Candidate-72H-Android-APK
           path: |
-            Sarah-Morgan-Event-Candidate.apk
-            Sarah-Morgan-Event-Candidate.sha256
-            Sarah-Morgan-Event-Candidate-manifest.json
+            Sarah-Morgan-Event-Candidate-72H.apk
+            Sarah-Morgan-Event-Candidate-72H.sha256
+            Sarah-Morgan-Event-Candidate-72H-manifest.json
             README_EVENT_CANDIDATE.md
           if-no-files-found: error
           retention-days: 14
@@ -1521,17 +1524,17 @@ jobs:
           finally {
             Remove-Item -LiteralPath $eventConfigPath -Force -ErrorAction SilentlyContinue
           }
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorgan-Event-Candidate-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorgan-Event-Candidate-72H-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
           if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
-          if (!(Test-Path 'dist\SarahMorgan-Event-Candidate-Setup.exe')) { throw 'Installer was not created.' }
+          if (!(Test-Path 'dist\SarahMorgan-Event-Candidate-72H-Setup.exe')) { throw 'Installer was not created.' }
 
       - name: Self-test the exact event installer
         shell: pwsh
         working-directory: windows-companion
         run: |
-          $process = Start-Process -FilePath '.\dist\SarahMorgan-Event-Candidate-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          $process = Start-Process -FilePath '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
-          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-Setup.exe'
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe'
           if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
           $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
           if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'Not a PE executable.' }
@@ -1548,13 +1551,15 @@ jobs:
           EVENT_AUTH_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
           CANDIDATE_WORKER_NAME: ${{ needs.deploy-smoke-test-and-build.outputs.candidate_worker_name }}
         run: |
-          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-Setup.exe'
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe'
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
-          "$hash  $($file.Name)" | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-Setup.sha256' -Encoding ascii
+          "$hash  $($file.Name)" | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-72H-Setup.sha256' -Encoding ascii
           $manifest = [ordered]@{
             product = 'Sarah Morgan Travel OS'
             repair_revision = 'R3_OWNER_REPAIR'
-            artifact_status = 'CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE'
+            distribution_label = '72-HOUR EVENT CANDIDATE'
+            distribution_window_hours = 72
+            artifact_status = '72_HOUR_EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE'
             version = '${{ steps.version_truth.outputs.installer_version }}'
             source_version_target = '${{ steps.version_truth.outputs.source_target }}'
             compatibility_installer_version = '${{ steps.version_truth.outputs.installer_version }}'
@@ -1588,16 +1593,16 @@ jobs:
             repository_derivation_key_rotation_required_after_event = $false
             exact_worker_retirement_required_if_artifact_is_exposed = $true
           }
-          $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-Setup-manifest.json' -Encoding utf8NoBOM
+          $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-72H-Setup-manifest.json' -Encoding utf8NoBOM
 
       - name: Upload the Windows owner-acceptance candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-Morgan-Event-Candidate-Windows-Installer
+          name: Sarah-Morgan-Event-Candidate-72H-Windows-Installer
           path: |
-            windows-companion/dist/SarahMorgan-Event-Candidate-Setup.exe
-            windows-companion/dist/SarahMorgan-Event-Candidate-Setup.sha256
-            windows-companion/dist/SarahMorgan-Event-Candidate-Setup-manifest.json
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup.exe
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup.sha256
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup-manifest.json
             README_EVENT_CANDIDATE.md
             docs/SARAH_WINDOWS_ARTIFACT_LINEAGE_20260808.md
           if-no-files-found: error

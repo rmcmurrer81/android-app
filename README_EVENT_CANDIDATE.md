@@ -1,4 +1,9 @@
-# Sarah Morgan Event Candidate
+# Sarah Morgan — 72-HOUR EVENT CANDIDATE
+
+> **Distribution label: 72-HOUR EVENT CANDIDATE.** This is a short-lived,
+> private event build. Its protected online access stops at the exact
+> `event_auth_expires_utc` recorded in each adjacent manifest, no later than
+> 72 hours after the producing workflow derived its event capability.
 
 This is the urgent, owner-authorized Travel Hack event build. It is a private
 candidate, not a store release and not an in-place update of the older Sarah
@@ -6,27 +11,27 @@ phone app.
 
 ## Files produced by the protected build
 
-- `Sarah-Morgan-Event-Candidate.apk` — Android 8+ side-by-side app.
-- `Sarah-Morgan-Event-Candidate.sha256` — exact APK SHA-256.
-- `Sarah-Morgan-Event-Candidate-manifest.json` — source commit, Worker,
+- `Sarah-Morgan-Event-Candidate-72H.apk` — Android 8+ side-by-side app.
+- `Sarah-Morgan-Event-Candidate-72H.sha256` — exact APK SHA-256.
+- `Sarah-Morgan-Event-Candidate-72H-manifest.json` — source commit, Worker,
   model, signer, live-test and rollback facts.
-- `SarahMorgan-Event-Candidate-Setup.exe` — Windows x86-64 installer.
-- `SarahMorgan-Event-Candidate-Setup.sha256` — exact installer SHA-256.
-- `SarahMorgan-Event-Candidate-Setup-manifest.json` — Windows build facts.
+- `SarahMorgan-Event-Candidate-72H-Setup.exe` — Windows x86-64 installer.
+- `SarahMorgan-Event-Candidate-72H-Setup.sha256` — exact installer SHA-256.
+- `SarahMorgan-Event-Candidate-72H-Setup-manifest.json` — Windows build facts.
 
-Download the two `Sarah-Morgan-Event-Candidate-*` artifacts from the GitHub
+Download the two `Sarah-Morgan-Event-Candidate-72H-*` artifacts from the GitHub
 Actions run linked on PR #21. Verify each file against its adjacent `.sha256`
 record before installing.
 
 ## Install
 
 Android uses application ID `com.kiraworld.sarahtravel.eventcandidate` and the
-visible name **Sarah Morgan Event Candidate**. It installs beside the older R1
+visible name **Sarah Morgan 72-Hour Event Candidate**. It installs beside the older R1
 app. Do **not** uninstall the older app; Android does not copy its private data
 into this separate candidate. Allow microphone, coarse location, and
 notifications only if you want those features.
 
-On Windows, run `SarahMorgan-Event-Candidate-Setup.exe`. It is intended for an
+On Windows, run `SarahMorgan-Event-Candidate-72H-Setup.exe`. It is intended for an
 x86-64 Windows laptop including the 8 GB non-GPU event laptop. It retains the
 approved portrait, real animation/power-saving toggle, Travel Workbench, maps
 and public-media handoffs, trip tools, wallet, secure same-Wi-Fi discovery and

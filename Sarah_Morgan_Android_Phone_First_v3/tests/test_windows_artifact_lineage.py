@@ -40,13 +40,17 @@ class WindowsArtifactLineageTest(unittest.TestCase):
         self.assertIn("sarah_adult_portrait_r2_runtime_512.png;assets", text)
 
     def test_only_gated_workflow_names_the_event_candidate(self) -> None:
-        expected_android = "Sarah-Morgan-Event-Candidate-Android-APK"
-        expected_windows = "Sarah-Morgan-Event-Candidate-Windows-Installer"
+        expected_android = "Sarah-Morgan-Event-Candidate-72H-Android-APK"
+        expected_windows = "Sarah-Morgan-Event-Candidate-72H-Windows-Installer"
         owner_text = OWNER.read_text(encoding="utf-8")
         self.assertIn(expected_android, owner_text)
         self.assertIn(expected_windows, owner_text)
-        self.assertIn("Sarah-Morgan-Event-Candidate.apk", owner_text)
-        self.assertIn("SarahMorgan-Event-Candidate-Setup.exe", owner_text)
+        self.assertIn("Sarah-Morgan-Event-Candidate-72H.apk", owner_text)
+        self.assertIn("SarahMorgan-Event-Candidate-72H-Setup.exe", owner_text)
+        self.assertIn("distribution_label = '72-HOUR EVENT CANDIDATE'", owner_text)
+        self.assertIn("'distribution_label': '72-HOUR EVENT CANDIDATE'", owner_text)
+        self.assertNotIn("Sarah-Morgan-Event-Candidate.apk", owner_text)
+        self.assertNotIn("SarahMorgan-Event-Candidate-Setup.exe", owner_text)
         self.assertIn("needs.deploy-smoke-test-and-build.outputs.backend_url", owner_text)
 
         for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):

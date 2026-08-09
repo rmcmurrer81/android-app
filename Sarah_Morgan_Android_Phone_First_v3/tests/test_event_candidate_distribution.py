@@ -11,7 +11,10 @@ MODEL_CONFIG = (PACKAGE_ROOT / "android-app" / "app" / "src" / "main" / "java" /
 def test_event_candidate_is_side_by_side_and_normal_r1_lane_remains():
     assert "applicationId 'com.kiraworld.sarahtravel'" in GRADLE
     assert "applicationIdSuffix '.eventcandidate'" in GRADLE
-    assert "Sarah Morgan Event Candidate" in GRADLE
+    assert "Sarah Morgan 72-Hour Event Candidate" in GRADLE
+    assert "Sarah-Morgan-Event-Candidate-72H.apk" in WORKFLOW
+    assert "SarahMorgan-Event-Candidate-72H-Setup.exe" in WORKFLOW
+    assert WORKFLOW.count("72-HOUR EVENT CANDIDATE") >= 2
     assert "sarah-morgan-debug-signing-v1" in WORKFLOW
     assert "sarah-morgan-event-signing-v1" in WORKFLOW
 

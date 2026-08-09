@@ -84,7 +84,7 @@ android {
             versionNameSuffix '-event-candidate'
             signingConfig signingConfigs.debug
             matchingFallbacks = ['debug']
-            resValue 'string', 'app_name', 'Sarah Morgan Event Candidate'
+            resValue 'string', 'app_name', 'Sarah Morgan 72-Hour Event Candidate'
             // Owner-authorized, side-by-side event artifact. This value is the
             // revocable app-to-Worker bearer only; provider keys remain empty.
             buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahEventBackendToken)
