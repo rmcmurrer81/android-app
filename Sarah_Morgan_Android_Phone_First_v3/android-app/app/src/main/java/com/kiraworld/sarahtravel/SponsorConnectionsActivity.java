@@ -62,6 +62,7 @@ public final class SponsorConnectionsActivity extends Activity {
                 ? "No current area is saved for this profile."
                 : CurrentLocationPolicy.settingsStatus(
                         savedArea, locationStore.source(activePersonId)), 13, false);
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) {
         add(root, "Gmail", 20, true);
         GmailTokenVault gmailVault = new GmailTokenVault(this);
         String gmailProfileId = EventTripStore.activePersonId(this);
@@ -82,6 +83,7 @@ public final class SponsorConnectionsActivity extends Activity {
         gmailConnect.setOnClickListener(v -> startActivityForResult(
                 new Intent(this, GmailAuthorizationActivity.class), REQ_GMAIL));
         root.addView(gmailConnect);
+        }
         Button bookingImport = new Button(this);
         bookingImport.setText("Import a booking you choose to share");
         bookingImport.setAllCaps(false);

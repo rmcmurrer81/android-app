@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -141,11 +142,16 @@ public final class SettingsActivity extends Activity {
 
         gmailConnectionStatus = findViewById(R.id.gmailConnectionStatus);
         Button manageGmail = findViewById(R.id.manageGmailConnectionButton);
-        String gmailProfileId = EventTripStore.activePersonId(this);
-        refreshGmailConnectionStatus();
-        manageGmail.setEnabled(!gmailProfileId.isEmpty());
-        manageGmail.setOnClickListener(v -> startActivity(
-                new Intent(this, GmailAuthorizationActivity.class)));
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) {
+            String gmailProfileId = EventTripStore.activePersonId(this);
+            refreshGmailConnectionStatus();
+            manageGmail.setEnabled(!gmailProfileId.isEmpty());
+            manageGmail.setOnClickListener(v -> startActivity(
+                    new Intent(this, GmailAuthorizationActivity.class)));
+        } else {
+            gmailConnectionStatus.setVisibility(View.GONE);
+            manageGmail.setVisibility(View.GONE);
+        }
 
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
@@ -613,7 +619,7 @@ public final class SettingsActivity extends Activity {
     }
 
     private void refreshGmailConnectionStatus() {
-        if (gmailConnectionStatus == null) return;
+        if (gmailConnectionStatus == null || !BuildConfig.SARAH_GMAIL_AVAILABLE) return;
         String gmailProfileId = EventTripStore.activePersonId(this);
         GmailTokenVault gmailVault = new GmailTokenVault(this);
         boolean gmailConnected = !gmailProfileId.isEmpty()

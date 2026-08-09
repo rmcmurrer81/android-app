@@ -152,34 +152,29 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
         self.assertNotIn("secrets.", apk_build)
         self.assertNotIn("VALIDATION_API_KEY", apk_build)
 
-    def test_online_judge_bundles_identity_but_not_access_code(self):
+    def test_online_judge_event_candidate_bundles_only_revocable_access_code(self):
         workflow = read(WORKFLOWS / "sarah-2.5-online-judge-build.yml")
-        apk = step(workflow, "Build the online/offline owner-acceptance candidate APK")
-        self.assertIn("SARAH_MODEL_BACKEND_TOKEN: ''", apk)
+        apk = step(workflow, "Build the side-by-side online/offline event candidate APK")
+        self.assertIn("SARAH_EVENT_BACKEND_TOKEN:", apk)
         self.assertIn("SARAH_ELEVENLABS_BACKEND_TOKEN: ''", apk)
-        self.assertNotIn("secrets.SARAH_MODEL_BACKEND_TOKEN", apk)
-        self.assertNotIn("secrets.SARAH_ELEVENLABS_BACKEND_TOKEN", apk)
+        self.assertIn("secrets.SARAH_MODEL_BACKEND_TOKEN", apk)
+        self.assertNotIn("secrets.SARAH_TAVILY_API_KEY", apk)
+        self.assertNotIn("secrets.SARAH_ELEVENLABS_API_KEY", apk)
 
         windows = step(
             workflow,
             "Generate the event-only config and build the Windows installer",
         )
-        self.assertNotIn("$env:SARAH_MODEL_BACKEND_TOKEN", windows)
-        self.assertNotRegex(
-            windows,
-            r"(?m)^\s+SARAH_MODEL_BACKEND_TOKEN\s*=",
-        )
-        self.assertIn("A reusable credential was added", windows)
-        self.assertIn("vars.SARAH_GMAIL_DESKTOP_CLIENT_ID", windows)
-        self.assertIn("vars.SARAH_GMAIL_DESKTOP_CLIENT_SECRET", windows)
-        self.assertNotIn("secrets.SARAH_GMAIL_DESKTOP", windows)
-        self.assertIn('--add-data "$gmailOAuthPath;."', windows)
-        self.assertIn("event_app_token_bundled = $false", workflow)
-        self.assertIn("owner_runtime_activation_required = $true", workflow)
+        self.assertIn("$env:SARAH_MODEL_BACKEND_TOKEN", windows)
+        self.assertIn("SARAH_EVENT_GMAIL_AVAILABLE = 'false'", windows)
+        self.assertNotIn("SARAH_GMAIL_DESKTOP_CLIENT_ID", windows)
+        self.assertNotIn("sarah-gmail-oauth-client.json", windows)
+        self.assertIn("event_app_token_bundled = $true", workflow)
+        self.assertIn("owner_runtime_activation_required = $false", workflow)
 
         event_ready = read(REPO / "windows-companion/sarah_event_ready.py")
         self.assertIn("Bundled event configuration contains reusable credential fields", event_ready)
-        self.assertNotIn("Bundled event model backend token is absent", event_ready)
+        self.assertIn("Bundled event app-to-Worker bearer is absent", event_ready)
 
         windows_core = read(REPO / "windows-companion/sarah_core.py")
         self.assertIn("RUNTIME_SECRET_KEYS", windows_core)
@@ -222,9 +217,18 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
 
             for step_name, block in named_step_blocks(workflow):
                 if artifact_step_words.search(step_name):
-                    self.assertFalse(
-                        credential_secret_refs(block),
-                        f"{name} artifact step {step_name!r} receives a credential",
+                    allowed = set()
+                    if name == "sarah-2.5-online-judge-build.yml" and step_name in {
+                        "Build the side-by-side online/offline event candidate APK",
+                        "Generate the event-only config and build the Windows installer",
+                    }:
+                        allowed = {
+                            "SARAH_MODEL_BACKEND_TOKEN",
+                            "SARAH_ELEVENLABS_BACKEND_TOKEN",
+                        }
+                    self.assertEqual(
+                        credential_secret_refs(block), allowed,
+                        f"{name} artifact step {step_name!r} receives an unauthorized credential",
                     )
 
     def test_legacy_22_workflows_limit_secrets_to_exact_live_checks(self):

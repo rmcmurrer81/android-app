@@ -322,23 +322,25 @@ def test_legacy_plaintext_runtime_access_is_migrated_on_first_read():
         assert "dpapi-v1:" in migrated or "local-aesgcm-v1:" in migrated
 
 
-def test_runtime_setting_precedence_excludes_bundled_credentials(monkeypatch):
+def test_runtime_setting_precedence_allows_only_event_worker_bearer(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "runtime")
         bundle = Path(temp) / "sarah-event-config.json"
         bundle.write_text(json.dumps({
             "SARAH_MODEL_BACKEND_URL": "https://event.example.test",
             "SARAH_MODEL_BACKEND_TOKEN": "event-token",
+            "SARAH_TAVILY_API_KEY": "must-not-load",
             "NOT_ALLOWED": "ignored",
         }), encoding="utf-8")
 
         monkeypatch.delenv("SARAH_MODEL_BACKEND_TOKEN", raising=False)
         assert load_bundled_event_config(bundle) == {
             "SARAH_MODEL_BACKEND_URL": "https://event.example.test",
+            "SARAH_MODEL_BACKEND_TOKEN": "event-token",
         }
         assert runtime_setting(
             "SARAH_MODEL_BACKEND_TOKEN", root=root, bundled_path=bundle,
-        ) == ""
+        ) == "event-token"
 
         save_runtime_config({"SARAH_MODEL_BACKEND_TOKEN": "user-token"}, root)
         assert runtime_setting(

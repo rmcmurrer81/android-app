@@ -81,11 +81,14 @@ public final class BookingImportActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         String gmailProfileId = EventTripStore.activePersonId(this);
-        GmailTokenVault gmailVault = new GmailTokenVault(this);
-        boolean gmailConnected = !gmailProfileId.isEmpty()
+        GmailTokenVault gmailVault = BuildConfig.SARAH_GMAIL_AVAILABLE
+                ? new GmailTokenVault(this) : null;
+        boolean gmailConnected = gmailVault != null && !gmailProfileId.isEmpty()
                 && gmailVault.hasAuthorizedGrant(gmailProfileId);
         boolean gmailReady = gmailConnected && !gmailVault.reauthorizationRequired();
-        add(root, "Gmail and booking imports", 24);
+        add(root, BuildConfig.SARAH_GMAIL_AVAILABLE
+                ? "Gmail and booking imports" : "Booking imports", 24);
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) {
         add(root, gmailConnected
                 ? "Gmail read-only: " + gmailVault.accountEmail(gmailProfileId)
                     + " · monitoring " + (gmailVault.monitoringEnabled(gmailProfileId) ? "on" : "off")
@@ -123,6 +126,9 @@ public final class BookingImportActivity extends Activity {
                 ? "never"
                 : java.time.Instant.ofEpochMilli(lastGmailSync))
                 + " · metadata first · messages unchanged", 14);
+        } else {
+            add(root, "Gmail is not included in this event build. You can still import an exact booking screenshot, PDF, link, or text that you choose to share.", 14);
+        }
 
         Button choose = new Button(this);
         choose.setText("Choose a booking screenshot or PDF");
@@ -144,13 +150,15 @@ public final class BookingImportActivity extends Activity {
         clear.setText("Clear imported booking data");
         clear.setOnClickListener(v -> confirmClearImports());
         root.addView(clear);
-        Button manageGmail = new Button(this);
-        manageGmail.setText("Review or disconnect Gmail");
-        manageGmail.setEnabled(gmailConnected);
-        manageGmail.setOnClickListener(v -> startActivityForResult(
-                new Intent(this, GmailAuthorizationActivity.class),
-                REQUEST_GMAIL_CONNECTION));
-        root.addView(manageGmail);
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) {
+            Button manageGmail = new Button(this);
+            manageGmail.setText("Review or disconnect Gmail");
+            manageGmail.setEnabled(gmailConnected);
+            manageGmail.setOnClickListener(v -> startActivityForResult(
+                    new Intent(this, GmailAuthorizationActivity.class),
+                    REQUEST_GMAIL_CONNECTION));
+            root.addView(manageGmail);
+        }
         Button close = new Button(this);
         close.setText("Back to Sarah");
         close.setOnClickListener(v -> finish());

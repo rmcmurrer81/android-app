@@ -20,6 +20,7 @@ def sarahBuildCommit = System.getenv('GITHUB_SHA') ?: ''
 def sarahExpectedDeploymentId = System.getenv('SARAH_EXPECTED_DEPLOYMENT_ID') ?: ''
 def sarahExpectedWorkerSourceSha256 = System.getenv('SARAH_EXPECTED_WORKER_SOURCE_SHA256') ?: ''
 def sarahExpectedWorkerConfigSha256 = System.getenv('SARAH_EXPECTED_WORKER_CONFIG_SHA256') ?: ''
+def sarahEventBackendToken = System.getenv('SARAH_EVENT_BACKEND_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
@@ -63,6 +64,10 @@ android {
         buildConfigField 'String', 'SARAH_EXPECTED_DEPLOYMENT_ID', javaString(sarahExpectedDeploymentId)
         buildConfigField 'String', 'SARAH_EXPECTED_WORKER_SOURCE_SHA256', javaString(sarahExpectedWorkerSourceSha256)
         buildConfigField 'String', 'SARAH_EXPECTED_WORKER_CONFIG_SHA256', javaString(sarahExpectedWorkerConfigSha256)
+        // The normal R1-compatible lane keeps Gmail source available and never
+        // bundles a protected-backend token.  The explicitly separate event
+        // build type overrides both values below without changing this lane.
+        buildConfigField 'boolean', 'SARAH_GMAIL_AVAILABLE', 'true'
     }
 
     buildFeatures {
@@ -72,6 +77,18 @@ android {
     buildTypes {
         debug {
             versionNameSuffix '-debug'
+        }
+        eventCandidate {
+            initWith debug
+            applicationIdSuffix '.eventcandidate'
+            versionNameSuffix '-event-candidate'
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['debug']
+            resValue 'string', 'app_name', 'Sarah Morgan Event Candidate'
+            // Owner-authorized, side-by-side event artifact. This value is the
+            // revocable app-to-Worker bearer only; provider keys remain empty.
+            buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahEventBackendToken)
+            buildConfigField 'boolean', 'SARAH_GMAIL_AVAILABLE', 'false'
         }
         release {
             minifyEnabled false

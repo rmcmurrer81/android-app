@@ -147,6 +147,14 @@ PALETTE = {
 }
 
 
+def event_gmail_available() -> bool:
+    """Whether this distribution intentionally exposes Gmail owner controls."""
+
+    return runtime_setting("SARAH_EVENT_GMAIL_AVAILABLE", "1").lower() not in {
+        "0", "false", "no", "off",
+    }
+
+
 def _clean_place(value: str) -> str:
     return " ".join(str(value or "").split())[:240]
 
@@ -296,7 +304,8 @@ class SarahEventReadyApp(SarahApp):
                 self._pairing_credential_vault = None
                 self._secure_sync_service = None
         self.root.title("Sarah Morgan • Windows 2.5")
-        self._schedule_gmail_monitor_tick()
+        if event_gmail_available():
+            self._schedule_gmail_monitor_tick()
         if self._local_discovery is not None and SarahPairingResponderServer is not None:
             try:
                 self._pairing_responder = SarahPairingResponderServer(
@@ -965,7 +974,8 @@ class SarahEventReadyApp(SarahApp):
             1,
         )
         self._owner_button(sponsor_card, "Service status", self.show_sponsors).pack(anchor="w")
-        self._owner_button(sponsor_card, "Gmail travel offers", lambda: self._show_page("connections")).pack(anchor="w", pady=(8, 0))
+        if event_gmail_available():
+            self._owner_button(sponsor_card, "Gmail travel offers", lambda: self._show_page("connections")).pack(anchor="w", pady=(8, 0))
 
         wallet_card = self._connection_card(
             cards,
@@ -1264,8 +1274,9 @@ class SarahEventReadyApp(SarahApp):
             "Current-source search: " + ("set up" if research_configured else "not connected"),
             "Places-to-stay service: " + ("set up" if stay_configured else "not connected"),
             "ElevenLabs voice: " + ("set up" if self.voice.configured else "not connected"),
-            "Gmail travel updates: " + ("connected read-only" if self._gmail_connected else "not connected"),
         ]
+        if event_gmail_available():
+            lines.append("Gmail travel updates: " + ("connected read-only" if self._gmail_connected else "not connected"))
         messagebox.showinfo(
             "Travel service status",
             "\n".join(lines)
@@ -1689,37 +1700,43 @@ class SarahEventReadyApp(SarahApp):
         self._owner_button(voice, "Hear Sarah (ElevenLabs)", self.hear_sarah_elevenlabs).pack(anchor="w")
         self._owner_button(voice, "Connect Sarah private access", self.connect_private_access).pack(anchor="w", pady=(8, 0))
 
-        gmail = self._connection_card(
-            grid,
-            "Gmail travel updates",
-            "Optional read-only access. Sarah cannot send, delete, mark read, or change your mail.",
-            0,
-            1,
-        )
-        gmail_actions = tk.Frame(gmail, bg=PALETTE["panel"])
-        gmail_actions.pack(fill="x")
-        self._owner_button(gmail_actions, "Connect Gmail read-only", self.connect_gmail).pack(side="left")
-        self._owner_button(gmail_actions, "Check travel mail", self.review_travel_mail).pack(side="left", padx=7)
-        self._owner_button(gmail_actions, "Disconnect", self.disconnect_gmail).pack(side="left")
-        self._owner_button(gmail, "Review email suggestions in Calendar", lambda: self._show_page("calendar")).pack(anchor="w", pady=(8, 0))
-        self._gmail_monitor_enabled = tk.BooleanVar(
-            value=self.db.get_setting(self._gmail_setting_key("gmail_monitor_enabled"), "0") == "1"
-        )
-        tk.Checkbutton(
-            gmail,
-            text="Monitor travel updates about every 6 hours while Sarah is running",
-            variable=self._gmail_monitor_enabled,
-            command=self._owner_changed_gmail_monitor,
-            bg=PALETTE["panel"],
-            fg=PALETTE["soft"],
-            activebackground=PALETTE["panel"],
-            activeforeground=PALETTE["text"],
-            selectcolor=PALETTE["field"],
-            font=("Segoe UI", 9),
-            anchor="w",
-        ).pack(fill="x", pady=(8, 0))
-        self.gmail_list = self._dark_listbox(gmail, height=5)
-        self.gmail_list.pack(fill="both", expand=True, pady=(10, 0))
+        self._gmail_monitor_enabled = tk.BooleanVar(value=False)
+        if event_gmail_available():
+            gmail = self._connection_card(
+                grid,
+                "Gmail travel updates",
+                "Optional read-only access. Sarah cannot send, delete, mark read, or change your mail.",
+                0,
+                1,
+            )
+            gmail_actions = tk.Frame(gmail, bg=PALETTE["panel"])
+            gmail_actions.pack(fill="x")
+            self._owner_button(gmail_actions, "Connect Gmail read-only", self.connect_gmail).pack(side="left")
+            self._owner_button(gmail_actions, "Check travel mail", self.review_travel_mail).pack(side="left", padx=7)
+            self._owner_button(gmail_actions, "Disconnect", self.disconnect_gmail).pack(side="left")
+            self._owner_button(gmail, "Review email suggestions in Calendar", lambda: self._show_page("calendar")).pack(anchor="w", pady=(8, 0))
+            self._gmail_monitor_enabled.set(
+                self.db.get_setting(self._gmail_setting_key("gmail_monitor_enabled"), "0") == "1"
+            )
+            tk.Checkbutton(
+                gmail,
+                text="Monitor travel updates about every 6 hours while Sarah is running",
+                variable=self._gmail_monitor_enabled,
+                command=self._owner_changed_gmail_monitor,
+                bg=PALETTE["panel"],
+                fg=PALETTE["soft"],
+                activebackground=PALETTE["panel"],
+                activeforeground=PALETTE["text"],
+                selectcolor=PALETTE["field"],
+                font=("Segoe UI", 9),
+                anchor="w",
+            ).pack(fill="x", pady=(8, 0))
+            self.gmail_list = self._dark_listbox(gmail, height=5)
+            self.gmail_list.pack(fill="both", expand=True, pady=(10, 0))
+        else:
+            # Keep internal callbacks fail-closed without presenting Gmail as
+            # an event feature. This hidden widget is never packed.
+            self.gmail_list = self._dark_listbox(body, height=1)
 
         devices = self._connection_card(
             grid,
@@ -1907,7 +1924,7 @@ class SarahEventReadyApp(SarahApp):
         return GmailTokenVault(self.db.root, safe_text(person_id) or self._gmail_person_id())
 
     def _gmail_backend_ready(self) -> bool:
-        return all(
+        return event_gmail_available() and all(
             value is not None
             for value in (
                 GmailReadOnlyOAuth,
@@ -1946,6 +1963,9 @@ class SarahEventReadyApp(SarahApp):
 
     def _offer_gmail_after_profile(self) -> None:
         """Offer optional Gmail only after local/imported owner identity exists."""
+
+        if not event_gmail_available():
+            return
 
         key = self._gmail_setting_key("gmail_profile_offer_shown")
         if self.db.get_setting(key, "0") == "1":
@@ -2970,9 +2990,6 @@ def self_test() -> int:
     if not motion.stop_speaking(1):
         raise RuntimeError("Packaged Sarah live-avatar generation stop failed")
     required_r3_backends = {
-        "GmailReadOnlyOAuth": GmailReadOnlyOAuth,
-        "GmailTokenVault": GmailTokenVault,
-        "inspect_desktop_oauth_client": inspect_desktop_oauth_client,
         "PairingInitiator": PairingInitiator,
         "PairingResponder": PairingResponder,
         "SarahDiscoveryResponder": SarahDiscoveryResponder,
@@ -2984,8 +3001,14 @@ def self_test() -> int:
         "pull_android_preview": pull_android_preview,
         "SarahWallet": SarahWallet,
         "SarahCalendarStore": SarahCalendarStore,
-        "resolve_desktop_oauth_client_path": resolve_desktop_oauth_client_path,
     }
+    if event_gmail_available():
+        required_r3_backends.update({
+            "GmailReadOnlyOAuth": GmailReadOnlyOAuth,
+            "GmailTokenVault": GmailTokenVault,
+            "inspect_desktop_oauth_client": inspect_desktop_oauth_client,
+            "resolve_desktop_oauth_client_path": resolve_desktop_oauth_client_path,
+        })
     missing_backends = sorted(
         name for name, value in required_r3_backends.items() if value is None
     )
@@ -2993,11 +3016,12 @@ def self_test() -> int:
         raise RuntimeError(
             "Packaged Sarah is missing required R3 backends: " + ", ".join(missing_backends)
         )
-    try:
-        import google_auth_oauthlib.flow  # noqa: F401
-        import googleapiclient.discovery  # noqa: F401
-    except ImportError as error:
-        raise RuntimeError("Packaged Sarah is missing Google read-only OAuth support") from error
+    if event_gmail_available():
+        try:
+            import google_auth_oauthlib.flow  # noqa: F401
+            import googleapiclient.discovery  # noqa: F401
+        except ImportError as error:
+            raise RuntimeError("Packaged Sarah is missing Google read-only OAuth support") from error
     bundled_path = bundled_event_config_path()
     if bundled_path.is_file():
         raw_bundled = json.loads(bundled_path.read_text(encoding="utf-8"))
@@ -3006,6 +3030,7 @@ def self_test() -> int:
         forbidden = sorted(
             str(key) for key in raw_bundled
             if any(marker in str(key) for marker in ("TOKEN", "API_KEY", "PASSWORD", "SECRET"))
+            and str(key) != "SARAH_MODEL_BACKEND_TOKEN"
         )
         if forbidden:
             raise RuntimeError(
@@ -3017,10 +3042,13 @@ def self_test() -> int:
             raise RuntimeError("Bundled event model backend URL is absent or is not HTTPS")
         if not bundled.get("SARAH_MODEL_PROVIDER") or not bundled.get("SARAH_MODEL_ID"):
             raise RuntimeError("Bundled event model provider configuration is incomplete")
-        packaged_gmail_path = resolve_desktop_oauth_client_path()
-        if packaged_gmail_path is None:
-            raise RuntimeError("Event owner build is missing its public Desktop Gmail identity")
-        inspect_desktop_oauth_client(packaged_gmail_path)
+        if not bundled.get("SARAH_MODEL_BACKEND_TOKEN"):
+            raise RuntimeError("Bundled event app-to-Worker bearer is absent")
+        if event_gmail_available():
+            packaged_gmail_path = resolve_desktop_oauth_client_path()
+            if packaged_gmail_path is None:
+                raise RuntimeError("Event owner build is missing its public Desktop Gmail identity")
+            inspect_desktop_oauth_client(packaged_gmail_path)
     with tempfile.TemporaryDirectory(prefix="sarah-event-ready-", ignore_cleanup_errors=True) as folder:
         self_test_root = Path(folder)
         database = SarahDatabase(self_test_root)

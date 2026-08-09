@@ -52,7 +52,7 @@ public final class TravelHubActivity extends Activity {
                 "Turn ideas into an editable day-by-day plan, track planned and actual spending, and keep a preparation list separated by the active profile.",
                 TravelUi.MINT,
                 TripPlannerActivity.class));
-        root.addView(feature(
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) root.addView(feature(
                 "📅", "Sarah's calendar and email proposals",
                 "Review possible trips or events found through optional Gmail read-only access, choose what Sarah may remember, preserve exact departure/arrival or event times, and request individual local reminders.",
                 TravelUi.SKY,

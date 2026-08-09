@@ -35,6 +35,13 @@ jobs:
     timeout-minutes: 45
     env:
       SARAH_CANDIDATE_WORKER_NAME: sarah-r3-${{ github.run_id }}-${{ github.run_attempt }}
+      # Explicit owner-authorized event lane. The normal R1 upgrade lane and
+      # its exact signer gate remain below, but are not silently bypassed.
+      SARAH_ANDROID_DISTRIBUTION: event_side_by_side
+      # Preserved normal-lane evidence vocabulary for validators and rollback:
+      # CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE; r1_signer_sha256;
+      # r3_signer_sha256; same-package-in-place-only. The event lane below is
+      # intentionally distinct and makes none of those continuity claims.
       # Public preserved-R1 evidence: exact installed APK and signer certificate.
       SARAH_R1_SIGNING_CERT_SHA256: d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c
       SARAH_R1_APK_SHA256: be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314
@@ -991,24 +998,47 @@ jobs:
 
       - name: Preserve Sarah private-test Android signing continuity
         id: signing_cache
+        if: env.SARAH_ANDROID_DISTRIBUTION != 'event_side_by_side'
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: sarah-morgan-debug-signing-v1
 
       - name: Fail closed unless the preserved R1 signing key was restored
-        if: steps.signing_cache.outputs.cache-hit != 'true'
+        if: env.SARAH_ANDROID_DISTRIBUTION != 'event_side_by_side' && steps.signing_cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           echo '::error::R1 signing cache was not an exact hit. R3 is migration-blocked; do not uninstall R1 or upload this APK.'
           exit 1
+
+      - name: Preserve the distinct side-by-side event signing identity
+        id: event_signing_cache
+        if: env.SARAH_ANDROID_DISTRIBUTION == 'event_side_by_side'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-event-signing-v1
+
+      - name: Create the event signer only on first use
+        if: env.SARAH_ANDROID_DISTRIBUTION == 'event_side_by_side' && steps.event_signing_cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          test ! -e "$HOME/.android/debug.keystore"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname 'CN=Sarah Morgan Event Candidate,O=Kira Labs Event Build,C=US'
+          test -s "$HOME/.android/debug.keystore"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      - name: Build the online/offline owner-acceptance candidate APK
+      - name: Build the side-by-side online/offline event candidate APK
         env:
           SARAH_OPENAI_API_KEY: ''
           SARAH_ELEVENLABS_API_KEY: ''
@@ -1020,7 +1050,7 @@ jobs:
           SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
           SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
           SARAH_MODEL_BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
-          SARAH_MODEL_BACKEND_TOKEN: ''
+          SARAH_EVENT_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
           SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
           SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
@@ -1037,14 +1067,14 @@ jobs:
         run: |
           set -euo pipefail
           export SARAH_ELEVENLABS_BACKEND_URL="${SARAH_MODEL_BACKEND_URL%/}/voice"
-          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleEventCandidate --stacktrace
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
           metadata_path = Path(
-              'Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json'
+              'Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/eventCandidate/output-metadata.json'
           )
           metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
           elements = metadata.get('elements') or []
@@ -1054,20 +1084,20 @@ jobs:
           actual_code = int(built.get('versionCode', -1))
           actual_name = str(built.get('versionName') or '')
           expected_code = int(os.environ['SARAH_R3_ANDROID_VERSION_CODE'])
-          expected_name = os.environ['SARAH_R3_ANDROID_VARIANT_VERSION_NAME']
+          expected_name = os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate'
           if actual_code != expected_code or actual_name != expected_name:
               raise SystemExit(
                   'Built APK version identity mismatch: '
                   f'expected {expected_code}/{expected_name}, found {actual_code}/{actual_name}.'
               )
-          if actual_code != 27 or not actual_name.startswith('2.5-r3-owner-repair'):
+          if actual_code != 27 or actual_name != '2.5-r3-owner-repair-event-candidate':
               raise SystemExit(f'Built APK is not the required R3 owner-repair version: {actual_code}/{actual_name}.')
           print('Built R3 APK version identity:', actual_code, actual_name)
           PY
-          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk \
-            Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk
-          test -s Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk
-          unzip -t Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk >/dev/null
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/eventCandidate/app-eventCandidate.apk \
+            Sarah-Morgan-Event-Candidate.apk
+          test -s Sarah-Morgan-Event-Candidate.apk
+          unzip -t Sarah-Morgan-Event-Candidate.apk >/dev/null
 
           expected_signer=$(printf '%s' "${SARAH_R1_SIGNING_CERT_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
           r1_apk_sha=$(printf '%s' "${SARAH_R1_APK_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
@@ -1085,7 +1115,7 @@ jobs:
             echo '::error::Android apksigner was not found.'
             exit 1
           fi
-          signer_output=$($apksigner verify --print-certs Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk)
+          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate.apk)
           actual_signer=$(printf '%s\n' "$signer_output" \
             | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
             | head -n 1 | tr -d ':[:space:]' | tr 'A-F' 'a-f')
@@ -1093,16 +1123,15 @@ jobs:
             echo '::error::Could not extract the built R3 signer SHA-256.'
             exit 1
           fi
-          if [ "$actual_signer" != "$expected_signer" ]; then
-            echo '::error::R3 signer differs from installed R1. In-place private-data upgrade is blocked; do not uninstall R1.'
+          if [ "$actual_signer" = "$expected_signer" ]; then
+            echo '::error::The side-by-side event APK unexpectedly reused the installed R1 signer.'
             exit 1
           fi
-          echo "SARAH_R1_SIGNER_SHA256=$expected_signer" >> "$GITHUB_ENV"
-          echo "SARAH_R3_SIGNER_SHA256=$actual_signer" >> "$GITHUB_ENV"
+          echo "SARAH_EVENT_SIGNER_SHA256=$actual_signer" >> "$GITHUB_ENV"
           echo "SARAH_R1_APK_CHECKPOINT_SHA256=$r1_apk_sha" >> "$GITHUB_ENV"
 
           build_config=$(find Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/generated \
-            -type f -path '*/debug/*' -name BuildConfig.java -print | head -n 1)
+            -type f -path '*/eventCandidate/*' -name BuildConfig.java -print | head -n 1)
           if [ -z "$build_config" ]; then
             echo '::error::Generated Android BuildConfig.java was not found for credential inspection.'
             exit 1
@@ -1113,7 +1142,6 @@ jobs:
           text = Path(sys.argv[1]).read_text(encoding='utf-8')
           for field in (
               'SARAH_OPENAI_API_KEY',
-              'SARAH_MODEL_BACKEND_TOKEN',
               'SARAH_TRAVEL_COMMERCE_TOKEN',
               'SARAH_VOICE_CONCIERGE_TOKEN',
               'SARAH_ELEVENLABS_API_KEY',
@@ -1124,18 +1152,24 @@ jobs:
               match = re.search(rf'public static final String {field} = "([^"]*)";', text)
               if match is None or match.group(1):
                   raise SystemExit(f'Provider credential field {field} is not explicitly empty in generated BuildConfig.')
-          print('Generated BuildConfig provider credential fields are empty.')
+          token = re.search(r'public static final String SARAH_MODEL_BACKEND_TOKEN = "([^"]*)";', text)
+          if token is None or not re.fullmatch(r'[A-Za-z0-9_-]{32,256}', token.group(1)):
+              raise SystemExit('Event app-to-Worker bearer is absent or malformed.')
+          gmail = re.search(r'public static final boolean SARAH_GMAIL_AVAILABLE = (true|false);', text)
+          if gmail is None or gmail.group(1) != 'false':
+              raise SystemExit('Event Gmail capability must be false.')
+          print('Provider credential fields are empty; one revocable app bearer is present; Gmail is off.')
           PY
           rm -rf build/r3-apk-secret-scan
           mkdir -p build/r3-apk-secret-scan
-          unzip -q Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk -d build/r3-apk-secret-scan
+          unzip -q Sarah-Morgan-Event-Candidate.apk -d build/r3-apk-secret-scan
           if grep -aERq '(sk[_-][A-Za-z0-9_-]{20,}|xi-[A-Za-z0-9_-]{20,}|tvly-[A-Za-z0-9_-]{20,}|CLOUDFLARE_API_TOKEN=[A-Za-z0-9_-]+)' \
               "$build_config" build/r3-apk-secret-scan; then
             echo '::error::A provider credential-like value was found in generated BuildConfig or decompressed APK/dex contents.'
             exit 1
           fi
-          sha256sum Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk \
-            | tee Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.sha256
+          sha256sum Sarah-Morgan-Event-Candidate.apk \
+            | tee Sarah-Morgan-Event-Candidate.sha256
 
       - name: Record exactly what the owner-acceptance candidate contains
         env:
@@ -1158,11 +1192,11 @@ jobs:
           manifest = {
               'product': 'Sarah Morgan Travel OS',
               'repair_revision': 'R3_OWNER_REPAIR',
-              'artifact_status': 'CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE',
-              'version': os.environ['SARAH_R3_ANDROID_VARIANT_VERSION_NAME'],
+              'artifact_status': 'EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE',
+              'version': os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate',
               'version_code': int(os.environ['SARAH_R3_ANDROID_VERSION_CODE']),
               'source_version_name': os.environ['SARAH_R3_ANDROID_VERSION_NAME'],
-              'built_variant_version_name': os.environ['SARAH_R3_ANDROID_VARIANT_VERSION_NAME'],
+              'built_variant_version_name': os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate',
               'source_version_target': os.environ['SARAH_R3_SOURCE_TARGET'],
               'source_commit': os.environ['GITHUB_SHA'],
               'provider_requested_by_apk': os.environ['SARAH_MODEL_PROVIDER'],
@@ -1187,8 +1221,8 @@ jobs:
               ),
               'provider_key_embedded': False,
               'elevenlabs_key_embedded': False,
-              'protected_backend_access_bundled': False,
-              'owner_runtime_activation_required': True,
+              'protected_backend_access_bundled': True,
+              'owner_runtime_activation_required': False,
               'live_online_smoke_test': 'passed',
               'live_production_modelclient_conversation': os.environ['SARAH_LIVE_CONVERSATION_OBJECTIVE'],
               'live_text_median_ms': int(os.environ['SARAH_LIVE_TEXT_MEDIAN_MS']),
@@ -1204,13 +1238,14 @@ jobs:
               'physical_galaxy_a17_acceptance': 'pending',
               'full_16_gate_owner_acceptance': 'pending',
               'populated_profile_migration_device_acceptance': 'pending',
-              'android_upgrade_mode': 'same-package-in-place-only',
+              'android_application_id': 'com.kiraworld.sarahtravel.eventcandidate',
+              'android_upgrade_mode': 'side_by_side_event_candidate',
               'uninstall_r1_permitted': False,
               'r1_apk_checkpoint_sha256': os.environ['SARAH_R1_APK_CHECKPOINT_SHA256'],
-              'r1_signer_sha256': os.environ['SARAH_R1_SIGNER_SHA256'],
-              'r3_signer_sha256': os.environ['SARAH_R3_SIGNER_SHA256'],
-              'signing_continuity': 'passed_exact_r1_r3_sha256_match',
-              'r1_private_data_migration_gate': 'required_pending_physical_populated_install',
+              'event_signer_sha256': os.environ['SARAH_EVENT_SIGNER_SHA256'],
+              'signing_continuity': 'intentionally_distinct_event_identity',
+              'r1_private_data_migration_gate': 'not_applicable_side_by_side_r1_untouched',
+              'gmail_available': False,
               'android_voice_transport': 'media3_progressive_one_shot_post',
               'protected_voice_route_receipt_required': True,
               'voice_timing_fields': [
@@ -1226,7 +1261,7 @@ jobs:
               'built_at_utc': datetime.now(timezone.utc).isoformat(),
               'note': 'This is a source/build/smoke-tested candidate, not a judge-ready or owner-accepted APK. The Worker provider/model may be changed server-side without rebuilding it.',
           }
-          with open('Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST-manifest.json', 'w', encoding='utf-8') as handle:
+          with open('Sarah-Morgan-Event-Candidate-manifest.json', 'w', encoding='utf-8') as handle:
               json.dump(manifest, handle, indent=2)
           PY
 
@@ -1234,11 +1269,12 @@ jobs:
         id: upload_candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-2.5-R3-CURRENT-OWNER-TEST-Android-APK
+          name: Sarah-Morgan-Event-Candidate-Android-APK
           path: |
-            Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk
-            Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.sha256
-            Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST-manifest.json
+            Sarah-Morgan-Event-Candidate.apk
+            Sarah-Morgan-Event-Candidate.sha256
+            Sarah-Morgan-Event-Candidate-manifest.json
+            README_EVENT_CANDIDATE.md
           if-no-files-found: error
           retention-days: 14
 
@@ -1318,72 +1354,56 @@ jobs:
         working-directory: windows-companion
         env:
           SARAH_MODEL_BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
+          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
           SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
-          SARAH_GMAIL_DESKTOP_CLIENT_ID: ${{ vars.SARAH_GMAIL_DESKTOP_CLIENT_ID }}
-          SARAH_GMAIL_DESKTOP_CLIENT_SECRET: ${{ vars.SARAH_GMAIL_DESKTOP_CLIENT_SECRET }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_ELEVENLABS_VOICE_ID')) {
+          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_ELEVENLABS_VOICE_ID')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Required event build setting is absent: $name"
             }
           }
-          foreach ($name in @('SARAH_GMAIL_DESKTOP_CLIENT_ID', 'SARAH_GMAIL_DESKTOP_CLIENT_SECRET')) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Required public Desktop OAuth build identity is absent: repository variable $name"
-            }
-          }
-          if ($env:SARAH_GMAIL_DESKTOP_CLIENT_ID -notmatch '^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$') {
-            throw 'SARAH_GMAIL_DESKTOP_CLIENT_ID is not a Google installed-app client ID.'
+          if ($env:SARAH_MODEL_BACKEND_TOKEN -notmatch '^[A-Za-z0-9_-]{32,256}$') {
+            throw 'The revocable event app-to-Worker bearer is malformed.'
           }
           $eventConfig = [ordered]@{
             SARAH_MODEL_BACKEND_URL = $env:SARAH_MODEL_BACKEND_URL
+            SARAH_MODEL_BACKEND_TOKEN = $env:SARAH_MODEL_BACKEND_TOKEN
             SARAH_MODEL_PROVIDER = $env:SARAH_MODEL_PROVIDER
             SARAH_MODEL_ID = $env:SARAH_MODEL_ID
             SARAH_ELEVENLABS_VOICE_ID = $env:SARAH_ELEVENLABS_VOICE_ID
             SARAH_ELEVENLABS_MODEL_ID = $env:SARAH_ELEVENLABS_MODEL_ID
+            SARAH_EVENT_GMAIL_AVAILABLE = 'false'
           }
-          if (@($eventConfig.Keys | Where-Object { $_ -match '(TOKEN|API_KEY|PASSWORD|SECRET)' }).Count -ne 0) {
-            throw 'A reusable credential was added to the Windows bundled event configuration.'
+          $secretKeys = @($eventConfig.Keys | Where-Object { $_ -match '(TOKEN|API_KEY|PASSWORD|SECRET)' })
+          if ($secretKeys.Count -ne 1 -or $secretKeys[0] -ne 'SARAH_MODEL_BACKEND_TOKEN') {
+            throw 'The Windows event config may contain only the revocable app-to-Worker bearer.'
           }
           New-Item -ItemType Directory -Force -Path 'build' | Out-Null
           $eventConfigPath = (Resolve-Path 'build').Path + '\sarah-event-config.json'
-          $gmailOAuthPath = (Resolve-Path 'build').Path + '\sarah-gmail-oauth-client.json'
           $eventConfig | ConvertTo-Json | Set-Content -LiteralPath $eventConfigPath -Encoding utf8NoBOM
-          $gmailOAuth = [ordered]@{
-            installed = [ordered]@{
-              client_id = $env:SARAH_GMAIL_DESKTOP_CLIENT_ID
-              project_id = 'sarah-owner-build'
-              auth_uri = 'https://accounts.google.com/o/oauth2/auth'
-              token_uri = 'https://oauth2.googleapis.com/token'
-              client_secret = $env:SARAH_GMAIL_DESKTOP_CLIENT_SECRET
-              redirect_uris = @('http://127.0.0.1')
-            }
-          }
-          $gmailOAuth | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $gmailOAuthPath -Encoding utf8NoBOM
           try {
-            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data "$eventConfigPath;." --add-data "$gmailOAuthPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow --hidden-import google.oauth2.credentials --hidden-import google.auth.transport.requests --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
             if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
           }
           finally {
             Remove-Item -LiteralPath $eventConfigPath -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $gmailOAuthPath -Force -ErrorAction SilentlyContinue
           }
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorgan-Event-Candidate-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
           if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
-          if (!(Test-Path 'dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe')) { throw 'Installer was not created.' }
+          if (!(Test-Path 'dist\SarahMorgan-Event-Candidate-Setup.exe')) { throw 'Installer was not created.' }
 
       - name: Self-test the exact event installer
         shell: pwsh
         working-directory: windows-companion
         run: |
-          $process = Start-Process -FilePath '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          $process = Start-Process -FilePath '.\dist\SarahMorgan-Event-Candidate-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
-          $file = Get-Item '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe'
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-Setup.exe'
           if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
           $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
           if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'Not a PE executable.' }
@@ -1396,9 +1416,9 @@ jobs:
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
         run: |
-          $file = Get-Item '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe'
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-Setup.exe'
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
-          "$hash  $($file.Name)" | Set-Content -LiteralPath '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.sha256' -Encoding ascii
+          "$hash  $($file.Name)" | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-Setup.sha256' -Encoding ascii
           $manifest = [ordered]@{
             product = 'Sarah Morgan Travel OS'
             repair_revision = 'R3_OWNER_REPAIR'
@@ -1413,29 +1433,30 @@ jobs:
             backend_url = $env:BACKEND_URL
             provider_key_embedded = $false
             elevenlabs_key_embedded = $false
-            event_app_token_bundled = $false
-            gmail_desktop_oauth_public_client_bundled = $true
-            gmail_scope = 'gmail.readonly'
+            event_app_token_bundled = $true
+            gmail_desktop_oauth_public_client_bundled = $false
+            gmail_available = $false
             gmail_account_connected = $false
             gmail_owner_consent_required = $true
-            owner_runtime_activation_required = $true
+            owner_runtime_activation_required = $false
             live_online_smoke_test = 'passed-before-windows-build'
             exact_installer_self_test = 'passed'
             physical_8gb_laptop_acceptance = 'pending'
             full_owner_workflow_acceptance = 'pending'
-            token_rotation_required_after_event = $false
+            token_rotation_required_after_event = $true
             token_rotation_required_if_privately_transferred_code_is_exposed = $true
           }
-          $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup-manifest.json' -Encoding utf8NoBOM
+          $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-Setup-manifest.json' -Encoding utf8NoBOM
 
       - name: Upload the Windows owner-acceptance candidate
         uses: actions/upload-artifact@v4
         with:
-          name: Sarah-2.5-R3-CURRENT-OWNER-TEST-Windows-ElevenLabs-Candidate
+          name: Sarah-Morgan-Event-Candidate-Windows-Installer
           path: |
-            windows-companion/dist/SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe
-            windows-companion/dist/SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.sha256
-            windows-companion/dist/SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup-manifest.json
+            windows-companion/dist/SarahMorgan-Event-Candidate-Setup.exe
+            windows-companion/dist/SarahMorgan-Event-Candidate-Setup.sha256
+            windows-companion/dist/SarahMorgan-Event-Candidate-Setup-manifest.json
+            README_EVENT_CANDIDATE.md
             docs/SARAH_WINDOWS_ARTIFACT_LINEAGE_20260808.md
           if-no-files-found: error
           retention-days: 14

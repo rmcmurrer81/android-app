@@ -205,8 +205,12 @@ public final class OnboardingActivity extends Activity {
                 }
                 memoryConsent = consent;
                 persistProfile();
-                step = STEP_EMAIL;
-                ask("Your local profile is ready. Would you like to connect Gmail now so I can look for travel confirmations you choose to let me view? Google will handle the sign-in and ask for read-only access. I will never ask for your Gmail password. You can say yes, no, or later and change this in Settings.");
+                if (BuildConfig.SARAH_GMAIL_AVAILABLE) {
+                    step = STEP_EMAIL;
+                    ask("Your local profile is ready. Would you like to connect Gmail now so I can look for travel confirmations you choose to let me view? Google will handle the sign-in and ask for read-only access. I will never ask for your Gmail password. You can say yes, no, or later and change this in Settings.");
+                } else {
+                    finishOnboarding(false);
+                }
                 break;
             case STEP_EMAIL:
                 Boolean connectEmail = isSkip(answer) ? Boolean.FALSE : parseYesNo(answer);
@@ -249,13 +253,15 @@ public final class OnboardingActivity extends Activity {
         persistProfile();
 
         ask("Thank you, " + name + ". That’s enough for now. I’ll learn the rest naturally while we talk."
-                + (connectEmail
+                + (!BuildConfig.SARAH_GMAIL_AVAILABLE
+                    ? ""
+                    : connectEmail
                     ? " I’ll open Google’s read-only email connection next."
                     : " Gmail remains disconnected and can be added later in Settings."));
         composer.setVisibility(View.GONE);
         beginButton.setVisibility(View.VISIBLE);
         beginButton.requestFocus();
-        if (connectEmail) {
+        if (connectEmail && BuildConfig.SARAH_GMAIL_AVAILABLE) {
             beginButton.postDelayed(() -> startActivity(
                     new Intent(this, GmailAuthorizationActivity.class)), 350L);
         }

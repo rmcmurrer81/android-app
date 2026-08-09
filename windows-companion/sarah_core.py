@@ -48,6 +48,7 @@ RUNTIME_CONFIG_KEYS = {
     "SARAH_ELEVENLABS_BACKEND_URL",
     "SARAH_ELEVENLABS_BACKEND_TOKEN",
     "SARAH_TAVILY_API_KEY",
+    "SARAH_EVENT_GMAIL_AVAILABLE",
 }
 RUNTIME_SECRET_KEYS = {
     "SARAH_MODEL_BACKEND_TOKEN",
@@ -138,10 +139,15 @@ def load_bundled_event_config(path: Path | None = None) -> dict[str, str]:
         return {}
     if not isinstance(raw, dict):
         return {}
+    # Event artifacts may carry one short-lived, revocable app-to-Worker
+    # bearer so they work without owner setup. Provider credentials remain
+    # forbidden. The Worker/token must be retired after the event.
+    allowed_event_secrets = {"SARAH_MODEL_BACKEND_TOKEN"}
     return {
         key: safe_text(raw.get(key))
         for key in RUNTIME_CONFIG_KEYS
-        if key not in RUNTIME_SECRET_KEYS and safe_text(raw.get(key))
+        if (key not in RUNTIME_SECRET_KEYS or key in allowed_event_secrets)
+        and safe_text(raw.get(key))
     }
 
 
