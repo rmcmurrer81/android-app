@@ -11,12 +11,16 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const provider = configuredProvider(env);
+    const eventAccess = eventAuthorizationWindow(env);
 
     if (request.method === "GET"
         && (url.pathname === "/health" || url.pathname === "/capabilities")) {
       if (url.pathname === "/capabilities") {
         if (!env.SARAH_BACKEND_TOKEN) {
           return json({ error: "server_not_configured" }, 503);
+        }
+        if (!eventAccess.allowed) {
+          return eventAccessFailure(eventAccess);
         }
         const suppliedToken = bearerToken(request.headers.get("Authorization"));
         if (!suppliedToken || !(await constantTimeEqual(suppliedToken, env.SARAH_BACKEND_TOKEN))) {
@@ -25,7 +29,7 @@ export default {
       }
       const deployment = deploymentIdentity(env);
       return json({
-        ok: Boolean(env.SARAH_BACKEND_TOKEN && providerReady(provider, env)),
+        ok: Boolean(env.SARAH_BACKEND_TOKEN && providerReady(provider, env) && eventAccess.allowed),
         service: "sarah-model-proxy",
         contract_version: WORKER_CONTRACT_VERSION,
         deployment_ready: deployment.ready,
@@ -41,6 +45,8 @@ export default {
         route_rate_limits_ready: Boolean(
           env.MODEL_RATE_LIMITER && env.SEARCH_RATE_LIMITER && env.VOICE_RATE_LIMITER
         ),
+        event_access_state: eventAccess.state,
+        event_access_expires_utc: eventAccess.expiresUtc,
         online: true,
       }, 200);
     }
@@ -51,6 +57,8 @@ export default {
         status: "ready",
         health: "/health",
         capabilities: "/capabilities",
+        event_access_state: eventAccess.state,
+        event_access_expires_utc: eventAccess.expiresUtc,
       }, 200);
     }
 
@@ -60,6 +68,9 @@ export default {
 
     if (!env.SARAH_BACKEND_TOKEN) {
       return json({ error: "server_not_configured" }, 503);
+    }
+    if (!eventAccess.allowed) {
+      return eventAccessFailure(eventAccess);
     }
 
     const suppliedToken = bearerToken(request.headers.get("Authorization"));
@@ -157,6 +168,32 @@ export default {
     return json({ error: "unsupported_provider", provider: selectedProvider }, 400);
   },
 };
+
+function eventAuthorizationWindow(env, nowMs = Date.now()) {
+  const raw = String(env.SARAH_EVENT_AUTH_EXPIRES_UTC || "").trim();
+  if (!raw) {
+    return { allowed: true, state: "not_scoped", expiresUtc: null };
+  }
+  const expiresMs = Date.parse(raw);
+  if (!Number.isFinite(expiresMs)) {
+    return { allowed: false, state: "invalid_expiry", expiresUtc: null };
+  }
+  const expiresUtc = new Date(expiresMs).toISOString();
+  if (nowMs >= expiresMs) {
+    return { allowed: false, state: "expired", expiresUtc };
+  }
+  return { allowed: true, state: "active", expiresUtc };
+}
+
+function eventAccessFailure(eventAccess) {
+  if (eventAccess.state === "expired") {
+    return json({
+      error: "event_access_expired",
+      event_access_expires_utc: eventAccess.expiresUtc,
+    }, 403);
+  }
+  return json({ error: "event_access_misconfigured" }, 503);
+}
 
 async function routeRateLimit(env, bindingName, route) {
   const binding = env[bindingName];

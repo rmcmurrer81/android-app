@@ -99,6 +99,59 @@ test("capability route fails closed when the server token is not configured", as
   assert.deepEqual(await response.json(), { error: "server_not_configured" });
 });
 
+test("event-scoped bearer is accepted only before its server-enforced expiry", async () => {
+  const activeEnv = {
+    AI: { run: async () => ({ response: "unused" }) },
+    MODEL_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    SEARCH_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    VOICE_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_EVENT_AUTH_EXPIRES_UTC: "2999-01-01T00:00:00.000Z",
+  };
+  const active = await worker.fetch(new Request("https://sarah.example/capabilities", {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  }), activeEnv);
+  assert.equal(active.status, 200);
+  const activeData = await active.json();
+  assert.equal(activeData.ok, true);
+  assert.equal(activeData.event_access_state, "active");
+  assert.equal(activeData.event_access_expires_utc, "2999-01-01T00:00:00.000Z");
+
+  let providerRuns = 0;
+  const expiredEnv = {
+    AI: { run: async () => { providerRuns += 1; return { response: "must not run" }; } },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_EVENT_AUTH_EXPIRES_UTC: "2000-01-01T00:00:00.000Z",
+  };
+  const health = await worker.fetch(new Request("https://sarah.example/health"), expiredEnv);
+  const healthData = await health.json();
+  assert.equal(health.status, 200);
+  assert.equal(healthData.ok, false);
+  assert.equal(healthData.event_access_state, "expired");
+
+  const expired = await worker.fetch(request({ message: "Hello" }), expiredEnv);
+  assert.equal(expired.status, 403);
+  assert.deepEqual(await expired.json(), {
+    error: "event_access_expired",
+    event_access_expires_utc: "2000-01-01T00:00:00.000Z",
+  });
+  assert.equal(providerRuns, 0);
+});
+
+test("malformed event expiry fails closed before protected work", async () => {
+  const env = {
+    AI: { run: async () => ({ response: "must not run" }) },
+    SARAH_BACKEND_TOKEN: TOKEN,
+    SARAH_MODEL_PROVIDER: "workers-ai",
+    SARAH_EVENT_AUTH_EXPIRES_UTC: "not-a-time",
+  };
+  const response = await worker.fetch(request({ message: "Hello" }), env);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "event_access_misconfigured" });
+});
+
 test("route rate limit rejection is explicit and prevents provider work", async () => {
   let providerRuns = 0;
   const env = {

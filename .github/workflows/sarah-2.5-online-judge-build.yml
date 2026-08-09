@@ -38,6 +38,9 @@ jobs:
       # Explicit owner-authorized event lane. The normal R1 upgrade lane and
       # its exact signer gate remain below, but are not silently bypassed.
       SARAH_ANDROID_DISTRIBUTION: event_side_by_side
+      # The artifact-scoped bootstrap capability is intentionally short lived.
+      # The Worker enforces this deadline even if it is not manually retired.
+      SARAH_EVENT_TOKEN_TTL_HOURS: '72'
       # Preserved normal-lane evidence vocabulary for validators and rollback:
       # CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE; r1_signer_sha256;
       # r3_signer_sha256; same-package-in-place-only. The event lane below is
@@ -49,6 +52,10 @@ jobs:
       backend_url: ${{ steps.deploy.outputs.backend_url }}
       model_provider: ${{ steps.config.outputs.provider }}
       model_id: ${{ steps.config.outputs.model }}
+      event_auth_expires_utc: ${{ steps.event_auth.outputs.expires_utc }}
+      event_auth_token_sha256: ${{ steps.event_auth.outputs.token_sha256 }}
+      event_auth_context_sha256: ${{ steps.event_auth.outputs.context_sha256 }}
+      candidate_worker_name: ${{ steps.event_auth.outputs.worker_name }}
 
     steps:
       - name: Check out Sarah 2.5 source
@@ -264,6 +271,60 @@ jobs:
           echo "model=$MODEL" >> "$GITHUB_OUTPUT"
           echo "Selected provider/model: $PROVIDER / $MODEL"
 
+      - name: Derive and mask the artifact-scoped event Worker capability
+        id: event_auth
+        shell: bash
+        env:
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import hashlib
+          import hmac
+          import os
+          import re
+          from datetime import datetime, timedelta, timezone
+
+          key = os.environ['SARAH_EVENT_DERIVATION_KEY'].encode('utf-8')
+          if not re.fullmatch(rb'[A-Za-z0-9_-]{32,256}', key):
+              raise SystemExit('The repository app token cannot be used as the event derivation key.')
+          worker = os.environ['SARAH_CANDIDATE_WORKER_NAME']
+          expected_worker = f"sarah-r3-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          if worker != expected_worker:
+              raise SystemExit('Candidate Worker name does not match the exact run context.')
+          ttl_hours = int(os.environ['SARAH_EVENT_TOKEN_TTL_HOURS'])
+          if ttl_hours < 1 or ttl_hours > 168:
+              raise SystemExit('Event capability TTL must be between 1 and 168 hours.')
+          now = datetime.now(timezone.utc).replace(microsecond=0)
+          expires = now + timedelta(hours=ttl_hours)
+          expires_utc = expires.isoformat().replace('+00:00', 'Z')
+          context = '\n'.join((
+              'domain=sarah-event-artifact-worker-auth-v1',
+              f"repository={os.environ['GITHUB_REPOSITORY']}",
+              f"run_id={os.environ['GITHUB_RUN_ID']}",
+              f"run_attempt={os.environ['GITHUB_RUN_ATTEMPT']}",
+              f"sha={os.environ['GITHUB_SHA']}",
+              f'worker={worker}',
+              f'expires_utc={expires_utc}',
+          ))
+          digest = hmac.new(key, context.encode('utf-8'), hashlib.sha256).digest()
+          token = 'sevt1_' + base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+          token_sha256 = hashlib.sha256(token.encode('ascii')).hexdigest()
+          context_sha256 = hashlib.sha256(context.encode('utf-8')).hexdigest()
+          print(f'::add-mask::{token}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'SARAH_EVENT_DERIVED_TOKEN={token}\n')
+              handle.write(f'SARAH_BACKEND_TOKEN={token}\n')
+              handle.write(f'SARAH_EVENT_AUTH_EXPIRES_UTC={expires_utc}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              handle.write(f'expires_utc={expires_utc}\n')
+              handle.write(f'token_sha256={token_sha256}\n')
+              handle.write(f'context_sha256={context_sha256}\n')
+              handle.write(f'worker_name={worker}\n')
+          print('Derived one masked event capability for the exact Worker/run context; expires:', expires_utc)
+          PY
+
       - name: Install and syntax-check the protected Sarah model proxy
         working-directory: services/sarah-model-proxy
         run: |
@@ -281,7 +342,7 @@ jobs:
           SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
-          SARAH_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
           SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
@@ -296,8 +357,9 @@ jobs:
             exit 1
           fi
 
-          # Wrangler consumes dotenv syntax here. Deployment, live verification,
-          # Android, and Windows all use the same revocable repository secret.
+          # Wrangler consumes dotenv syntax here. Only the HMAC-derived,
+          # artifact-scoped bootstrap capability is deployed; the repository
+          # derivation key is never written to an artifact or Worker secret.
           umask 077
           printf 'SARAH_BACKEND_TOKEN=%s\n' "$SARAH_BACKEND_TOKEN" \
             > /tmp/sarah-model-proxy-secrets.env
@@ -324,6 +386,7 @@ jobs:
             --var "SARAH_MODEL_ID:$SARAH_MODEL_ID" \
             --var "SARAH_ELEVENLABS_VOICE_ID:$SARAH_ELEVENLABS_VOICE_ID" \
             --var "SARAH_ELEVENLABS_MODEL_ID:$SARAH_ELEVENLABS_MODEL_ID" \
+            --var "SARAH_EVENT_AUTH_EXPIRES_UTC:$SARAH_EVENT_AUTH_EXPIRES_UTC" \
             --var "SARAH_DEPLOYMENT_ID:$SARAH_DEPLOYMENT_ID" \
             --var "SARAH_SOURCE_SHA256:$SOURCE_SHA256" \
             --var "SARAH_CONFIG_SHA256:$CONFIG_SHA256" \
@@ -362,7 +425,7 @@ jobs:
         shell: bash
         env:
           BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
-          SARAH_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          EXPECTED_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
           EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
@@ -394,6 +457,8 @@ jobs:
           matches = health.get('ok') is True and health.get('voice_ready') is True
           matches = matches and health.get('deployment_ready') is True
           matches = matches and health.get('route_rate_limits_ready') is True
+          matches = matches and health.get('event_access_state') == 'active'
+          matches = matches and health.get('event_access_expires_utc') == os.environ['EXPECTED_EVENT_AUTH_EXPIRES_UTC']
           matches = matches and all(health.get(key) == value for key, value in expected.items())
           if os.environ.get('PROTECTED_SEARCH_CONFIGURED') == 'true':
               matches = matches and health.get('current_source_ready') is True
@@ -535,6 +600,8 @@ jobs:
           matches = capabilities.get('ok') is True and capabilities.get('voice_ready') is True
           matches = matches and capabilities.get('deployment_ready') is True
           matches = matches and capabilities.get('route_rate_limits_ready') is True
+          matches = matches and capabilities.get('event_access_state') == 'active'
+          matches = matches and capabilities.get('event_access_expires_utc') == os.environ['EXPECTED_EVENT_AUTH_EXPIRES_UTC']
           matches = matches and all(capabilities.get(key) == value for key, value in expected.items())
           if os.environ.get('PROTECTED_SEARCH_CONFIGURED') == 'true':
               matches = matches and capabilities.get('current_source_ready') is True
@@ -874,7 +941,6 @@ jobs:
         shell: bash
         env:
           BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
-          SARAH_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
         run: |
@@ -1049,8 +1115,10 @@ jobs:
           SARAH_LIVE_TEXT_MAX_MS: ${{ steps.live_conversation.outputs.text_max_ms }}
           SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
           SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
+          EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
+          EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}
+          EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}
           SARAH_MODEL_BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
-          SARAH_EVENT_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
           SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
           SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
@@ -1066,6 +1134,7 @@ jobs:
           SARAH_VOICE_CONCIERGE_TOKEN: ''
         run: |
           set -euo pipefail
+          export SARAH_EVENT_BACKEND_TOKEN="$SARAH_EVENT_DERIVED_TOKEN"
           export SARAH_ELEVENLABS_BACKEND_URL="${SARAH_MODEL_BACKEND_URL%/}/voice"
           gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleEventCandidate --stacktrace
           python - <<'PY'
@@ -1207,7 +1276,8 @@ jobs:
                   'deployment_id': os.environ['DEPLOYMENT_ID'],
                   'source_sha256': os.environ['WORKER_SOURCE_SHA256'],
                   'config_sha256': os.environ['WORKER_CONFIG_SHA256'],
-                  'status': 'active_candidate_endpoint_pending_owner_retirement',
+                  'status': 'active_until_server_enforced_expiry_or_owner_retirement',
+                  'event_auth_expires_utc': os.environ['EVENT_AUTH_EXPIRES_UTC'],
                   'retirement_command': (
                       'cd services/sarah-model-proxy && npx wrangler delete '
                       '--config wrangler.jsonc --name '
@@ -1215,12 +1285,21 @@ jobs:
                   ),
               }],
               'worker_retirement_policy': (
-                  'Retire the exact worker_name after its artifact is rejected or superseded. '
-                  'Rotating a repository token or deploying another unique Worker does not revoke older endpoints.'
+                  'The Worker denies protected routes at event_auth_expires_utc. Retire the exact '
+                  'worker_name sooner if its artifact is rejected, shared unexpectedly, or superseded. '
+                  'Deleting the exact Worker removes the endpoint; changing the repository derivation key alone does not.'
               ),
               'provider_key_embedded': False,
               'elevenlabs_key_embedded': False,
               'protected_backend_access_bundled': True,
+              'event_app_token_kind': 'hmac_sha256_artifact_scoped_bootstrap_v1',
+              'event_app_token_sha256': os.environ['EVENT_AUTH_TOKEN_SHA256'],
+              'event_auth_context_sha256': os.environ['EVENT_AUTH_CONTEXT_SHA256'],
+              'event_auth_expires_utc': os.environ['EVENT_AUTH_EXPIRES_UTC'],
+              'event_auth_expiry_enforced_by_worker': True,
+              'repository_derivation_key_embedded': False,
+              'apk_and_exe_share_exact_artifact_scoped_token': True,
+              'extractable_token_blast_radius': 'this exact unique Worker until enforced expiry or earlier Worker retirement',
               'owner_runtime_activation_required': False,
               'live_online_smoke_test': 'passed',
               'live_production_modelclient_conversation': os.environ['SARAH_LIVE_CONVERSATION_OBJECTIVE'],
@@ -1258,7 +1337,7 @@ jobs:
               ],
               'first_audio_streaming_latency_acceptance': 'pending_physical_galaxy_a17_measurement',
               'built_at_utc': datetime.now(timezone.utc).isoformat(),
-              'note': 'This is a source/build/smoke-tested candidate, not a judge-ready or owner-accepted APK. The Worker provider/model may be changed server-side without rebuilding it.',
+              'note': 'This is a source/build/smoke-tested candidate, not a judge-ready or owner-accepted APK. Its extractable bootstrap capability is shared by the APK and EXE, limited to this unique Worker, and rejected after the recorded expiry.',
           }
           with open('Sarah-Morgan-Event-Candidate-manifest.json', 'w', encoding='utf-8') as handle:
               json.dump(manifest, handle, indent=2)
@@ -1348,12 +1427,62 @@ jobs:
           python sarah_event_ready.py --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Source self-test failed.' }
 
+      - name: Derive and mask the same artifact-scoped Windows capability
+        shell: pwsh
+        env:
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
+          SARAH_EVENT_EXPECTED_TOKEN_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_token_sha256 }}
+          SARAH_EVENT_EXPECTED_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
+          SARAH_CANDIDATE_WORKER_NAME: ${{ needs.deploy-smoke-test-and-build.outputs.candidate_worker_name }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64
+          import hashlib
+          import hmac
+          import os
+          import re
+
+          key = os.environ['SARAH_EVENT_DERIVATION_KEY'].encode('utf-8')
+          if not re.fullmatch(rb'[A-Za-z0-9_-]{32,256}', key):
+              raise SystemExit('The repository app token cannot be used as the event derivation key.')
+          worker = os.environ['SARAH_CANDIDATE_WORKER_NAME']
+          expected_worker = f"sarah-r3-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          if worker != expected_worker:
+              raise SystemExit('Windows candidate Worker does not match the exact run context.')
+          expires_utc = os.environ['SARAH_EVENT_AUTH_EXPIRES_UTC']
+          context = '\n'.join((
+              'domain=sarah-event-artifact-worker-auth-v1',
+              f"repository={os.environ['GITHUB_REPOSITORY']}",
+              f"run_id={os.environ['GITHUB_RUN_ID']}",
+              f"run_attempt={os.environ['GITHUB_RUN_ATTEMPT']}",
+              f"sha={os.environ['GITHUB_SHA']}",
+              f'worker={worker}',
+              f'expires_utc={expires_utc}',
+          ))
+          digest = hmac.new(key, context.encode('utf-8'), hashlib.sha256).digest()
+          token = 'sevt1_' + base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+          token_sha256 = hashlib.sha256(token.encode('ascii')).hexdigest()
+          context_sha256 = hashlib.sha256(context.encode('utf-8')).hexdigest()
+          if not hmac.compare_digest(token_sha256, os.environ['SARAH_EVENT_EXPECTED_TOKEN_SHA256']):
+              raise SystemExit('Windows derivation did not reproduce the exact Android/Worker token fingerprint.')
+          if not hmac.compare_digest(context_sha256, os.environ['SARAH_EVENT_EXPECTED_CONTEXT_SHA256']):
+              raise SystemExit('Windows derivation context did not reproduce the exact Android/Worker context fingerprint.')
+          print(f'::add-mask::{token}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'SARAH_EVENT_DERIVED_TOKEN={token}\n')
+              handle.write(f'SARAH_MODEL_BACKEND_TOKEN={token}\n')
+          print('Re-derived the masked event capability for the exact shared APK/EXE Worker scope.')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows event capability derivation failed.' }
+
       - name: Generate the event-only config and build the Windows installer
         shell: pwsh
         working-directory: windows-companion
         env:
           SARAH_MODEL_BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
-          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
@@ -1414,6 +1543,10 @@ jobs:
           BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
+          EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
+          EVENT_AUTH_TOKEN_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_token_sha256 }}
+          EVENT_AUTH_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
+          CANDIDATE_WORKER_NAME: ${{ needs.deploy-smoke-test-and-build.outputs.candidate_worker_name }}
         run: |
           $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-Setup.exe'
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
@@ -1433,6 +1566,16 @@ jobs:
             provider_key_embedded = $false
             elevenlabs_key_embedded = $false
             event_app_token_bundled = $true
+            event_app_token_kind = 'hmac_sha256_artifact_scoped_bootstrap_v1'
+            event_app_token_sha256 = $env:EVENT_AUTH_TOKEN_SHA256
+            event_auth_context_sha256 = $env:EVENT_AUTH_CONTEXT_SHA256
+            event_auth_expires_utc = $env:EVENT_AUTH_EXPIRES_UTC
+            event_auth_expiry_enforced_by_worker = $true
+            repository_derivation_key_embedded = $false
+            apk_and_exe_share_exact_artifact_scoped_token = $true
+            extractable_token_blast_radius = 'this exact unique Worker until enforced expiry or earlier Worker retirement'
+            candidate_worker_name = $env:CANDIDATE_WORKER_NAME
+            worker_retirement_command = "cd services/sarah-model-proxy && npx wrangler delete --config wrangler.jsonc --name $($env:CANDIDATE_WORKER_NAME) --force"
             gmail_desktop_oauth_public_client_bundled = $false
             gmail_available = $false
             gmail_account_connected = $false
@@ -1442,8 +1585,8 @@ jobs:
             exact_installer_self_test = 'passed'
             physical_8gb_laptop_acceptance = 'pending'
             full_owner_workflow_acceptance = 'pending'
-            token_rotation_required_after_event = $true
-            token_rotation_required_if_privately_transferred_code_is_exposed = $true
+            repository_derivation_key_rotation_required_after_event = $false
+            exact_worker_retirement_required_if_artifact_is_exposed = $true
           }
           $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-Setup-manifest.json' -Encoding utf8NoBOM
 

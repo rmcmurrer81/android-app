@@ -26,3 +26,18 @@ def test_event_bundles_only_revocable_worker_bearer_and_disables_gmail():
     assert "SARAH_GMAIL_DESKTOP_CLIENT_SECRET" not in WORKFLOW
     assert 'BuildConfig.APPLICATION_ID.endsWith(".eventcandidate")' in MODEL_CONFIG
     assert "return clean(BuildConfig.SARAH_MODEL_BACKEND_TOKEN)" in MODEL_CONFIG
+
+
+def test_event_bearer_is_unique_to_the_run_worker_and_expires_server_side():
+    assert "domain=sarah-event-artifact-worker-auth-v1" in WORKFLOW
+    assert "hmac.new(key, context.encode('utf-8'), hashlib.sha256)" in WORKFLOW
+    assert "repository={os.environ['GITHUB_REPOSITORY']}" in WORKFLOW
+    assert "run_id={os.environ['GITHUB_RUN_ID']}" in WORKFLOW
+    assert "run_attempt={os.environ['GITHUB_RUN_ATTEMPT']}" in WORKFLOW
+    assert "sha={os.environ['GITHUB_SHA']}" in WORKFLOW
+    assert "worker={worker}" in WORKFLOW
+    assert "expires_utc={expires_utc}" in WORKFLOW
+    assert "print(f'::add-mask::{token}')" in WORKFLOW
+    assert '--var "SARAH_EVENT_AUTH_EXPIRES_UTC:$SARAH_EVENT_AUTH_EXPIRES_UTC"' in WORKFLOW
+    assert "event_auth_expiry_enforced_by_worker" in WORKFLOW
+    assert "repository_derivation_key_embedded" in WORKFLOW

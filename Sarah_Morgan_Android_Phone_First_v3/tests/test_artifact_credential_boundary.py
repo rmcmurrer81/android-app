@@ -157,21 +157,34 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
     def test_online_judge_event_candidate_bundles_only_revocable_access_code(self):
         workflow = read(WORKFLOWS / "sarah-2.5-online-judge-build.yml")
         apk = step(workflow, "Build the side-by-side online/offline event candidate APK")
-        self.assertIn("SARAH_EVENT_BACKEND_TOKEN:", apk)
+        self.assertIn('export SARAH_EVENT_BACKEND_TOKEN="$SARAH_EVENT_DERIVED_TOKEN"', apk)
         self.assertIn("SARAH_ELEVENLABS_BACKEND_TOKEN: ''", apk)
-        self.assertIn("secrets.SARAH_MODEL_BACKEND_TOKEN", apk)
+        self.assertNotIn("secrets.SARAH_MODEL_BACKEND_TOKEN", apk)
+        self.assertNotIn("secrets.SARAH_ELEVENLABS_BACKEND_TOKEN", apk)
         self.assertNotIn("secrets.SARAH_TAVILY_API_KEY", apk)
         self.assertNotIn("secrets.SARAH_ELEVENLABS_API_KEY", apk)
+
+        derivation = step(
+            workflow,
+            "Derive and mask the artifact-scoped event Worker capability",
+        )
+        self.assertIn("hmac.new", derivation)
+        self.assertIn("domain=sarah-event-artifact-worker-auth-v1", derivation)
+        self.assertIn("::add-mask::", derivation)
+        self.assertIn("SARAH_EVENT_AUTH_EXPIRES_UTC", derivation)
 
         windows = step(
             workflow,
             "Generate the event-only config and build the Windows installer",
         )
         self.assertIn("$env:SARAH_MODEL_BACKEND_TOKEN", windows)
+        self.assertNotIn("secrets.SARAH_MODEL_BACKEND_TOKEN", windows)
         self.assertIn("SARAH_EVENT_GMAIL_AVAILABLE = 'false'", windows)
         self.assertNotIn("SARAH_GMAIL_DESKTOP_CLIENT_ID", windows)
         self.assertNotIn("sarah-gmail-oauth-client.json", windows)
         self.assertIn("event_app_token_bundled = $true", workflow)
+        self.assertIn("event_auth_expiry_enforced_by_worker = $true", workflow)
+        self.assertIn("repository_derivation_key_embedded = $false", workflow)
         self.assertIn("owner_runtime_activation_required = $false", workflow)
 
         event_ready = read(REPO / "windows-companion/sarah_event_ready.py")
@@ -220,14 +233,6 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
             for step_name, block in named_step_blocks(workflow):
                 if artifact_step_words.search(step_name):
                     allowed = set()
-                    if name == "sarah-2.5-online-judge-build.yml" and step_name in {
-                        "Build the side-by-side online/offline event candidate APK",
-                        "Generate the event-only config and build the Windows installer",
-                    }:
-                        allowed = {
-                            "SARAH_MODEL_BACKEND_TOKEN",
-                            "SARAH_ELEVENLABS_BACKEND_TOKEN",
-                        }
                     self.assertEqual(
                         credential_secret_refs(block), allowed,
                         f"{name} artifact step {step_name!r} receives an unauthorized credential",

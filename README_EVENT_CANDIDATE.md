@@ -34,12 +34,21 @@ matching-code pairing.
 
 ## Online and offline behavior
 
-The event artifacts contain the exact candidate Worker URL and one revocable
-app-to-Worker bearer so protected Gemma conversation, source-backed Tavily
-search and the approved ElevenLabs voice can work immediately. They contain
-no Cloudflare, Tavily, ElevenLabs, or other provider API key. The bearer and
-unique Worker must be retired after the event or sooner if either artifact is
-shared outside the intended team.
+The event artifacts contain the exact candidate Worker URL and one short-lived,
+artifact-scoped bootstrap bearer so protected Gemma conversation,
+source-backed Tavily search and the approved ElevenLabs voice can work
+immediately. The bearer is derived with HMAC-SHA256 from a repository-held key
+and the exact repository, run, attempt, source commit, Worker name and expiry.
+Only the derived bearer is bundled; the repository derivation key and all
+Cloudflare, Tavily, ElevenLabs and model-provider API keys remain server-side.
+
+The APK and EXE intentionally share this one derived bearer and one unique
+Worker. Anyone who obtains either artifact can extract and replay that bearer
+against that Worker until the exact `event_auth_expires_utc` recorded in the
+adjacent manifest, or until the Worker is retired sooner. The Worker enforces
+the expiry on every protected route. This limits the credential's blast radius
+to that exact event Worker and time window, but it is not device-bound access.
+Retire the Worker immediately if either artifact is shared unexpectedly.
 
 When internet or the protected route is unavailable, Sarah keeps text chat and
 her bounded on-device/offline travel knowledge. Offline answers cannot claim
@@ -50,10 +59,12 @@ sources, ElevenLabs and other network services require connectivity.
 ## Deliberately omitted
 
 Gmail setup, monitoring and owner controls are hidden in both event artifacts.
-Google OAuth package/signing registration was not configured and no physical
-mailbox acceptance passed. Sarah can instead review an exact booking text,
-screenshot or PDF that the owner chooses to share. No mail was read, changed,
-sent or deleted.
+The Android event package/signing pair has no Google Android OAuth
+registration, and the Windows installer has no registered Desktop OAuth client
+identity. Enabling a flag would not make those identities valid, so Sarah
+cannot search or monitor Gmail in this build. Sarah can instead review an exact
+booking text, link, screenshot or PDF that the owner deliberately shares. No
+mailbox was accessed; no mail was read, changed, sent or deleted.
 
 An in-place R1 Android upgrade is also omitted. The exact R1 signer could not
 be recovered from the cache, so pretending continuity would either fail install
@@ -81,8 +92,11 @@ owner experience. A green CI build does not claim those physical tests passed.
 1. Keep R1 installed.
 2. If the candidate misbehaves, stop it and uninstall only **Sarah Morgan Event
    Candidate** on Android, or uninstall the Windows candidate.
-3. Use the exact `worker_name` and `retirement_command` in the artifact manifest
-   to delete that Worker.
-4. Rotate `SARAH_MODEL_BACKEND_TOKEN` after the event. Provider keys stay
-   server-side and do not need to be removed from a phone or EXE.
-
+3. Use the exact `worker_name` and `retirement_command` in the Android artifact
+   manifest (or `candidate_worker_name` and `worker_retirement_command` in the
+   Windows manifest) to delete that Worker. The server also rejects protected
+   use automatically at the recorded `event_auth_expires_utc`.
+4. The repository derivation key is not embedded and does not need routine
+   post-event rotation. Rotate it only if that repository secret itself is
+   exposed. Provider keys stay server-side and do not need to be removed from a
+   phone or EXE.
