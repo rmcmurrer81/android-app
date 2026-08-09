@@ -469,7 +469,7 @@ jobs:
           # the Python check below still requires this run's exact deployment,
           # source, config, provider, model, voice, rate-limit, and search truth.
           curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
-            --retry 7 --retry-all-errors --retry-delay 2 \
+            --retry 19 --retry-all-errors --retry-delay 3 \
             -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
             -H 'Cache-Control: no-cache' \
             "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID" \
