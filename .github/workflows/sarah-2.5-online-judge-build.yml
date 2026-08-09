@@ -536,6 +536,80 @@ jobs:
           print('Authenticated Sarah capability contract passed for the exact candidate deployment.')
           PY
 
+          # A newly named workers.dev route can be active for one cache key
+          # while a different POST URL is still pinned to an edge-cached
+          # propagation 404.  Exercise every protected JSON route with a
+          # distinct query string per bounded attempt.  Only propagation-like
+          # statuses are retryable; authentication, redirects, and any other
+          # unexpected response fail closed.  The exact response-contract
+          # validators below remain authoritative after transport succeeds.
+          post_json_cache_busted() {
+            local label="$1"
+            local route="$2"
+            local request_path="$3"
+            local response_path="$4"
+            local max_attempts="$5"
+            local deadline_seconds="$6"
+            local per_request_max_seconds="$7"
+            local deadline attempt remaining request_timeout connect_timeout status separator url sleep_seconds
+
+            deadline=$(( $(date +%s) + deadline_seconds ))
+            status=000
+            if [[ "$route" == *'?'* ]]; then
+              separator='&'
+            else
+              separator='?'
+            fi
+            for attempt in $(seq 1 "$max_attempts"); do
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "$remaining" -le 0 ]; then
+                break
+              fi
+              request_timeout="$per_request_max_seconds"
+              if [ "$request_timeout" -gt "$remaining" ]; then
+                request_timeout="$remaining"
+              fi
+              connect_timeout=5
+              if [ "$connect_timeout" -gt "$request_timeout" ]; then
+                connect_timeout="$request_timeout"
+              fi
+              url="${BACKEND_URL%/}${route}${separator}deployment=${EXPECTED_DEPLOYMENT_ID}&acceptance_probe=${label}&attempt=${attempt}"
+              if ! status="$(curl --silent --show-error \
+                --connect-timeout "$connect_timeout" --max-time "$request_timeout" \
+                -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+                -H 'Cache-Control: no-cache' \
+                -H 'Pragma: no-cache' \
+                -H 'Content-Type: application/json' \
+                --data-binary "@$request_path" \
+                --output "$response_path" --write-out '%{http_code}' \
+                "$url")"; then
+                status=000
+              fi
+              case "$status" in
+                200)
+                  echo "Protected $label JSON route reached the exact Worker on attempt $attempt."
+                  return 0
+                  ;;
+                000|404|408|429|5??)
+                  ;;
+                *)
+                  echo "::error::Protected $label JSON route returned non-propagation HTTP $status."
+                  return 1
+                  ;;
+              esac
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "$attempt" -lt "$max_attempts" ] && [ "$remaining" -gt 0 ]; then
+                sleep_seconds=2
+                if [ "$sleep_seconds" -gt "$remaining" ]; then
+                  sleep_seconds="$remaining"
+                fi
+                sleep "$sleep_seconds"
+              fi
+            done
+            echo "::error::Protected $label JSON route did not reach HTTP 200 inside its bounded cache-busted window (last HTTP $status)."
+            return 1
+          }
+
           python - <<'PY'
           import json, os
           request = {
@@ -548,11 +622,10 @@ jobs:
           }
           json.dump(request, open('/tmp/sarah-smoke-request.json', 'w', encoding='utf-8'))
           PY
-          curl --fail --silent --show-error --retry 4 --retry-all-errors --retry-delay 2 \
-            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/sarah-smoke-request.json \
-            "$BACKEND_URL/" > /tmp/sarah-smoke-response.json
+          post_json_cache_busted \
+            model '/' \
+            /tmp/sarah-smoke-request.json /tmp/sarah-smoke-response.json \
+            5 120 30
           python - <<'PY'
           import json, os
           response = json.load(open('/tmp/sarah-smoke-response.json', encoding='utf-8'))
@@ -561,24 +634,29 @@ jobs:
               raise SystemExit(f"Unexpected model smoke-test reply: {reply!r}")
           if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
               raise SystemExit(f"Provider mismatch: {response.get('provider')!r}")
+          if response.get('model') != os.environ['SARAH_MODEL_ID']:
+              raise SystemExit(f"Model mismatch: {response.get('model')!r}")
+          if response.get('online') is not True:
+              raise SystemExit('Model smoke omitted the required online route receipt.')
           print('Live Sarah online-mind smoke test passed:', response.get('provider'), response.get('model'))
           PY
 
           if [ "$PROTECTED_SEARCH_CONFIGURED" = 'true' ]; then
             printf '%s' '{"query":"New Zealand official tourism visitor information","max_results":3}' \
               > /tmp/sarah-search-request.json
-            curl --fail --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 \
-              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-              -H 'Content-Type: application/json' \
-              --data-binary @/tmp/sarah-search-request.json \
-              "$BACKEND_URL/search" > /tmp/sarah-search-response.json
+            post_json_cache_busted \
+              search '/search' \
+              /tmp/sarah-search-request.json /tmp/sarah-search-response.json \
+              4 80 20
             python - <<'PY'
           import json
           response = json.load(open('/tmp/sarah-search-response.json', encoding='utf-8'))
           results = response.get('results') or []
           if response.get('provider') != 'tavily' or response.get('web_search_applied') is not True:
               raise SystemExit('Protected current-source route did not return a verified receipt.')
-          if not results or any(not str(item.get('url') or '').startswith('https://') for item in results):
+          if not 1 <= len(results) <= 3:
+              raise SystemExit(f'Protected current-source route returned an invalid result count: {len(results)}.')
+          if any(not str(item.get('url') or '').startswith('https://') for item in results):
               raise SystemExit('Protected current-source route did not return bounded HTTPS sources.')
           print('Protected current-source smoke test passed; results:', len(results))
           PY
@@ -599,17 +677,22 @@ jobs:
           }
           json.dump(request, open('/tmp/sarah-contextual-chat-request.json', 'w', encoding='utf-8'))
           PY
-            curl --fail --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 \
-              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-              -H 'Content-Type: application/json' \
-              --data-binary @/tmp/sarah-contextual-chat-request.json \
-              "$BACKEND_URL/" > /tmp/sarah-contextual-chat-response.json
+            post_json_cache_busted \
+              contextual_chat '/' \
+              /tmp/sarah-contextual-chat-request.json /tmp/sarah-contextual-chat-response.json \
+              4 120 30
             python - <<'PY'
           import json, os
           response = json.load(open('/tmp/sarah-contextual-chat-response.json', encoding='utf-8'))
           urls = response.get('source_urls') or []
           if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
               raise SystemExit('Contextual chat returned the wrong provider receipt.')
+          if response.get('model') != os.environ['SARAH_MODEL_ID']:
+              raise SystemExit('Contextual chat returned the wrong model receipt.')
+          if response.get('online') is not True:
+              raise SystemExit('Contextual chat omitted the required online route receipt.')
+          if not str(response.get('reply') or '').strip():
+              raise SystemExit('Contextual chat returned an empty reply.')
           if response.get('web_search_requested') is not True or response.get('web_search_applied') is not True:
               raise SystemExit('Contextual chat did not apply its requested current-source lookup.')
           if not urls or any(not str(url).startswith('https://') for url in urls):
@@ -655,14 +738,12 @@ jobs:
           }, open('/tmp/sarah-red-vision-request.json', 'w', encoding='utf-8'))
           PY
           # This generated-image inference has no external side effect. Keep
-          # the exact RED/model/provider/online gates below, but tolerate a
-          # bounded transient Workers AI 5xx response.
-          curl --fail --silent --show-error --connect-timeout 5 --max-time 30 \
-            --retry 3 --retry-all-errors --retry-delay 2 \
-            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/sarah-red-vision-request.json \
-            "$BACKEND_URL/" > /tmp/sarah-red-vision-response.json
+          # the exact RED/model/provider/online gates below, while bounding
+          # both transient Workers AI 5xx responses and route propagation.
+          post_json_cache_busted \
+            vision '/' \
+            /tmp/sarah-red-vision-request.json /tmp/sarah-red-vision-response.json \
+            4 120 30
           python - <<'PY'
           import json, os
           response = json.load(open('/tmp/sarah-red-vision-response.json', encoding='utf-8'))
@@ -684,22 +765,71 @@ jobs:
               'voice_id': None,
           }, open('/tmp/sarah-voice-request.json', 'w', encoding='utf-8'))
           PY
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 35 \
-            -D /tmp/sarah-voice-headers.txt \
-            -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/sarah-voice-request.json \
-            --output /tmp/sarah-voice-smoke.mp3 \
-            --write-out '%{time_starttransfer} %{time_total}' \
-            "$BACKEND_URL/voice" > /tmp/sarah-voice-timing.txt
+          voice_status=000
+          voice_deadline=$(( $(date +%s) + 100 ))
+          for attempt in $(seq 1 4); do
+            voice_remaining=$(( voice_deadline - $(date +%s) ))
+            if [ "$voice_remaining" -le 0 ]; then
+              break
+            fi
+            voice_request_timeout=35
+            if [ "$voice_request_timeout" -gt "$voice_remaining" ]; then
+              voice_request_timeout="$voice_remaining"
+            fi
+            voice_connect_timeout=10
+            if [ "$voice_connect_timeout" -gt "$voice_request_timeout" ]; then
+              voice_connect_timeout="$voice_request_timeout"
+            fi
+            voice_url="${BACKEND_URL%/}/voice?deployment=${EXPECTED_DEPLOYMENT_ID}&acceptance_probe=voice&attempt=${attempt}"
+            if ! curl --silent --show-error \
+              --connect-timeout "$voice_connect_timeout" --max-time "$voice_request_timeout" \
+              -D /tmp/sarah-voice-headers.txt \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -H 'Pragma: no-cache' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/sarah-voice-request.json \
+              --output /tmp/sarah-voice-smoke.mp3 \
+              --write-out '%{http_code} %{time_starttransfer} %{time_total}' \
+              "$voice_url" > /tmp/sarah-voice-timing.txt; then
+              voice_status=000
+            else
+              read -r voice_status _ < /tmp/sarah-voice-timing.txt
+            fi
+            case "$voice_status" in
+              200)
+                echo "Protected voice route reached the exact Worker on attempt $attempt."
+                break
+                ;;
+              000|404|408|429|5??)
+                ;;
+              *)
+                echo "::error::Protected voice route returned non-propagation HTTP $voice_status."
+                exit 1
+                ;;
+            esac
+            voice_remaining=$(( voice_deadline - $(date +%s) ))
+            if [ "$attempt" -lt 4 ] && [ "$voice_remaining" -gt 0 ]; then
+              voice_sleep=2
+              if [ "$voice_sleep" -gt "$voice_remaining" ]; then
+                voice_sleep="$voice_remaining"
+              fi
+              sleep "$voice_sleep"
+            fi
+          done
+          if [ "$voice_status" != '200' ]; then
+            echo "::error::Protected voice route did not reach HTTP 200 inside its bounded cache-busted window (last HTTP $voice_status)."
+            exit 1
+          fi
           python - <<'PY'
           import os
           from pathlib import Path
           audio = Path('/tmp/sarah-voice-smoke.mp3')
           headers = Path('/tmp/sarah-voice-headers.txt').read_text(encoding='utf-8', errors='replace').lower()
-          first_byte_seconds, total_seconds = [
-              float(value) for value in Path('/tmp/sarah-voice-timing.txt').read_text().split()
-          ]
+          status, first_byte_seconds, total_seconds = Path('/tmp/sarah-voice-timing.txt').read_text().split()
+          if status != '200':
+              raise SystemExit(f'Protected ElevenLabs smoke response returned HTTP {status}.')
+          first_byte_seconds, total_seconds = float(first_byte_seconds), float(total_seconds)
           first_byte_ms = round(first_byte_seconds * 1000)
           response_complete_ms = round(total_seconds * 1000)
           first_byte_limit = int(os.environ['SARAH_VOICE_FIRST_BYTE_MAX_MS'])
