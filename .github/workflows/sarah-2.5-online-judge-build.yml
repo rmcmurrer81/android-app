@@ -615,7 +615,11 @@ jobs:
               'image_jpeg_base64': image,
           }, open('/tmp/sarah-red-vision-request.json', 'w', encoding='utf-8'))
           PY
+          # This generated-image inference has no external side effect. Keep
+          # the exact RED/model/provider/online gates below, but tolerate a
+          # bounded transient Workers AI 5xx response.
           curl --fail --silent --show-error --connect-timeout 5 --max-time 30 \
+            --retry 3 --retry-all-errors --retry-delay 2 \
             -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
             -H 'Content-Type: application/json' \
             --data-binary @/tmp/sarah-red-vision-request.json \

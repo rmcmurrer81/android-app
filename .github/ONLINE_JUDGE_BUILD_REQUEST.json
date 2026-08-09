@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T05:53:24Z",
-  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after adding a bounded authenticated-capability retry for the observed fresh-workers.dev propagation 404; keep exact deployment/source/config/token contract checks, the owner-provided Tavily route, redacted per-gate conversation diagnostics, application/signing identity, approved portrait, restored Workbench, optional read-only Gmail with owner-confirmed calendar/reminders, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
+  "requested_at": "2026-08-09T05:57:37Z",
+  "reason": "Rerun the exact current R3 CURRENT OWNER TEST after run 9 passed exact deployment/auth/model/Tavily gates and exposed one transient Workers AI HTTP 500 on the side-effect-free generated-image vision probe; add only a bounded vision transport retry while retaining the exact RED/model/provider/online checks, redacted per-gate conversation diagnostics, application/signing identity, approved portrait, restored Workbench, optional read-only Gmail with owner-confirmed calendar/reminders, secure pairing/continuity, explicit power saving, manifests, hashes, and pending physical phone/laptop acceptance"
 }
