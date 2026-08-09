@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kiraworld.example/contracts/sarah-offline-trip-map-v1.schema.json",
+  "title": "Sarah Offline Trip Map Bundle v1",
+  "type": "object",
+  "required": ["schema", "tripId", "personScopeId", "title", "anchors", "mapPackageRequest", "privacy"],
+  "properties": {
+    "schema": { "const": "sarah-offline-trip-map-v1" },
+    "version": { "const": 1 },
+    "tripId": { "type": "string", "minLength": 1 },
+    "personScopeId": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "destination": { "type": "string" },
+    "startDate": { "type": "string" },
+    "endDate": { "type": "string" },
+    "timezone": { "type": "string" },
+    "generatedAt": { "type": "string" },
+    "privacy": {
+      "type": "object",
+      "required": ["profileIsolated", "socialCredentialsIncluded"],
+      "properties": {
+        "profileIsolated": { "const": true },
+        "containsSensitiveOfflineFields": { "type": "boolean" },
+        "socialCredentialsIncluded": { "const": false }
+      }
+    },
+    "interests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["topic", "confidence"],
+        "properties": {
+          "topic": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidenceCount": { "type": "integer", "minimum": 0 },
+          "sources": { "type": "array", "items": { "type": "string" } },
+          "origins": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "anchors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/anchor" }
+    },
+    "tripFacts": { "type": "array", "items": { "$ref": "#/$defs/anchor" } },
+    "personalNotes": { "type": "array", "items": { "$ref": "#/$defs/anchor" } },
+    "recommendations": { "type": "array", "items": { "type": "object" } },
+    "mapPackageRequest": {
+      "type": "object",
+      "required": ["provider", "state", "minZoom", "maxZoom", "offlineTilePermissionRequired"],
+      "properties": {
+        "provider": { "type": "string" },
+        "packageId": { "type": "string" },
+        "state": { "enum": ["ready_to_download", "needs_coordinates", "downloading", "ready", "error"] },
+        "bounds": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["north", "south", "east", "west"],
+              "properties": {
+                "north": { "type": "number" },
+                "south": { "type": "number" },
+                "east": { "type": "number" },
+                "west": { "type": "number" }
+              }
+            }
+          ]
+        },
+        "minZoom": { "type": "number", "minimum": 0 },
+        "maxZoom": { "type": "number", "minimum": 0 },
+        "styleUrl": { "type": "string" },
+        "attributionRequired": { "type": "boolean" },
+        "offlineTilePermissionRequired": { "const": true },
+        "downloadedAt": { "type": "string" },
+        "estimatedBytes": { "type": ["number", "null"] }
+      }
+    },
+    "sponsorEnrichmentPlan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sponsorId", "action", "onlineRequired", "truthBoundary"],
+        "properties": {
+          "sponsorId": { "type": "string" },
+          "sponsorLabel": { "type": "string" },
+          "action": { "type": "string" },
+          "query": { "type": "string" },
+          "onlineRequired": { "type": "boolean" },
+          "userInitiated": { "type": "boolean" },
+          "cacheForOffline": { "type": "boolean" },
+          "offlineFields": { "type": "array", "items": { "type": "string" } },
+          "truthBoundary": { "type": "string" }
+        }
+      }
+    },
+    "freshness": { "type": "object" },
+    "readiness": { "type": "object" }
+  },
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "required": ["id", "kind", "title", "confirmed", "sensitive"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["flight", "airport", "hotel", "ticket", "transport", "place", "recommendation", "note", "emergency", "other"] },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "latitude": { "type": ["number", "null"] },
+        "longitude": { "type": ["number", "null"] },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "dayIndex": { "type": "integer", "minimum": 0 },
+        "confirmed": { "type": "boolean" },
+        "sensitive": { "type": "boolean" },
+        "offlineBody": { "type": "string" },
+        "reference": { "type": "string" },
+        "source": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "checkedAt": { "type": "string" }
+      }
+    }
+  }
+}

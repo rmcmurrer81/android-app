@@ -1,0 +1,10 @@
+{
+  "name": "@sarah-team/offline-trip-map-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable offline-first trip map, recommendation, note, booking, and sponsor-enrichment kit for Sarah-compatible UIs.",
+  "scripts": {
+    "test": "node tests/offline-trip-map-kit.test.mjs"
+  }
+}
