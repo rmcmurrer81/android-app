@@ -23,6 +23,43 @@ Download the two `Sarah-Morgan-Event-Candidate-72H-*` artifacts from the GitHub
 Actions run linked on PR #21. Verify each file against its adjacent `.sha256`
 record before installing.
 
+### Current preferred downloadable pair
+
+The latest complete, independently downloaded and structurally inspected pair
+was produced from commit
+`04806eeb13c8c467456a54e8e1a741b49f366176` by
+[Actions run 31311731985](https://github.com/rmcmurrer81/android-app/actions/runs/31311731985).
+It is preferred over the earlier preserved successful pair, but it still awaits
+physical owner acceptance on the Galaxy A17 and 8 GB Windows laptop.
+
+- [Android artifact `9037594346`](https://github.com/rmcmurrer81/android-app/actions/runs/31311731985/artifacts/9037594346):
+  archive SHA-256
+  `177d9216f9a7190e865249c349abeefe643fbe3860333feeefbd751a8b591ef7`;
+  extracted APK SHA-256
+  `7056313eaab115e91a28f6bed07911caf1161d3e4c945bf44b684435e212d442`.
+- [Windows artifact `9037617491`](https://github.com/rmcmurrer81/android-app/actions/runs/31311731985/artifacts/9037617491):
+  archive SHA-256
+  `c8460c8c6a11267162fb86f83bfa57544d77e408997ab0c0b7537736c6a4d98a`;
+  extracted installer SHA-256
+  `1a18e25af652275c516daba1966a2733693dc1c6b656cc28875f214c4846b41e`.
+
+The exact event Worker is `sarah-r3-31311731985-1`; its protected access
+expires at `2026-08-12T11:49:22.000Z` (August 12, 2026 at 7:49:22 AM EDT), or
+earlier if that exact Worker is retired. No credential value is recorded in
+this README.
+
+At build time this pair passed exact online-model, source, vision, protected
+voice, Android, Windows, and installer-self-test gates. A later source-timeout
+rebuild attempt reached the same voice route after its other online gates had
+passed, but ElevenLabs then returned HTTP 401 with zero account credits
+remaining. That later run produced no artifacts. Consequently, the pair above
+still contains the approved online and offline routing code, but premium
+ElevenLabs speech may currently fall back to the clearly labeled device voice
+until credits renew or are added. This is an external account-quota blocker,
+not proof that the APK/EXE, Worker authentication, or Sarah's online text mind
+failed. Do not bypass the voice gate or represent premium voice as currently
+available without a fresh successful provider check.
+
 ## Install
 
 Android uses application ID `com.kiraworld.sarahtravel.eventcandidate` and the

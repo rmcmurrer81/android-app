@@ -1,0 +1,11 @@
+{
+  "name": "sarah-full-auth-foundation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Non-deployable Phase 1 foundation for Sarah durable per-device authentication",
+  "scripts": {
+    "check": "node --check src/protocol.js && node --check src/state.js && node --check src/artifact_contract.js && node --test",
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "contract": "sarah-full-artifact-config-v1",
+  "api_origin": "https://api.sarah.example",
+  "owner_portal_origin": "https://owner.sarah.example",
+  "service_id": "sarah-full-staging",
+  "contract_major": 1,
+  "build_channel": "full-staging",
+  "enrollment_enabled": true
+}

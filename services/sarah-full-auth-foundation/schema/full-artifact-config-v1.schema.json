@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sarah.example/full-artifact-config-v1.schema.json",
+  "title": "Sarah full artifact public configuration v1",
+  "description": "Public routing and compatibility data only. A conforming artifact contains no reusable authorization credential.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "api_origin",
+    "owner_portal_origin",
+    "service_id",
+    "contract_major",
+    "build_channel",
+    "enrollment_enabled"
+  ],
+  "properties": {
+    "contract": {
+      "const": "sarah-full-artifact-config-v1"
+    },
+    "api_origin": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^/?#]+$"
+    },
+    "owner_portal_origin": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^/?#]+$"
+    },
+    "service_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,63}$"
+    },
+    "contract_major": {
+      "const": 1
+    },
+    "build_channel": {
+      "enum": ["full-staging", "full-release"]
+    },
+    "enrollment_enabled": {
+      "type": "boolean"
+    }
+  }
+}
