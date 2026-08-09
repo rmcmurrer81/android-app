@@ -1,0 +1,38 @@
+{
+  "schema": "sarah-social-interest-v1",
+  "purpose": "Portable contract between an authorized social-data collector and Sarah or another host interface.",
+  "request": {
+    "person_scope_id": "profile-stable-id",
+    "platform": "instagram",
+    "user_authorized": true,
+    "max_signals": 500
+  },
+  "signal": {
+    "source": "instagram",
+    "action": "LIKE|SAVE|FOLLOW|COMMENT|SHARE|VIEW|POST|EXPLICIT",
+    "topics": ["Power Rangers", "filming locations"],
+    "source_reference": "opaque-provider-reference-or-public-url",
+    "observed_at_ms": 0
+  },
+  "result": {
+    "platform": "instagram",
+    "provenance": "authorized-api|user-export|authorized-provider",
+    "collected_at_ms": 0,
+    "signals": []
+  },
+  "learned_interest": {
+    "topic": "Power Rangers",
+    "confidence": 0.92,
+    "evidence_count": 7,
+    "sources": ["instagram", "youtube"]
+  },
+  "rules": [
+    "Keep each person's signals and learned interests isolated by person_scope_id.",
+    "Do not collect when user_authorized is false.",
+    "Do not send social-media passwords, session cookies, recovery codes, or payment credentials through this contract.",
+    "Treat inferred interests as probabilistic and correctable, not facts about the person.",
+    "A single weak interaction should not normally become a durable interest.",
+    "Hosts may use a supported platform API, user-owned export, or other explicitly authorized provider behind this contract.",
+    "The UI is not part of this contract; Android, web, desktop, or another team interface may implement it independently."
+  ]
+}
