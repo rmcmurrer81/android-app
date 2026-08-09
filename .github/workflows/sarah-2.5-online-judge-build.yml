@@ -883,29 +883,7 @@ jobs:
               000|404|408|429|5??)
                 ;;
               *)
-                python - <<'PY'
-                import json
-                import re
-                from pathlib import Path
-
-                safe_error = "unknown"
-                safe_upstream_status = None
-                try:
-                    payload = json.loads(Path('/tmp/sarah-voice-smoke.mp3').read_text(
-                        encoding='utf-8', errors='strict'))
-                    candidate_error = str(payload.get('error') or '')
-                    if re.fullmatch(r'[a-z0-9_]{1,80}', candidate_error):
-                        safe_error = candidate_error
-                    candidate_status = payload.get('upstream_status')
-                    if isinstance(candidate_status, int) and 100 <= candidate_status <= 599:
-                        safe_upstream_status = candidate_status
-                except (OSError, UnicodeError, ValueError, TypeError):
-                    pass
-                print(
-                    'VOICE_FAILURE_CONTRACT '
-                    f'error={safe_error} upstream_status={safe_upstream_status}'
-                )
-                PY
+                python -c "import json,re; from pathlib import Path; payload=json.loads(Path('/tmp/sarah-voice-smoke.mp3').read_text(encoding='utf-8', errors='strict')); candidate_error=str(payload.get('error') or ''); safe_error=candidate_error if re.fullmatch(r'[a-z0-9_]{1,80}', candidate_error) else 'unknown'; candidate_status=payload.get('upstream_status'); safe_status=candidate_status if isinstance(candidate_status, int) and 100 <= candidate_status <= 599 else None; print(f'VOICE_FAILURE_CONTRACT error={safe_error} upstream_status={safe_status}')"
                 echo "::error::Protected voice route returned non-propagation HTTP $voice_status."
                 exit 1
                 ;;
