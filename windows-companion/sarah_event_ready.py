@@ -30,9 +30,12 @@ from sarah_live_avatar import (
 from sarah_core import (
     ElevenLabsVoice,
     SarahDatabase,
+    bundled_event_capability_status,
     bundled_event_config_path,
     load_bundled_event_config,
     load_runtime_config,
+    online_access_status,
+    resolve_backend_access,
     needs_owner_identity_confirmation,
     runtime_setting,
     safe_text,
@@ -240,6 +243,63 @@ def owner_surface_contract() -> dict[str, object]:
         "provider_secrets_bundled": False,
         "gpu_required": False,
     }
+
+
+def owner_window_layout(screen_width: int, screen_height: int) -> dict[str, object]:
+    """Keep the owner composer inside a scaled laptop's usable screen bounds."""
+
+    bounded_screen_width = max(320, int(screen_width))
+    bounded_screen_height = max(320, int(screen_height))
+    width_limit = max(320, bounded_screen_width - 48)
+    height_limit = max(300, bounded_screen_height - 96)
+    width = min(1240, width_limit)
+    height = min(810, height_limit)
+    compact = width < 1100 or height < 700
+    very_compact = height < 560
+    portrait_edge = 150 if very_compact else (210 if compact else OWNER_PORTRAIT_SIZE[0])
+    rail_width = max(portrait_edge + 28, 238 if compact else 314)
+    return {
+        "width": width,
+        "height": height,
+        "minimum_width": min(760, width),
+        "minimum_height": min(440, height),
+        "x": max(0, (bounded_screen_width - width) // 2),
+        "y": max(0, min(24, (bounded_screen_height - height) // 3)),
+        "compact": compact,
+        "portrait_size": (portrait_edge, portrait_edge),
+        "rail_width": rail_width,
+    }
+
+
+def owner_connection_status_text(
+    state: dict[str, object], event: dict[str, object]
+) -> str:
+    """Render owner-safe connection truth without exposing credential values."""
+
+    if state.get("event_capability_expired"):
+        return (
+            "This event build's short-lived access has expired. Install a current event build to restore its automatic connection. "
+            "A future durable build must enroll through confirmation on an already trusted device; Robert is not expected to invent a secret."
+        )
+    if state.get("event_capability_invalid"):
+        return (
+            "This event build's access expiry is missing or invalid, so Sarah withheld its packaged capability. "
+            "Install a current authorized event build; Robert is not expected to invent or paste a secret."
+        )
+    if state.get("using_packaged_event_capability") and state.get("activated"):
+        expiry = safe_text(event.get("expires_utc"))
+        return (
+            "This event build already contains its short-lived, per-run Sarah capability. "
+            f"Normal chat, current-source lookup, and approved voice use it automatically until {expiry}. No owner code is needed."
+        )
+    if state.get("activated"):
+        return (
+            "Sarah already has a connection protected for this Windows account. Normal chat uses it automatically; no code is needed."
+        )
+    return (
+        "This installation has no active packaged event capability. Install a current authorized event build. "
+        "Future durable access must use trusted-device confirmation and automatic renewal, not a permanent bearer in the app or an owner-invented secret."
+    )
 
 
 class SarahEventReadyApp(SarahApp):
@@ -519,9 +579,16 @@ class SarahEventReadyApp(SarahApp):
         self._portrait_power_saving = self.db.get_setting(
             "owner_portrait_power_saving", "0"
         ) == "1"
+        window = owner_window_layout(
+            self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        )
+        self._compact_owner_layout = bool(window["compact"])
+        self._owner_portrait_size = tuple(window["portrait_size"])
         self.root.configure(bg=PALETTE["window"])
-        self.root.geometry("1240x810")
-        self.root.minsize(960, 640)
+        self.root.geometry(
+            f'{window["width"]}x{window["height"]}+{window["x"]}+{window["y"]}'
+        )
+        self.root.minsize(window["minimum_width"], window["minimum_height"])
 
         style = ttk.Style(self.root)
         try:
@@ -599,8 +666,8 @@ class SarahEventReadyApp(SarahApp):
 
         ttk.Button(
             header,
-            text="Connect Sarah",
-            command=self.connect_private_access,
+            text="Connection",
+            command=self.show_connection_status,
             style="Owner.TButton",
         ).pack(side="right", padx=(6, 18), pady=18)
         ttk.Button(
@@ -620,7 +687,7 @@ class SarahEventReadyApp(SarahApp):
 
         shell = tk.Frame(self.root, bg=PALETTE["window"])
         shell.pack(fill="both", expand=True)
-        rail = tk.Frame(shell, bg=PALETTE["rail"], width=314)
+        rail = tk.Frame(shell, bg=PALETTE["rail"], width=window["rail_width"])
         rail.pack(side="left", fill="y")
         rail.pack_propagate(False)
 
@@ -633,8 +700,8 @@ class SarahEventReadyApp(SarahApp):
         portrait_frame.pack(padx=13, pady=(15, 8))
         self.portrait_canvas = tk.Canvas(
             portrait_frame,
-            width=OWNER_PORTRAIT_SIZE[0],
-            height=OWNER_PORTRAIT_SIZE[1],
+            width=self._owner_portrait_size[0],
+            height=self._owner_portrait_size[1],
             bg=PALETTE["panel"],
             highlightthickness=0,
         )
@@ -698,7 +765,7 @@ class SarahEventReadyApp(SarahApp):
             bg=PALETTE["rail"],
             fg=PALETTE["muted"],
             font=("Segoe UI", 8),
-            wraplength=275,
+            wraplength=max(180, int(window["rail_width"]) - 39),
             justify="left",
         ).pack(side="bottom", anchor="w", padx=18, pady=14)
 
@@ -1698,7 +1765,12 @@ class SarahEventReadyApp(SarahApp):
             0,
         )
         self._owner_button(voice, "Hear Sarah (ElevenLabs)", self.hear_sarah_elevenlabs).pack(anchor="w")
-        self._owner_button(voice, "Connect Sarah private access", self.connect_private_access).pack(anchor="w", pady=(8, 0))
+        self._owner_button(voice, "Connection status", self.show_connection_status).pack(anchor="w", pady=(8, 0))
+        self._owner_button(
+            voice,
+            "Advanced developer recovery",
+            self._advanced_connect_private_access,
+        ).pack(anchor="w", pady=(8, 0))
 
         self._gmail_monitor_enabled = tk.BooleanVar(value=False)
         if event_gmail_available():
@@ -1795,25 +1867,53 @@ class SarahEventReadyApp(SarahApp):
         self.connect_private_access()
 
     def connect_private_access(self) -> None:
-        endpoint = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root)
+        """Normal owner path: use packaged event access automatically; never ask for a code."""
+
+        self.show_connection_status()
+
+    def show_connection_status(self) -> None:
+        state = online_access_status(True, root=self.db.root)
+        event = bundled_event_capability_status()
+        text = owner_connection_status_text(state, event)
+        self.owner_notice.set(text)
+        messagebox.showinfo("Sarah connection", text, parent=self.root)
+        self._refresh_status_chips()
+
+    def _advanced_connect_private_access(self) -> None:
+        """Hidden/manual recovery for a developer-supplied revocable code only."""
+
+        if not messagebox.askyesno(
+            "Advanced developer recovery",
+            "Use this only if a Sarah developer supplied a revocable recovery code for this exact service. Normal event builds connect automatically, and future durable access uses trusted-device enrollment. Continue?",
+            parent=self.root,
+        ):
+            return
+        bundled = load_bundled_event_config()
+        current = load_runtime_config(self.db.root)
+        bundled_endpoint = safe_text(bundled.get("SARAH_MODEL_BACKEND_URL"))
+        user_endpoint = safe_text(current.get("SARAH_MODEL_BACKEND_URL"))
+        endpoint = (
+            bundled_endpoint
+            if bundled_endpoint.startswith("https://")
+            else user_endpoint
+        )
         if not endpoint.startswith("https://"):
             messagebox.showinfo(
-                "Connect Sarah",
-                "This build does not include Sarah's protected service address. No access code was requested or saved.",
+                "Advanced developer recovery",
+                "This build does not include Sarah's protected service address. No recovery code was requested or saved.",
                 parent=self.root,
             )
             return
         code = simpledialog.askstring(
-            "Connect Sarah",
-            "Enter your Sarah private access code. This is encrypted for this Windows account. Do not enter an ElevenLabs or other provider key here.",
+            "Advanced developer recovery",
+            "Enter the revocable Sarah recovery code supplied for this exact service. It is encrypted for this Windows account. Do not enter an ElevenLabs or other provider key here.",
             show="*",
             parent=self.root,
         )
         if not safe_text(code):
             return
-        settings = load_runtime_config(self.db.root)
+        settings = dict(current)
         for name in (
-            "SARAH_MODEL_BACKEND_URL",
             "SARAH_MODEL_PROVIDER",
             "SARAH_MODEL_ID",
             "SARAH_ELEVENLABS_BACKEND_URL",
@@ -1825,22 +1925,23 @@ class SarahEventReadyApp(SarahApp):
             value = runtime_setting(name, root=self.db.root)
             if value:
                 settings[name] = value
+        settings["SARAH_MODEL_BACKEND_URL"] = endpoint
         settings["SARAH_MODEL_BACKEND_TOKEN"] = safe_text(code)
         settings["SARAH_ELEVENLABS_BACKEND_TOKEN"] = safe_text(code)
         try:
             save_runtime_config(settings, self.db.root)
             self.voice = ElevenLabsVoice(self.db.root)
         except Exception as error:
-            messagebox.showerror("Connect Sarah", str(error), parent=self.root)
+            messagebox.showerror("Advanced developer recovery", str(error), parent=self.root)
             return
-        self.owner_notice.set("Sarah's private connection was saved for this Windows account.")
+        self.owner_notice.set("The revocable developer recovery connection was saved for this Windows account.")
         self._refresh_status_chips()
 
     def hear_sarah_elevenlabs(self) -> None:
         if not self.voice.configured:
             messagebox.showinfo(
                 "Hear Sarah",
-                "ElevenLabs is not connected yet. Choose Connect Sarah private access first. No substitute voice was played.",
+                "The approved voice route is unavailable in this build or its event access has expired. Install a current authorized event build; no substitute voice was played.",
                 parent=self.root,
             )
             return
@@ -2717,10 +2818,7 @@ class SarahEventReadyApp(SarahApp):
         if not hasattr(self, "_status_chip_vars"):
             return
         self._load_latest_voice_receipt()
-        configured_mind = bool(
-            runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root)
-            and runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.db.root)
-        )
+        configured_mind = bool(resolve_backend_access(self.db.root)["active"])
         self._status_chip_vars["mind"].set(
             mind_status_text(self._last_mind_route, configured_mind)
         )
@@ -2764,7 +2862,9 @@ class SarahEventReadyApp(SarahApp):
         self._portrait_base_image = base
         self._portrait_asset_path = resolved
         self._portrait_renderer = PortraitFrameRenderer(base, SARAH_PORTRAIT_DISPLAY_SIZE)
-        self._owner_portrait_renderer = PortraitFrameRenderer(base, OWNER_PORTRAIT_SIZE)
+        self._owner_portrait_renderer = PortraitFrameRenderer(
+            base, self._owner_portrait_size
+        )
 
     def _draw_vector_avatar(self):
         raise RuntimeError("Vector avatar substitution is disabled in the Sarah 2.5 owner build")
@@ -2877,8 +2977,8 @@ class SarahEventReadyApp(SarahApp):
                 self.portrait_canvas.create_rectangle(
                     2,
                     2,
-                    OWNER_PORTRAIT_SIZE[0] - 3,
-                    OWNER_PORTRAIT_SIZE[1] - 3,
+                    self._owner_portrait_size[0] - 3,
+                    self._owner_portrait_size[1] - 3,
                     outline=PALETTE["orange"] if self.speaking else PALETTE["cyan"],
                     width=2,
                 )
@@ -3044,6 +3144,13 @@ def self_test() -> int:
             raise RuntimeError("Bundled event model provider configuration is incomplete")
         if not bundled.get("SARAH_MODEL_BACKEND_TOKEN"):
             raise RuntimeError("Bundled event app-to-Worker bearer is absent")
+        event_access = bundled_event_capability_status(bundled_path)
+        if not event_access["expiry_known"]:
+            raise RuntimeError(
+                "Bundled event app-to-Worker bearer expiry is missing or is not exact UTC"
+            )
+        if not event_access["active"]:
+            raise RuntimeError("Bundled event app-to-Worker bearer is expired")
         if event_gmail_available():
             packaged_gmail_path = resolve_desktop_oauth_client_path()
             if packaged_gmail_path is None:

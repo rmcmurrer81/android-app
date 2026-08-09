@@ -38,14 +38,45 @@ class AndroidPresenceSurfaceTest(unittest.TestCase):
 
     def test_destination_preview_can_appear_without_opening_more_tools(self):
         root = ET.parse(APP / "res" / "layout" / "activity_main.xml").getroot()
-        preview = next(node for node in root if node.tag.endswith("ExploreButton"))
+        preview = next(node for node in root.iter() if node.tag.endswith("ExploreButton"))
         panel = next(
-            node for node in root
+            node for node in root.iter()
             if node.attrib.get("{http://schemas.android.com/apk/res/android}id", "")
             == "@+id/tripContextPanel"
         )
         self.assertIsNot(preview, panel)
         self.assertEqual("gone", panel.attrib["{http://schemas.android.com/apk/res/android}visibility"])
+
+    def test_samsung_keyboard_hides_only_nonessential_upper_surface(self):
+        namespace = "{http://schemas.android.com/apk/res/android}id"
+        root = ET.parse(APP / "res" / "layout" / "activity_main.xml").getroot()
+        by_id = {
+            node.attrib.get(namespace, ""): node
+            for node in root.iter()
+            if node.attrib.get(namespace, "")
+        }
+        collapsible = by_id["@+id/keyboardCollapsibleContent"]
+        collapsed_ids = {
+            node.attrib.get(namespace, "") for node in collapsible.iter()
+        }
+        for expected in (
+            "@+id/sarahPresenceHost",
+            "@+id/voiceCallButton",
+            "@+id/travelHubButton",
+            "@+id/exploreButton",
+            "@+id/tripContextToggle",
+        ):
+            self.assertIn(expected, collapsed_ids)
+        self.assertNotIn("@+id/chatScroll", collapsed_ids)
+        self.assertNotIn("@+id/bottomControls", collapsed_ids)
+
+        main = (JAVA / "MainActivity.java").read_text(encoding="utf-8")
+        self.assertIn("findViewById(R.id.keyboardCollapsibleContent)", main)
+        self.assertIn("deferCurrentSourceTurnUntilCapabilityCheck(text)", main)
+        self.assertIn("ProtectedBackendCapabilities.isChecking()", main)
+        self.assertIn("final String exactDraft = input.getText().toString()", main)
+        self.assertIn("exactDraft.equals(input.getText().toString())", main)
+        self.assertIn("CurrentLocationPolicy.asksForCurrentArea(text)", main)
 
     def test_motion_is_continuous_bounded_and_not_a_slideshow(self):
         source = (JAVA / "SarahPortraitView.java").read_text(encoding="utf-8")

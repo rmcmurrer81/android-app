@@ -1577,12 +1577,13 @@ jobs:
           SARAH_MODEL_BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
           SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
           SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_ELEVENLABS_VOICE_ID')) {
+          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_EVENT_AUTH_EXPIRES_UTC', 'SARAH_ELEVENLABS_VOICE_ID')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Required event build setting is absent: $name"
             }
@@ -1595,6 +1596,7 @@ jobs:
             SARAH_MODEL_BACKEND_TOKEN = $env:SARAH_MODEL_BACKEND_TOKEN
             SARAH_MODEL_PROVIDER = $env:SARAH_MODEL_PROVIDER
             SARAH_MODEL_ID = $env:SARAH_MODEL_ID
+            SARAH_EVENT_AUTH_EXPIRES_UTC = $env:SARAH_EVENT_AUTH_EXPIRES_UTC
             SARAH_ELEVENLABS_VOICE_ID = $env:SARAH_ELEVENLABS_VOICE_ID
             SARAH_ELEVENLABS_MODEL_ID = $env:SARAH_ELEVENLABS_MODEL_ID
             SARAH_EVENT_GMAIL_AVAILABLE = 'false'

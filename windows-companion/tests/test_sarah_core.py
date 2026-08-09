@@ -15,7 +15,7 @@ import requests
 
 from sarah_core import (
     ChannelResponse, ElevenLabsVoice, ModelClient, SarahDatabase, TavilyResearch, age_group_for,
-    adaptive_context_from_message, corrected_name, current_search_query, discovery_queries,
+    adaptive_context_from_message, asks_for_current_area, corrected_name, current_search_query, discovery_queries,
     enforce_no_false_work_promise, is_stress_or_fear,
     load_bundled_event_config, load_runtime_config, normalize_age,
     needs_owner_identity_confirmation, needs_current_sources, runtime_setting,
@@ -69,6 +69,76 @@ def test_windows_current_search_query_binds_area_and_prior_destination():
     assert "Newark, New Jersey" in nearby
     assert "Brazil" in nearby
     assert "Brazil" in followup
+    assert asks_for_current_area("What is happening close to me?")
+    assert asks_for_current_area("Find events near my location")
+    assert asks_for_current_area("Find food near my current location")
+    assert asks_for_current_area("Are there events in my area?")
+    assert asks_for_current_area("Show me things around me")
+    assert not asks_for_current_area("Show local events in Brazil")
+    expanded = current_search_query(
+        "What is happening close to me?", profile, [], [],
+    )
+    assert "approximate current area Newark, New Jersey" in expanded
+
+
+def test_windows_nearby_send_requests_bounded_area_without_enabling_monitoring(monkeypatch):
+    import sarah_windows
+
+    class Entry:
+        def __init__(self, value):
+            self.value = value
+
+        def get(self):
+            return self.value
+
+        def delete(self, _start, _end):
+            self.value = ""
+
+    class Status:
+        def __init__(self):
+            self.value = ""
+
+        def set(self, value):
+            self.value = value
+
+    class Database:
+        def __init__(self):
+            self.area = ""
+            self.nearby_monitor_changed = False
+
+        def current_area(self):
+            return self.area
+
+        def set_current_area(self, area):
+            self.area = area
+
+    app = sarah_windows.SarahApp.__new__(sarah_windows.SarahApp)
+    app.entry = Entry("Are there events close to me this weekend?")
+    app.status = Status()
+    app.db = Database()
+    app.root = object()
+    submitted = []
+    app._submit_text = submitted.append
+    monkeypatch.setattr(
+        sarah_windows.simpledialog,
+        "askstring",
+        lambda *args, **kwargs: "Jersey City, NJ",
+    )
+
+    app.send()
+
+    assert app.db.area == "Jersey City, NJ"
+    assert submitted == ["Are there events close to me this weekend?"]
+    assert app.entry.value == ""
+    assert app.db.nearby_monitor_changed is False
+    assert "did not turn on background nearby research" in app.status.value
+
+    app.entry.value = "What is nearby?"
+    app.db.area = ""
+    monkeypatch.setattr(sarah_windows.simpledialog, "askstring", lambda *args, **kwargs: None)
+    app.send()
+    assert app.entry.value == "What is nearby?"
+    assert submitted == ["Are there events close to me this weekend?"]
 
 
 def make_sarah_home(path: Path) -> Path:
@@ -905,7 +975,7 @@ def test_windows_protected_voice_requires_revocable_backend_token(monkeypatch):
             "SARAH_MODEL_BACKEND_URL": "https://sarah.example.test",
         }, root)
         voice = ElevenLabsVoice(root)
-        assert voice.backend_url == "https://sarah.example.test/voice"
+        assert voice.backend_url == ""
         assert voice.backend_token == ""
         assert not voice.configured
 

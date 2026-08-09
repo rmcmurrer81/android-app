@@ -51,7 +51,13 @@ public final class SarahR2PolicyTest {
         require(TurnRoute.connectedRoute("workers-ai").equals(TurnRoute.ONLINE_WORKERS_AI), "Workers route truth");
 
         require(CurrentLocationPolicy.asksForCurrentArea("What can I do near me this weekend?"), "near-me intent");
+        require(CurrentLocationPolicy.asksForCurrentArea("What is happening close to me?"), "close-to-me intent");
+        require(CurrentLocationPolicy.asksForCurrentArea("Find events near my location"), "near-my-location intent");
+        require(CurrentLocationPolicy.asksForCurrentArea("Find food near my current location"), "near-my-current-location intent");
+        require(CurrentLocationPolicy.asksForCurrentArea("Are there events in my area?"), "in-my-area intent");
+        require(CurrentLocationPolicy.asksForCurrentArea("Show me things around me"), "around-me intent");
         require(!CurrentLocationPolicy.asksForCurrentArea("Tell me about Brazil"), "destination is not current location");
+        require(!CurrentLocationPolicy.asksForCurrentArea("Show local events in Brazil"), "destination-local is not device location");
         require(CurrentLocationPolicy.fresh(1_000L, 1_000L + CurrentLocationPolicy.MAX_AGE_MS), "boundary fresh");
         require(!CurrentLocationPolicy.fresh(1_000L, 1_001L + CurrentLocationPolicy.MAX_AGE_MS), "stale location");
         require(!CurrentLocationPolicy.profileKey("Robert/1").equals(CurrentLocationPolicy.profileKey("Taylor/2")), "profile isolation");

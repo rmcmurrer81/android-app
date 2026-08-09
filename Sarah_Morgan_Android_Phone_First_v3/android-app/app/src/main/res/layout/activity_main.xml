@@ -56,15 +56,26 @@
             android:tint="#EAFBFF" />
     </LinearLayout>
 
-    <FrameLayout
-        android:id="@+id/sarahPresenceHost"
+    <!--
+      The owner composer must remain visible above a resized Samsung keyboard.
+      SafeAreaInsets hides this nonessential upper surface only while the IME is
+      visible; Sarah's conversation, exact draft, Send control, and history stay.
+    -->
+    <LinearLayout
+        android:id="@+id/keyboardCollapsibleContent"
         android:layout_width="match_parent"
-        android:layout_height="218dp"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginRight="10dp"
-        android:background="@drawable/futuristic_media_panel"
-        android:contentDescription="Sarah's live animated presence">
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/sarahPresenceHost"
+            android:layout_width="match_parent"
+            android:layout_height="218dp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginRight="10dp"
+            android:background="@drawable/futuristic_media_panel"
+            android:contentDescription="Sarah's live animated presence">
 
         <com.kiraworld.sarahtravel.SarahPortraitView
             android:id="@+id/sarahPortraitView"
@@ -117,17 +128,17 @@
                 android:textColor="#F2FCFF"
                 android:textSize="10sp" />
         </LinearLayout>
-    </FrameLayout>
+        </FrameLayout>
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingLeft="10dp"
-        android:paddingTop="6dp"
-        android:paddingRight="10dp"
-        android:paddingBottom="5dp">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingLeft="10dp"
+            android:paddingTop="6dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="5dp">
 
         <Button
             android:id="@+id/voiceCallButton"
@@ -151,50 +162,50 @@
             android:layout_weight="1"
             android:contentDescription="Open Sarah's Travel Workbench"
             android:textSize="14sp" />
-    </LinearLayout>
+        </LinearLayout>
 
-    <com.kiraworld.sarahtravel.ExploreButton
-        android:id="@+id/exploreButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="10dp"
-        android:layout_marginRight="10dp"
-        android:layout_marginBottom="5dp"
-        android:background="@drawable/futuristic_media_panel"
-        android:contentDescription="Source-bound destination photo preview with maps, more public photos, videos, routes, and current sources"
-        android:minHeight="52dp"
-        android:text="Maps, photos, video and routes"
-        android:textAllCaps="false"
-        android:textColor="#F4FDFF"
-        android:textStyle="bold" />
+        <com.kiraworld.sarahtravel.ExploreButton
+            android:id="@+id/exploreButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:layout_marginBottom="5dp"
+            android:background="@drawable/futuristic_media_panel"
+            android:contentDescription="Source-bound destination photo preview with maps, more public photos, videos, routes, and current sources"
+            android:minHeight="52dp"
+            android:text="Maps, photos, video and routes"
+            android:textAllCaps="false"
+            android:textColor="#F4FDFF"
+            android:textStyle="bold" />
 
-    <TextView
-        android:id="@+id/tripContextToggle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:contentDescription="Show optional travel and calm tools"
-        android:focusable="true"
-        android:paddingLeft="16dp"
-        android:paddingTop="5dp"
-        android:paddingRight="16dp"
-        android:paddingBottom="5dp"
-        android:text="More tools"
-        android:textColor="@color/sarah_navy"
-        android:textSize="13sp" />
+        <TextView
+            android:id="@+id/tripContextToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:contentDescription="Show optional travel and calm tools"
+            android:focusable="true"
+            android:paddingLeft="16dp"
+            android:paddingTop="5dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="5dp"
+            android:text="More tools"
+            android:textColor="@color/sarah_navy"
+            android:textSize="13sp" />
 
-    <LinearLayout
-        android:id="@+id/tripContextPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:animateLayoutChanges="true"
-        android:orientation="vertical"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:paddingBottom="5dp"
-        android:visibility="gone">
+        <LinearLayout
+            android:id="@+id/tripContextPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:animateLayoutChanges="true"
+            android:orientation="vertical"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="5dp"
+            android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -258,6 +269,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1" />
+        </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 

@@ -119,6 +119,7 @@ public final class MainActivity extends Activity {
     private final AtomicLong lifecycleGeneration = new AtomicLong(1L);
     private final AtomicLong voiceRequestSequence = new AtomicLong();
     private volatile boolean turnInFlight;
+    private boolean protectedRouteTurnPending;
     private volatile boolean destroyed;
     private final Runnable deferredKnowledgeRefresh = new Runnable() {
         @Override public void run() {
@@ -241,7 +242,8 @@ public final class MainActivity extends Activity {
                 this,
                 findViewById(R.id.mainRoot),
                 findViewById(R.id.bottomControls),
-                scroll);
+                scroll,
+                findViewById(R.id.keyboardCollapsibleContent));
         speakerContext = new SpeakerContext(db.getProfile());
         locationStore = new SarahLocationStore(this);
         locationCoordinator = new ApproximateLocationCoordinator(this);
@@ -467,6 +469,55 @@ public final class MainActivity extends Activity {
             applyProactiveResearchSchedule(internetAvailable);
             updateSpeakerStatus(null);
         });
+    }
+
+    /**
+     * Keep an exact owner draft on screen while the startup capability probe
+     * finishes. Without this narrow admission gate, a current-source question
+     * sent during that probe is routed offline even when the packaged event
+     * connection proves ready a moment later.
+     */
+    private boolean deferCurrentSourceTurnUntilCapabilityCheck(String message) {
+        if (message == null || message.trim().isEmpty()
+                || !internetAvailable
+                || !needsLiveSearch(message)
+                || SettingsActivity.getConversationMode(this)
+                        == ConversationModePolicy.MODE_LOCAL_ONLY
+                || !getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE)
+                        .getBoolean("web_search", true)
+                || !SarahModelConfig.protectedBackendConfigured()
+                || SarahModelConfig.fullConversationAvailable()
+                || !ProtectedBackendCapabilities.isChecking()) {
+            return false;
+        }
+        if (protectedRouteTurnPending) {
+            Toast.makeText(
+                    this,
+                    "Sarah is finishing the protected connection check for this draft.",
+                    Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        protectedRouteTurnPending = true;
+        final String exactDraft = input.getText().toString();
+        final long requestGeneration = lifecycleGeneration.get();
+        final String expectedPersonId = speakerContext.activePersonId();
+        final String expectedSpeaker = speakerContext.activeName();
+        if (sendButton != null) sendButton.setEnabled(false);
+        updateSpeakerStatus("Checking Sarah's protected connection for this request\u2026");
+        ProtectedBackendCapabilities.refreshAsync(this, decision -> {
+            protectedRouteTurnPending = false;
+            if (sendButton != null && !turnInFlight) sendButton.setEnabled(true);
+            if (!requestMayApplyToSpeaker(
+                    requestGeneration, expectedPersonId, expectedSpeaker)) return;
+            if (!exactDraft.equals(input.getText().toString())) {
+                updateSpeakerStatus("Draft changed; send it when you are ready.");
+                return;
+            }
+            // The ordinary turn path now reads the completed, exact contract
+            // decision. A real failed probe remains a truthful offline fallback.
+            sendCurrent();
+        });
+        return true;
     }
 
     private boolean needsOwnerOnlineActivation() {
@@ -794,6 +845,7 @@ public final class MainActivity extends Activity {
             deferPendingEmailPrompt();
         }
         if (!text.isEmpty() && ensureApproximateAreaForTurn(text)) return;
+        if (!text.isEmpty() && deferCurrentSourceTurnUntilCapabilityCheck(text)) return;
         final long turnSubmittedAt = System.currentTimeMillis();
         final String turnId = "turn-" + turnSubmittedAt + "-"
                 + UUID.randomUUID().toString().replace("-", "");
@@ -1556,7 +1608,8 @@ public final class MainActivity extends Activity {
 
     private boolean needsLiveSearch(String text) {
         String lower = text.toLowerCase(Locale.US);
-        return GenericEventReference.looksLikeEvent(text)
+        return CurrentLocationPolicy.asksForCurrentArea(text)
+                || GenericEventReference.looksLikeEvent(text)
                 || TripWindowParser.parse(text).found()
                 || lower.contains("current")
                 || lower.contains("today")
@@ -2193,6 +2246,7 @@ public final class MainActivity extends Activity {
         lifecycleGeneration.incrementAndGet();
         photoRequestSequence.incrementAndGet();
         turnInFlight = false;
+        protectedRouteTurnPending = false;
         pendingLocationGeneration++;
         clearPendingLocationTurn();
         mainHandler.removeCallbacks(deferredKnowledgeRefresh);

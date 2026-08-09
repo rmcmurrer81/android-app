@@ -6,6 +6,11 @@ Sarah Morgan is a phone-first Android travel companion and general conversationa
 
 This repository is the authoritative hackathon source.
 
+The bounded 2026-08-09 owner-reopened Android/Windows location, keyboard,
+scaled-window, and automatic event-capability source repair is recorded in
+`docs/SARAH_LOCATION_COMPOSER_CONNECTION_REPAIR_20260809.md`. It has static and
+local-test evidence only; no replacement APK/EXE or deployment is claimed.
+
 Current development version:
 
 ```text

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import dataclasses
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import io
@@ -49,6 +50,7 @@ RUNTIME_CONFIG_KEYS = {
     "SARAH_ELEVENLABS_BACKEND_TOKEN",
     "SARAH_TAVILY_API_KEY",
     "SARAH_EVENT_GMAIL_AVAILABLE",
+    "SARAH_EVENT_AUTH_EXPIRES_UTC",
 }
 RUNTIME_SECRET_KEYS = {
     "SARAH_MODEL_BACKEND_TOKEN",
@@ -167,29 +169,153 @@ def runtime_setting(
     return safe_text(load_bundled_event_config(bundled_path).get(name)) or default
 
 
+def bundled_event_capability_status(
+    bundled_path: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Describe the packaged, short-lived event capability without exposing it."""
+
+    bundled = load_bundled_event_config(bundled_path)
+    endpoint = safe_text(bundled.get("SARAH_MODEL_BACKEND_URL"))
+    token = safe_text(bundled.get("SARAH_MODEL_BACKEND_TOKEN"))
+    expires_utc = safe_text(bundled.get("SARAH_EVENT_AUTH_EXPIRES_UTC"))
+    current = now or datetime.now(timezone.utc)
+    expired = False
+    expiry_valid = False
+    expiry = None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", expires_utc):
+        try:
+            expiry = datetime.fromisoformat(expires_utc.replace("Z", "+00:00"))
+            expiry_valid = expiry.tzinfo is not None and expiry.utcoffset().total_seconds() == 0
+            if expiry_valid and current.tzinfo is not None:
+                expired = current.astimezone(timezone.utc) >= expiry.astimezone(timezone.utc)
+            elif expiry_valid:
+                expiry_valid = False
+        except ValueError:
+            expiry_valid = False
+    present = endpoint.startswith("https://") and bool(token)
+    return {
+        "present": present,
+        "expires_utc": expires_utc if expiry_valid else "",
+        "expired": present and expiry_valid and expired,
+        "expiry_known": expiry_valid,
+        "active": present and expiry_valid and not expired,
+        "reason": (
+            "ACTIVE"
+            if present and expiry_valid and not expired
+            else "EXPIRED"
+            if present and expiry_valid and expired
+            else "MISSING_OR_INVALID_EXPIRY"
+            if present
+            else "MISSING_ENDPOINT_OR_TOKEN"
+        ),
+    }
+
+
+def resolve_backend_access(
+    root: Path | None = None,
+    bundled_path: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Resolve one atomic protected-backend pair without cross-source mixing.
+
+    A complete explicit process-environment pair is an operator override. A
+    valid short-lived event pair is next so a stale code saved by an older UI
+    cannot shadow the event artifact. Per-user encrypted access is used only
+    when the event pair is unavailable, invalid, or expired.
+    """
+
+    environment = {
+        "SARAH_MODEL_BACKEND_URL": safe_text(
+            os.environ.get("SARAH_MODEL_BACKEND_URL")
+        ),
+        "SARAH_MODEL_BACKEND_TOKEN": safe_text(
+            os.environ.get("SARAH_MODEL_BACKEND_TOKEN")
+        ),
+    }
+    bundled = load_bundled_event_config(bundled_path)
+    user = load_runtime_config(root)
+    event = bundled_event_capability_status(bundled_path, now=now)
+
+    candidates = (
+        ("environment", environment, ""),
+        (
+            "bundled_event",
+            bundled if event["active"] else {},
+            safe_text(event.get("expires_utc")),
+        ),
+        ("per_user_encrypted", user, ""),
+    )
+    for source, candidate, expiry in candidates:
+        endpoint = safe_text(candidate.get("SARAH_MODEL_BACKEND_URL"))
+        token = safe_text(candidate.get("SARAH_MODEL_BACKEND_TOKEN"))
+        if endpoint.startswith("https://") and token:
+            return {
+                "endpoint": endpoint,
+                "token": token,
+                "source": source,
+                "expires_utc": expiry,
+                "active": True,
+                "candidate_endpoint_present": True,
+            }
+
+    return {
+        "endpoint": "",
+        "token": "",
+        "source": "none",
+        "expires_utc": "",
+        "active": False,
+        "candidate_endpoint_present": any(
+            safe_text(candidate.get("SARAH_MODEL_BACKEND_URL")).startswith("https://")
+            for candidate in (environment, bundled, user)
+        ),
+    }
+
+
+def active_backend_token(
+    root: Path | None = None,
+    bundled_path: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> str:
+    """Return the token from one active, atomically selected backend pair."""
+
+    return safe_text(
+        resolve_backend_access(root, bundled_path, now=now).get("token")
+    )
+
+
 def online_access_status(
     validated_internet: bool,
     root: Path | None = None,
     bundled_path: Path | None = None,
 ) -> dict[str, Any]:
     """Truthful owner state: internet does not imply authenticated Sarah access."""
-    endpoint = runtime_setting(
-        "SARAH_MODEL_BACKEND_URL", root=root, bundled_path=bundled_path,
-    )
-    token = runtime_setting(
-        "SARAH_MODEL_BACKEND_TOKEN", root=root, bundled_path=bundled_path,
-    )
-    protected_address = endpoint.startswith("https://")
-    activated = protected_address and bool(token)
+    current = datetime.now(timezone.utc)
+    access = resolve_backend_access(root, bundled_path, now=current)
+    event = bundled_event_capability_status(bundled_path, now=current)
+    using_packaged_event_capability = access["source"] == "bundled_event"
+    protected_address = bool(access["candidate_endpoint_present"])
+    activated = bool(access["active"])
+    event_expired = not activated and bool(event["present"] and event["expired"])
+    event_invalid = not activated and bool(event["present"] and not event["expiry_known"])
     if not validated_internet:
         label = "Offline mind ready - no validated internet"
         action = "none"
+    elif event_expired:
+        label = "Internet is ready - this event build's short-lived access expired"
+        action = "install_current_event_build"
+    elif event_invalid:
+        label = "Internet is ready - this event build's access expiry is missing or invalid"
+        action = "install_current_event_build"
     elif not protected_address:
         label = "Internet is ready - Sarah's protected service address is missing"
-        action = "advanced_connection_setup"
-    elif not token:
-        label = "Internet is ready - enter your private Sarah access code once"
-        action = "enter_owner_access_code"
+        action = "install_current_event_build_or_enroll_device"
+    elif not activated:
+        label = "Internet is ready - this build has no active Sarah event access"
+        action = "install_current_event_build_or_enroll_device"
     else:
         label = "Internet is ready - checking Sarah's protected connection"
         action = "verify_and_retry"
@@ -197,6 +323,9 @@ def online_access_status(
         "validated_internet": bool(validated_internet),
         "protected_address": protected_address,
         "activated": activated,
+        "using_packaged_event_capability": using_packaged_event_capability,
+        "event_capability_expired": event_expired,
+        "event_capability_invalid": event_invalid,
         "label": label,
         "action": action,
     }
@@ -578,15 +707,29 @@ def connected_route(provider: Any) -> str:
     return "ONLINE_CONNECTED_OTHER"
 
 
+_CURRENT_AREA_REQUEST = re.compile(
+    r"(?i)\b(?:near me|nearby|near my location|near my current location|around here|around me|close to me|close by|"
+    r"where i am|my current location|current location|current area|in my area)\b"
+)
+
+
+def asks_for_current_area(message: Any) -> bool:
+    """Recognize explicit current-area intent without treating a destination as GPS."""
+    return bool(_CURRENT_AREA_REQUEST.search(safe_text(message)))
+
+
 def needs_current_sources(message: Any) -> bool:
     lower = safe_text(message).lower()
-    return any(re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lower) for phrase in (
-        "current", "today", "tonight", "tomorrow", "this week", "next week",
-        "this weekend", "next weekend", "near me", "nearby", "weather",
-        "event", "schedule", "ticket", "availability", "available", "price",
-        "fare", "deal", "cheapest", "lowest cost", "low cost", "low-cost",
-        "least expensive", "budget", "open now", "hours",
-    ))
+    return asks_for_current_area(message) or any(
+        re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", lower)
+        for phrase in (
+            "current", "today", "tonight", "tomorrow", "this week", "next week",
+            "this weekend", "next weekend", "weather", "event", "schedule",
+            "ticket", "availability", "available", "price", "fare", "deal",
+            "cheapest", "lowest cost", "low cost", "low-cost",
+            "least expensive", "budget", "open now", "hours",
+        )
+    )
 
 
 def adaptive_context_from_message(message: Any) -> dict[str, str]:
@@ -632,7 +775,7 @@ def current_search_query(
     lower = text.lower()
     parts = [text]
     area = safe_text(profile.get("current_area"))
-    if area and re.search(r"\b(?:near me|nearby|around here|current location)\b", lower):
+    if area and asks_for_current_area(text):
         parts.append(f"approximate current area {area}")
     extracted = adaptive_context_from_message(text)
     destination = extracted["destination"]
@@ -694,7 +837,7 @@ def with_text_turn_receipt(response: ChannelResponse, receipt: str, route: str) 
 def offline_useful_reply(message: str, profile: dict[str, Any], connected_failed: bool) -> str:
     lower = safe_text(message).lower()
     prefix = "The online mind did not answer this turn, so this is my offline reply. " if connected_failed else "This is my offline reply. "
-    if re.search(r"\b(near me|nearby|around here|current location)\b", lower):
+    if asks_for_current_area(message):
         area = safe_text(profile.get("current_area"))
         if area:
             return prefix + f"I have {area} as your recently supplied approximate current area, not a precise live location. I can use that area for planning, but I cannot verify current events until the online tool returns."
@@ -1485,13 +1628,25 @@ class TavilyResearch:
         api_key: str | None = None,
         backend_url: str | None = None,
         backend_token: str | None = None,
+        root: Path | None = None,
     ):
-        self.api_key = safe_text(api_key or runtime_setting("SARAH_TAVILY_API_KEY"))
-        model_backend = safe_text(backend_url or runtime_setting("SARAH_MODEL_BACKEND_URL"))
-        self.backend_url = model_backend.rstrip("/") + "/search" if model_backend else ""
-        self.backend_token = safe_text(
-            backend_token or runtime_setting("SARAH_MODEL_BACKEND_TOKEN")
+        self.api_key = safe_text(
+            api_key or runtime_setting("SARAH_TAVILY_API_KEY", root=root)
         )
+        explicit_url = safe_text(backend_url)
+        explicit_token = safe_text(backend_token)
+        if explicit_url.startswith("https://") and explicit_token:
+            access_url, access_token = explicit_url, explicit_token
+        elif backend_url is None and backend_token is None:
+            access = resolve_backend_access(root)
+            access_url = safe_text(access.get("endpoint"))
+            access_token = safe_text(access.get("token"))
+        else:
+            # An incomplete explicit pair must never borrow its missing half
+            # from environment, event, or per-user configuration.
+            access_url, access_token = "", ""
+        self.backend_url = access_url.rstrip("/") + "/search" if access_url else ""
+        self.backend_token = access_token
 
     @property
     def configured(self) -> bool:
@@ -1561,17 +1716,16 @@ class ElevenLabsVoice:
         self.api_key = runtime_setting("SARAH_ELEVENLABS_API_KEY", root=self.root)
         self.voice_id = runtime_setting("SARAH_ELEVENLABS_VOICE_ID", "WcGvc9xxaOYbKswm3NBx", self.root)
         self.model = runtime_setting("SARAH_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5", self.root)
-        model_backend = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.root)
-        self.backend_url = runtime_setting(
-            "SARAH_ELEVENLABS_BACKEND_URL",
-            model_backend.rstrip("/") + "/voice" if model_backend else "",
-            self.root,
-        )
-        self.backend_token = runtime_setting(
-            "SARAH_ELEVENLABS_BACKEND_TOKEN",
-            runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.root),
-            self.root,
-        )
+        voice_environment_url = safe_text(os.environ.get("SARAH_ELEVENLABS_BACKEND_URL"))
+        voice_environment_token = safe_text(os.environ.get("SARAH_ELEVENLABS_BACKEND_TOKEN"))
+        if voice_environment_url.startswith("https://") and voice_environment_token:
+            self.backend_url = voice_environment_url
+            self.backend_token = voice_environment_token
+        else:
+            access = resolve_backend_access(self.root)
+            model_backend = safe_text(access.get("endpoint"))
+            self.backend_url = model_backend.rstrip("/") + "/voice" if model_backend else ""
+            self.backend_token = safe_text(access.get("token"))
         self.last_cache_hit = False
         self.last_cache_key = ""
         self.last_route_identity = ""
@@ -1796,9 +1950,12 @@ class ModelClient:
                 ),
                 "LOCAL_TOOL_RESULT",
             )
-        endpoint = runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root)
-        token = runtime_setting("SARAH_MODEL_BACKEND_TOKEN", root=self.db.root)
-        activation_required = bool(endpoint and not token)
+        access = resolve_backend_access(self.db.root)
+        endpoint = safe_text(access.get("endpoint"))
+        token = safe_text(access.get("token"))
+        activation_required = bool(
+            not access["active"] and access["candidate_endpoint_present"]
+        )
         requested_provider = runtime_setting("SARAH_MODEL_PROVIDER", "workers-ai", self.db.root)
         requested_model = runtime_setting("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it", self.db.root)
         web_requested = needs_current_sources(message)
@@ -1894,15 +2051,15 @@ class ModelClient:
         if web_requested:
             completed_at = now_ms()
             route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "TOOL_UNAVAILABLE"
-            unavailable_spoken = ("I cannot verify current information until this computer activates "
-                                  "Sarah's protected online connection. Enter your private Sarah "
-                                  "access code once; after that I will retry automatically."
+            unavailable_spoken = ("I cannot verify current information because this installation has no active "
+                                  "Sarah event capability. Install a current authorized event build; "
+                                  "I will keep this conversation available offline without asking you to invent a code."
                                   if activation_required else
                                   offline_useful_reply(message, profile, connected_failed))
             unavailable = ChannelResponse(
                 unavailable_spoken,
                 "Sarah is staying useful without inventing current information.",
-                ("Sarah's protected service address is present, but no owner access code is activated. "
+                ("Sarah's protected service address is present, but this installation has no active event capability. "
                  if activation_required else "")
                 + "No verified current-source receipt was available, so no current claim or search result was displayed.",
                 "RUNTIME_STATE_ERROR" if connected_failed else "TRUTHFUL_STATEMENT",
@@ -1973,15 +2130,15 @@ class ModelClient:
                 connected_failed = connected_failed or bool(endpoint)
         completed_at = now_ms()
         route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "OFFLINE_LOCAL"
-        offline_spoken = ("I can keep talking offline, but this computer has not activated "
-                          "Sarah's protected online connection yet. Enter your private Sarah "
-                          "access code once; after that I will retry online automatically."
+        offline_spoken = ("I can keep talking offline, but this installation has no active "
+                          "Sarah event capability. Install a current authorized event build; "
+                          "you are not expected to invent or paste a private code."
                           if activation_required else
                           offline_useful_reply(message, profile, connected_failed))
         offline = ChannelResponse(
             offline_spoken,
             "Sarah wants to remain useful without pretending a model answered.",
-            ("Sarah's protected service address is present, but no owner access code is activated. "
+            ("Sarah's protected service address is present, but this installation has no active event capability. "
              if activation_required else
              ("The protected online call failed and no local Ollama endpoint answered. " if connected_failed else "No connected model or local Ollama endpoint is configured. "))
             + "No research, booking or external action occurred.",

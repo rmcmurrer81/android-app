@@ -11,7 +11,9 @@ from sarah_event_ready import (
     SarahEventReadyApp,
     mind_status_text,
     openstreetmap_handoff_url,
+    owner_connection_status_text,
     owner_surface_contract,
+    owner_window_layout,
     voice_status_text,
     wikimedia_media_handoff_url,
 )
@@ -214,21 +216,90 @@ def test_first_run_offers_device_discovery_before_name_and_decline_keeps_local_s
     assert "No profile, Gmail, model, provider, or travel data has been shared" in tasks
 
 
-def test_normal_connection_surfaces_use_owner_language_and_no_provider_key_prompt():
+def test_normal_connection_auto_uses_event_capability_and_manual_code_is_advanced_only():
     connect = inspect.getsource(SarahEventReadyApp.connect_private_access)
+    status = inspect.getsource(SarahEventReadyApp.show_connection_status)
+    status_text = inspect.getsource(owner_connection_status_text)
+    advanced = inspect.getsource(SarahEventReadyApp._advanced_connect_private_access)
     gmail = inspect.getsource(SarahEventReadyApp.connect_gmail)
     devices = inspect.getsource(SarahEventReadyApp._offer_device_verification)
 
-    assert "private access code" in connect
-    assert "provider key" in connect
-    assert "askstring" in connect
-    assert "backend address" not in connect.lower()
+    assert "show_connection_status" in connect
+    assert "askstring" not in connect
+    assert "online_access_status" in status
+    assert "owner_connection_status_text" in status
+    assert "event_capability_invalid" in status_text
+    assert "withheld its packaged capability" in status_text
+    assert "use it automatically" in status_text
+    assert "No owner code is needed" in status_text
+    assert "trusted-device confirmation" in status_text
+    assert "askstring" in advanced
+    assert "Advanced developer recovery" in advanced
+    assert "provider key" in advanced
     assert "project's Google sign-in identity" in gmail
     assert "askopenfilename" not in gmail
     assert "No browser opened and no mail was accessed" in gmail
     assert "Is this your device?" in devices
     assert "same six-digit code" in devices
     assert "both devices" in devices
+
+
+def test_connection_status_text_distinguishes_event_failure_and_active_sources():
+    base = {
+        "activated": False,
+        "using_packaged_event_capability": False,
+        "event_capability_expired": False,
+        "event_capability_invalid": False,
+    }
+    event = {"expires_utc": "2030-01-01T00:00:00.000Z"}
+
+    expired = owner_connection_status_text(
+        {**base, "event_capability_expired": True}, event,
+    )
+    invalid = owner_connection_status_text(
+        {**base, "event_capability_invalid": True}, event,
+    )
+    packaged = owner_connection_status_text(
+        {**base, "activated": True, "using_packaged_event_capability": True}, event,
+    )
+    per_user = owner_connection_status_text({**base, "activated": True}, event)
+    missing = owner_connection_status_text(base, event)
+
+    assert "short-lived access has expired" in expired
+    assert "expiry is missing or invalid" in invalid
+    assert "2030-01-01T00:00:00.000Z" in packaged
+    assert "No owner code is needed" in packaged
+    assert "protected for this Windows account" in per_user
+    assert "no active packaged event capability" in missing
+
+
+def test_packaged_self_test_requires_exact_active_event_expiry():
+    source = inspect.getsource(__import__("sarah_event_ready").self_test)
+    assert 'event_access["expiry_known"]' in source
+    assert 'event_access["active"]' in source
+    assert "bearer expiry is missing or is not exact UTC" in source
+    assert "bearer is expired" in source
+
+
+def test_owner_window_stays_inside_scaled_laptop_and_keeps_composer_pinned():
+    laptop = owner_window_layout(1366, 768)
+    scaled = owner_window_layout(1024, 600)
+    for screen, layout in (((1366, 768), laptop), ((1024, 600), scaled)):
+        assert layout["width"] <= screen[0]
+        assert layout["height"] <= screen[1]
+        assert layout["minimum_width"] <= layout["width"]
+        assert layout["minimum_height"] <= layout["height"]
+    assert laptop["height"] == 672
+    assert scaled["height"] == 504
+    assert scaled["compact"] is True
+    assert scaled["portrait_size"] == (150, 150)
+
+    chat = inspect.getsource(SarahEventReadyApp._build_chat)
+    ui = inspect.getsource(SarahEventReadyApp._build_ui)
+    assert 'composer.pack(fill="x"' in chat
+    assert 'self.chat.pack(fill="both", expand=True)' in chat
+    assert "owner_window_layout" in ui
+    assert "winfo_screenheight" in ui
 
 
 def test_returning_owner_can_import_android_before_windows_asks_for_new_name():

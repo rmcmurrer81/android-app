@@ -13,7 +13,9 @@ public final class CurrentLocationPolicy {
 
     public static boolean asksForCurrentArea(String message) {
         String lower = message == null ? "" : message.toLowerCase(Locale.US);
-        return lower.matches(".*\\b(near me|nearby|around here|where i am|my current location|current area)\\b.*");
+        return lower.matches(
+                ".*\\b(near me|nearby|near my location|near my current location|around here|around me|close to me|close by|"
+                        + "where i am|my current location|current location|current area|in my area)\\b.*");
     }
 
     public static boolean fresh(long capturedAt, long now) {

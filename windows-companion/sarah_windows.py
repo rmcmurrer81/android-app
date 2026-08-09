@@ -25,9 +25,9 @@ from sarah_live_avatar import (
 
 from sarah_core import (
     ChannelResponse, ElevenLabsVoice, ModelClient, SarahDatabase, TavilyResearch,
-    app_home, corrected_name, discovery_queries, is_stress_or_fear,
+    app_home, asks_for_current_area, corrected_name, discovery_queries, is_stress_or_fear,
     load_runtime_config, needs_owner_identity_confirmation, route_label, safe_text,
-    save_runtime_config, runtime_setting,
+    resolve_backend_access, save_runtime_config, runtime_setting,
 )
 from sarah_sync_server import SarahSyncServer
 
@@ -151,7 +151,7 @@ class SarahApp:
         self.root.minsize(820, 580)
         self.db = SarahDatabase()
         self.model = ModelClient(self.db)
-        self.research = TavilyResearch()
+        self.research = TavilyResearch(root=self.db.root)
         self.voice = ElevenLabsVoice()
         self.sync_server = SarahSyncServer(self.db)
         self.tasks: queue.Queue[tuple[str, object]] = queue.Queue()
@@ -236,7 +236,7 @@ class SarahApp:
         header = tk.Frame(self.root, bg="#183448", height=76)
         header.pack(fill="x")
         tk.Label(header, text="Sarah Morgan", fg="white", bg="#183448", font=("Segoe UI", 24, "bold")).pack(side="left", padx=20, pady=15)
-        configured = bool(runtime_setting("SARAH_MODEL_BACKEND_URL", root=self.db.root))
+        configured = bool(resolve_backend_access(self.db.root)["active"])
         initial_route = (
             "Connected route configured • verifying with the next message"
             if configured else "Offline mind ready • no connected route configured"
@@ -301,7 +301,7 @@ class SarahApp:
             messagebox.showerror("Sarah online setup", str(error), parent=self.root)
             return
         self.voice = ElevenLabsVoice(self.db.root)
-        self.research = TavilyResearch()
+        self.research = TavilyResearch(root=self.db.root)
         self.status.set("Sarah’s secure connection settings were saved for this Windows account")
 
     @staticmethod
@@ -315,7 +315,23 @@ class SarahApp:
     def send(self):
         text = self.entry.get().strip()
         if not text: return
-        self.entry.delete(0, "end"); self._submit_text(text)
+        if asks_for_current_area(text) and not self.db.current_area():
+            area = simpledialog.askstring(
+                "Approximate current area",
+                "Windows cannot read your phone's GPS. Enter the current city, state, or ZIP Sarah may use for this nearby request. This does not change your home or turn on background nearby research:",
+                parent=self.root,
+            )
+            if not safe_text(area):
+                self.status.set(
+                    "Your nearby question is still in the message box. Add an approximate city or ZIP, or edit the question."
+                )
+                return
+            self.db.set_current_area(safe_text(area))
+            self.status.set(
+                "Using the approximate current area you entered for this profile. This did not turn on background nearby research."
+            )
+        self.entry.delete(0, "end")
+        self._submit_text(text)
 
     def _submit_text(self, text: str):
         if getattr(self, "turn_in_flight", False):
