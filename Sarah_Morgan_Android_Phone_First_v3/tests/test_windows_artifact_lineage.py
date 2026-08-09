@@ -39,19 +39,19 @@ class WindowsArtifactLineageTest(unittest.TestCase):
         self.assertIn("sarah_event_ready.py", text)
         self.assertIn("sarah_adult_portrait_r2_runtime_512.png;assets", text)
 
-    def test_only_gated_workflow_names_the_current_owner_test(self) -> None:
-        expected_android = "Sarah-2.5-R3-CURRENT-OWNER-TEST-Android-APK"
-        expected_windows = "Sarah-2.5-R3-CURRENT-OWNER-TEST-Windows-ElevenLabs-Candidate"
+    def test_only_gated_workflow_names_the_event_candidate(self) -> None:
+        expected_android = "Sarah-Morgan-Event-Candidate-Android-APK"
+        expected_windows = "Sarah-Morgan-Event-Candidate-Windows-Installer"
         owner_text = OWNER.read_text(encoding="utf-8")
         self.assertIn(expected_android, owner_text)
         self.assertIn(expected_windows, owner_text)
-        self.assertIn("Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk", owner_text)
-        self.assertIn("SarahMorganTravelOS-2.5-R3-CURRENT-OWNER-TEST-Setup.exe", owner_text)
+        self.assertIn("Sarah-Morgan-Event-Candidate.apk", owner_text)
+        self.assertIn("SarahMorgan-Event-Candidate-Setup.exe", owner_text)
         self.assertIn("needs.deploy-smoke-test-and-build.outputs.backend_url", owner_text)
 
         for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):
             text = workflow.read_text(encoding="utf-8")
-            upload_names = re.findall(r"(?m)^\s+name:\s+([^\n]+CURRENT-OWNER-TEST[^\n]*)$", text)
+            upload_names = re.findall(r"(?m)^\s+name:\s+([^\n]+Event-Candidate[^\n]*)$", text)
             if workflow != OWNER:
                 self.assertEqual(upload_names, [], workflow.name)
         self.assertEqual(owner_text.count(expected_android), 1)

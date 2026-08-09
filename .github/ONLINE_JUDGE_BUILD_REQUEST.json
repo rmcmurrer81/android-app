@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T09:52:00Z",
-  "reason": "Owner-authorized urgent event build: after the exact protected Gemma, Tavily, contextual-source, vision, ElevenLabs, and 10-turn production gates, build a separately signed side-by-side Android event candidate and the tested Windows event installer with only the revocable app-to-Worker bearer bundled; keep all provider keys server-side, hide unconfigured Gmail on both platforms, preserve the normal R1 signing gate unchanged, upload explicit manifests and README, and preserve the unique Worker only if owner artifacts upload"
+  "requested_at": "2026-08-09T10:04:00Z",
+  "reason": "Supersede the first urgent event run with the corrected runtime-bound distribution: the separately signed side-by-side Android application ID may use only its revocable bundled app-to-Worker bearer when no owner Keystore activation exists, while every normal R1-compatible distribution remains Keystore-only; hide unconfigured Gmail including its Settings header on both event platforms, rerun the protected Gemma/Tavily/context/vision/ElevenLabs/10-turn gates, build APK and EXE, upload manifests and README, and preserve the unique Worker only with owner artifacts"
 }

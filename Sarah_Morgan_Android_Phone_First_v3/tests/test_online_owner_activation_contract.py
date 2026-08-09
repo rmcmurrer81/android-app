@@ -17,13 +17,16 @@ def test_android_online_activation_is_prominent_and_owner_bound():
     assert "configureOnlineMind.post(configureOnlineMind::performClick)" in settings
 
 
-def test_public_artifacts_still_do_not_bundle_reusable_access_code():
+def test_normal_lane_keeps_keystore_only_and_event_lane_is_explicit():
     model_config = (JAVA / "SarahModelConfig.java").read_text(encoding="utf-8")
     gradle = (ROOT / "android-app" / "app" / "build.gradle").read_text(encoding="utf-8")
     assert "loadSarahBackendToken(context)" in model_config
-    assert "BuildConfig.SARAH_MODEL_BACKEND_TOKEN" not in model_config
+    assert 'BuildConfig.APPLICATION_ID.endsWith(".eventcandidate")' in model_config
+    assert "return clean(BuildConfig.SARAH_MODEL_BACKEND_TOKEN)" in model_config
     assert "buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', '\"\"'" in gradle
     assert "System.getenv('SARAH_MODEL_BACKEND_TOKEN')" not in gradle
+    assert "def sarahEventBackendToken = System.getenv('SARAH_EVENT_BACKEND_TOKEN')" in gradle
+    assert "applicationIdSuffix '.eventcandidate'" in gradle
 
 
 def test_saved_activation_keeps_automatic_capability_retry():

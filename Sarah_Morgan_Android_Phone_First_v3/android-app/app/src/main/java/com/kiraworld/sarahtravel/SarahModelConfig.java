@@ -51,10 +51,20 @@ public final class SarahModelConfig {
         return clean(BuildConfig.SARAH_MODEL_BACKEND_URL);
     }
 
-    /** Revocable app access code loaded only from Android Keystore storage. */
+    /**
+     * Revocable app access code. Normal distributions load only the owner's
+     * Android-Keystore value. The explicitly separate event application ID may
+     * use its short-lived bundled app-to-Worker bearer so it works at the
+     * event without weakening the R1-compatible lane.
+     */
     public static String backendToken() {
         android.content.Context context = SarahApplication.appContext();
-        return context == null ? "" : SecureStore.loadSarahBackendToken(context);
+        String activated = context == null ? "" : SecureStore.loadSarahBackendToken(context);
+        if (!activated.isEmpty()) return activated;
+        if (BuildConfig.APPLICATION_ID.endsWith(".eventcandidate")) {
+            return clean(BuildConfig.SARAH_MODEL_BACKEND_TOKEN);
+        }
+        return "";
     }
 
     public static String expectedDeploymentId() {

@@ -149,6 +149,7 @@ public final class SettingsActivity extends Activity {
             manageGmail.setOnClickListener(v -> startActivity(
                     new Intent(this, GmailAuthorizationActivity.class)));
         } else {
+            findViewById(R.id.emailBookingHeader).setVisibility(View.GONE);
             gmailConnectionStatus.setVisibility(View.GONE);
             manageGmail.setVisibility(View.GONE);
         }

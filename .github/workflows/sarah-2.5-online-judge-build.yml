@@ -1115,11 +1115,10 @@ jobs:
             echo '::error::Android apksigner was not found.'
             exit 1
           fi
-          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate.apk)
-          actual_signer=$(printf '%s\n' "$signer_output" \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
-            | head -n 1 | tr -d ':[:space:]' | tr 'A-F' 'a-f')
+          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate.apk 2>&1)
+          actual_signer=$(printf '%s\n' "$signer_output" | python -c 'import re,sys; s=sys.stdin.read(); m=re.search(r"SHA-?256\s+digest:\s*([0-9A-Fa-f:]{64,95})",s,re.I); print(m.group(1).replace(":","").lower() if m else "")')
           if ! [[ "$actual_signer" =~ ^[a-f0-9]{64}$ ]]; then
+            printf '%s\n' "$signer_output"
             echo '::error::Could not extract the built R3 signer SHA-256.'
             exit 1
           fi
