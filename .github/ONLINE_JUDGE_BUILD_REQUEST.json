@@ -2,6 +2,6 @@
   "provider": "workers-ai",
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "repair_revision": "R3_OWNER_REPAIR",
-  "requested_at": "2026-08-09T10:04:00Z",
-  "reason": "Supersede the first urgent event run with the corrected runtime-bound distribution: the separately signed side-by-side Android application ID may use only its revocable bundled app-to-Worker bearer when no owner Keystore activation exists, while every normal R1-compatible distribution remains Keystore-only; hide unconfigured Gmail including its Settings header on both event platforms, rerun the protected Gemma/Tavily/context/vision/ElevenLabs/10-turn gates, build APK and EXE, upload manifests and README, and preserve the unique Worker only with owner artifacts"
+  "requested_at": "2026-08-09T10:32:36Z",
+  "reason": "Owner explicitly authorized the short-lived per-run event capability. Rerun the protected Gemma/Tavily/context/vision/ElevenLabs/10-turn gates, build the side-by-side Android APK and Windows EXE with only the masked HMAC-derived artifact-scoped capability, enforce the exact Worker expiry after 72 hours, upload manifests and README, keep all provider and derivation keys server-side, keep unregistered Gmail controls hidden, preserve normal R1 Keystore-only behavior, and retain the unique Worker only when an owner artifact exists."
 }
