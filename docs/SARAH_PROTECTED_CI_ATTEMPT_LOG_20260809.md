@@ -98,6 +98,14 @@ This is append-only engineering evidence for the protected Sarah R3 owner-candid
 
 The production `ModelClient` and protected source path are now automated-CI accepted at commit `59713d3542820807f5d09de41afa297b340950a2`. Its retry rule remains explicit: transport/timeouts and HTTP `408`, `429`, or `5xx` may retry; authentication and other nontransient `4xx` responses and malformed success contracts fail immediately. Ordinary chat retains two attempts inside 15 seconds. Only `web_search=true` may use up to three attempts inside the 25-second source-specific ceiling. Source receipt gates remain mandatory.
 
-The separate current blocker is Android signing continuity: the preserved R1 signing cache was not available to this run. Do not build or upload a differently signed replacement, and do not claim a phone/Windows owner candidate exists from this run.
+The separate current blocker is Android signing continuity. The read-only
+follow-up in `docs/SARAH_R1_SIGNING_CONTINUITY_READ_ONLY_AUDIT_20260809.md`
+established that this was not merely a feature-branch cache-scope miss: the
+exact R1 job and inspected successful main-branch builds all missed the cache,
+then reported that `~/.android/debug.keystore` did not exist and therefore was
+not saved. An exact repository cache-key query currently returns zero entries,
+and no original private keystore was found in the other bounded inspected
+locations. Do not build or upload a differently signed replacement, and do not
+claim a phone/Windows owner candidate exists from this run.
 
 No run in this log is an owner-ready release. Only a workflow that passes every protected gate and uploads an artifact explicitly labeled `CURRENT-OWNER-TEST` may advance to physical Galaxy A17 and 8 GB Windows laptop testing.
