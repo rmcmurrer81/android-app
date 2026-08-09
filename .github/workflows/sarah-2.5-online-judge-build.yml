@@ -790,7 +790,7 @@ jobs:
               -H 'Content-Type: application/json' \
               --data-binary @/tmp/sarah-voice-request.json \
               --output /tmp/sarah-voice-smoke.mp3 \
-              --write-out '%{http_code} %{time_starttransfer} %{time_total}' \
+              --write-out '%{http_code} %{time_starttransfer} %{time_total}\n' \
               "$voice_url" > /tmp/sarah-voice-timing.txt; then
               voice_status=000
             else

@@ -57,6 +57,18 @@ This is append-only engineering evidence for the protected Sarah R3 owner-candid
 - This is a route-propagation/cache failure, not evidence that the Tavily key, bearer authorization, Gemma model, or app code failed.
 - No artifact was uploaded; the run-owned temporary Worker was retired successfully.
 
+### Run 31299285949 — job 93209350789 — commit dabef556fc850cd1d0ee01e7b0faa01af39ac587
+
+- The cache-busted protected POST repair worked for every route reached before the failure.
+- Exact deployment, missing/wrong-token rejection, and authenticated capability identity passed.
+- Exact Workers AI Gemma returned `ONLINE_READY` through the protected model route.
+- Protected Tavily search returned three bounded HTTPS results.
+- Search-coupled contextual chat passed with five HTTPS source receipts.
+- Generated solid-red JPEG vision passed on the exact configured model.
+- The workflow then exited immediately after the protected voice `curl` wrote its three timing fields. The write-out record had no terminating newline, so Bash `read` returned end-of-file status under `set -e` before voice status/audio/header validation could run.
+- The next repair adds only the missing newline to that non-secret timing record. It does not weaken or skip any voice gate.
+- No artifact was uploaded; the run-owned temporary Worker was retired successfully.
+
 ## Current bounded repair
 
 The next workflow revision applies a unique, non-secret query string to each bounded attempt for the protected model, search, contextual-chat, vision, and voice POST routes. It retries only transport failure, `404`, `408`, `429`, or `5xx`; every other HTTP status fails immediately. Existing exact response validators remain mandatory. The unchanged production `ModelClient` ten-turn online/offline/restore battery still runs afterward on its normal route, so cache-busted smoke probes cannot substitute for real application routing.
