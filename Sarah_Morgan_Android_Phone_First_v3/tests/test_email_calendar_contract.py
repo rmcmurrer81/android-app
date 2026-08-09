@@ -72,3 +72,61 @@ def test_ambiguous_dates_are_not_promoted_to_exact_times():
     assert "TIME_NOT_PRESENT_OR_AMBIGUOUS" in text("GmailReadOnlyClient.java")
     assert "ambiguous time must remain unknown" in pure_test
     assert "unlabelled/message date not event time" in pure_test
+
+
+def test_one_exact_pending_email_item_can_surface_in_chat_without_background_voice():
+    main = text("MainActivity.java")
+    vault = text("GmailTokenVault.java")
+    policy = text("EmailConversationPromptPolicy.java")
+    speaker = text("SpeakerContext.java")
+    surface = main.split("private void maybeSurfacePendingEmailPrompt()", 1)[1].split(
+        "private boolean deferPendingEmailPrompt", 1
+    )[0]
+    defer = main.split("private boolean deferPendingEmailPrompt", 1)[1].split(
+        "private boolean handlePendingEmailPromptAnswer", 1
+    )[0]
+    answer = main.split("private boolean handlePendingEmailPromptAnswer", 1)[1].split(
+        "private void startTriviaGame", 1
+    )[0]
+    send = main.split("private void sendCurrent()", 1)[1].split(
+        "private Map<String, String> currentProfile", 1
+    )[0]
+
+    assert "claimPendingConversationPrompt" in vault
+    assert '"awaiting_owner_reply"' in vault
+    assert "candidate = findReceipt(receipts, messageId)" in vault
+    assert "ConfirmedOwnerLease.isExactActiveOwner(app, profileId)" in vault
+    assert "conversation_prompt_newly_claimed" in vault
+    assert "preserveOwnerTruth" in vault
+    assert "private static final Object STATE_LOCK" in vault
+    assert "synchronized (STATE_LOCK)" in vault
+    assert "mainHandler.post(this::maybeSurfacePendingEmailPrompt)" in main
+    assert "speakerContext.hasPendingQuestion()" in surface
+    assert "!pendingLocationMessage.isEmpty()" in surface
+    assert "pending != Pending.NONE" in speaker
+    assert "I saw this possible trip or event in your connected email" in surface
+    assert "persistedQuestion" in surface
+    assert 'db.addMessage("assistant", persistedQuestion' in surface
+    assert 'db.addMessage("assistant", question' not in surface
+    persisted = surface.split("String persistedQuestion =", 1)[1].split(
+        "lastTurnRoute =", 1
+    )[0]
+    assert "title" not in persisted
+    assert "yes, no, or not now" in surface
+    assert "speak(" not in surface
+    assert "EmailConversationPromptPolicy.classify" in answer
+    assert "pendingEmailPromptMessageId" in answer
+    assert "decideCalendarCandidate" in answer
+    assert "deferConversationPrompt" in defer
+    assert "deferConversationPrompt" in answer
+    assert "deferred_to_calendar_review" in vault
+    assert "immediate next owner turn only" in answer
+    assert "before a\n            // location request or speaker/profile switch" in send
+    assert send.index("deferPendingEmailPrompt();") < send.index(
+        "ensureApproximateAreaForTurn(text)"
+    )
+    assert "setReminder(" not in answer
+    assert "TravelReminderScheduler" not in answer
+    assert 'case "yes"' in policy and 'case "no"' in policy
+    assert 'case "not now"' in policy and "return DEFER;" in policy
+    assert "NOT_AN_ANSWER" in policy

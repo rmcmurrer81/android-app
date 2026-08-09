@@ -33,6 +33,8 @@ public final class GmailTokenVault {
     private static final String ENVELOPE_IV = "envelope_iv";
     private static final String ENVELOPE_DATA = "envelope_data";
     private static final int MAX_RECEIPTS = 30;
+    /** Serializes whole encrypted-state updates across UI, worker, and scheduler instances. */
+    private static final Object STATE_LOCK = new Object();
 
     private final Context app;
 
@@ -43,6 +45,7 @@ public final class GmailTokenVault {
     }
 
     public synchronized String beginAuthorizationAttempt(long nowMillis) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         String nonce = randomUrlToken(32);
         try {
@@ -53,9 +56,11 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_AUTH_ATTEMPT_NOT_SAVED", error);
         }
+        }
     }
 
     public synchronized boolean consumeAuthorizationAttempt(long nowMillis) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         String nonce = state.optString("authorization_attempt", "");
         long created = state.optLong("authorization_attempt_at", 0L);
@@ -66,6 +71,7 @@ public final class GmailTokenVault {
                 && created > 0L
                 && nowMillis >= created
                 && nowMillis - created <= GmailReadOnlyPolicy.AUTHORIZATION_ATTEMPT_MILLIS;
+        }
     }
 
     public synchronized void saveAuthorizedAccess(
@@ -85,6 +91,7 @@ public final class GmailTokenVault {
         if (email.isEmpty() || profile.isEmpty()) {
             throw new IllegalArgumentException("Gmail authorization has no exact account/profile binding");
         }
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         try {
             state.put("access_token", accessToken.trim());
@@ -98,6 +105,7 @@ public final class GmailTokenVault {
             write(state);
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_AUTHORIZATION_NOT_SAVED", error);
+        }
         }
     }
 
@@ -126,6 +134,7 @@ public final class GmailTokenVault {
     }
 
     public synchronized void clearCachedToken(boolean reauthorizationRequired) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         state.remove("access_token");
         state.remove("access_expires_at");
@@ -134,6 +143,7 @@ public final class GmailTokenVault {
             write(state);
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_TOKEN_CLEAR_FAILED", error);
+        }
         }
     }
 
@@ -148,6 +158,7 @@ public final class GmailTokenVault {
     }
 
     public synchronized void setMonitoringEnabled(String profileId, boolean enabled) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         if (enabled && (!sameProfile(state, profileId)
                 || !GmailReadOnlyPolicy.SCOPE.equals(state.optString("scope", "")))) {
@@ -159,11 +170,13 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_MONITORING_STATE_NOT_SAVED", error);
         }
+        }
     }
 
     public synchronized boolean recordRead(
             String profileId,
             GmailReadOnlyClient.SourceReceipt receipt) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         if (!sameProfile(state, profileId)) {
             throw new IllegalStateException("GMAIL_RECEIPT_PROFILE_MISMATCH");
@@ -196,9 +209,11 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_RECEIPT_NOT_SAVED", error);
         }
+        }
     }
 
     public synchronized void recordSyncStatus(String status, long nowMillis) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         try {
             state.put("last_sync_at", nowMillis);
@@ -206,6 +221,7 @@ public final class GmailTokenVault {
             write(state);
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_SYNC_STATUS_NOT_SAVED", error);
+        }
         }
     }
 
@@ -226,12 +242,92 @@ public final class GmailTokenVault {
         catch (Exception ignored) { return new JSONArray(); }
     }
 
+    /**
+     * Bind at most one exact pending Gmail item to Sarah's foreground chat.
+     *
+     * <p>This changes only encrypted proposal/audit state. It does not approve
+     * a calendar item, schedule a reminder, speak, notify, or touch Gmail.</p>
+     */
+    public synchronized JSONObject claimPendingConversationPrompt(
+            String profileId,
+            long nowMillis) {
+        synchronized (STATE_LOCK) {
+        if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return null;
+        JSONObject state = read();
+        if (!sameProfile(state, profileId)) return null;
+        JSONArray receipts = state.optJSONArray("receipts");
+        if (receipts == null) return null;
+        JSONObject unclaimed = null;
+        for (int index = 0; index < receipts.length(); index++) {
+            JSONObject item = receipts.optJSONObject(index);
+            if (item == null || !EmailCalendarPolicy.EMAIL_PENDING.equals(
+                    item.optString("email_candidate_state", ""))) continue;
+            if ("awaiting_owner_reply".equals(
+                    item.optString("conversation_prompt_state", ""))) {
+                return conversationPromptCopy(item, false);
+            }
+            if (!item.has("conversation_prompt_state") && unclaimed == null) {
+                unclaimed = item;
+            }
+        }
+        if (unclaimed == null) return null;
+        try {
+            unclaimed.put("conversation_prompt_state", "awaiting_owner_reply");
+            unclaimed.put("conversation_prompt_shown_at_epoch_ms", nowMillis);
+            write(state);
+            return conversationPromptCopy(unclaimed, true);
+        } catch (Exception error) {
+            throw new IllegalStateException("GMAIL_CONVERSATION_PROMPT_NOT_BOUND", error);
+        }
+        }
+    }
+
+    private static JSONObject conversationPromptCopy(JSONObject source, boolean newlyClaimed) {
+        try {
+            JSONObject copy = new JSONObject(source.toString());
+            copy.put("conversation_prompt_newly_claimed", newlyClaimed);
+            return copy;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Release a foreground prompt without accepting or dismissing its item.
+     * The proposal stays available for explicit review in Sarah's calendar.
+     */
+    public synchronized boolean deferConversationPrompt(
+            String profileId,
+            String messageId,
+            long nowMillis) {
+        synchronized (STATE_LOCK) {
+            if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
+            JSONObject state = read();
+            if (!sameProfile(state, profileId)) return false;
+            JSONObject candidate = findReceipt(state.optJSONArray("receipts"), messageId);
+            if (candidate == null
+                    || !EmailCalendarPolicy.EMAIL_PENDING.equals(
+                            candidate.optString("email_candidate_state", ""))
+                    || !"awaiting_owner_reply".equals(
+                            candidate.optString("conversation_prompt_state", ""))) return false;
+            try {
+                candidate.put("conversation_prompt_state", "deferred_to_calendar_review");
+                candidate.put("conversation_prompt_deferred_at_epoch_ms", nowMillis);
+                write(state);
+                return true;
+            } catch (Exception error) {
+                throw new IllegalStateException("GMAIL_CONVERSATION_PROMPT_NOT_DEFERRED", error);
+            }
+        }
+    }
+
     /** Save or dismiss only after a distinct owner action; reading is never approval. */
     public synchronized boolean decideCalendarCandidate(
             String profileId,
             String messageId,
             boolean remember,
             long nowMillis) {
+        synchronized (STATE_LOCK) {
         if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
@@ -248,6 +344,9 @@ public final class GmailTokenVault {
                     : EmailCalendarPolicy.CALENDAR_NOT_SAVED);
             candidate.put("owner_decided_at_epoch_ms", nowMillis);
             candidate.put("owner_decision", remember ? "remember" : "dismiss");
+            candidate.put("conversation_prompt_state",
+                    remember ? "answered_remember" : "answered_reject");
+            candidate.put("conversation_prompt_answered_at_epoch_ms", nowMillis);
             if (!remember) {
                 candidate.put("reminder_state", EmailCalendarPolicy.REMINDER_NOT_SCHEDULED);
                 candidate.remove("reminder_trigger_instant");
@@ -258,6 +357,7 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_CALENDAR_DECISION_NOT_SAVED", error);
         }
+        }
     }
 
     /** Owner-entered times are explicit corrections, never re-labelled as email extraction. */
@@ -267,6 +367,7 @@ public final class GmailTokenVault {
             String startInstant,
             String endInstant,
             long nowMillis) {
+        synchronized (STATE_LOCK) {
         if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
@@ -292,6 +393,7 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_CALENDAR_TIME_NOT_SAVED", error);
         }
+        }
     }
 
     public synchronized boolean setReminder(
@@ -301,6 +403,7 @@ public final class GmailTokenVault {
             long leadMillis,
             boolean explicitOwnerRequest,
             long nowMillis) {
+        synchronized (STATE_LOCK) {
         if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
@@ -321,9 +424,11 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_CALENDAR_REMINDER_NOT_SAVED", error);
         }
+        }
     }
 
     public synchronized boolean cancelReminder(String profileId, String messageId) {
+        synchronized (STATE_LOCK) {
         if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
@@ -338,12 +443,14 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_CALENDAR_REMINDER_NOT_CANCELLED", error);
         }
+        }
     }
 
     public synchronized boolean removeCalendarItem(
             String profileId,
             String messageId,
             long nowMillis) {
+        synchronized (STATE_LOCK) {
         if (!ConfirmedOwnerLease.isExactActiveOwner(app, profileId)) return false;
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
@@ -361,6 +468,7 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_CALENDAR_ITEM_NOT_REMOVED", error);
         }
+        }
     }
 
     synchronized JSONObject receipt(String profileId, String messageId) {
@@ -377,6 +485,7 @@ public final class GmailTokenVault {
             String messageId,
             String exactTriggerInstant,
             long deliveredAtMillis) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
         JSONObject candidate = findReceipt(state.optJSONArray("receipts"), messageId);
@@ -393,6 +502,7 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             return false;
         }
+        }
     }
 
     synchronized boolean markReminderBlocked(
@@ -400,6 +510,7 @@ public final class GmailTokenVault {
             String messageId,
             String exactTriggerInstant,
             long checkedAtMillis) {
+        synchronized (STATE_LOCK) {
         JSONObject state = read();
         if (!sameProfile(state, profileId)) return false;
         JSONObject candidate = findReceipt(state.optJSONArray("receipts"), messageId);
@@ -416,6 +527,7 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             return false;
         }
+        }
     }
 
     /**
@@ -423,6 +535,7 @@ public final class GmailTokenVault {
      * calendar items the owner separately chose to remember.
      */
     public synchronized void disconnectGmailPreservingCalendar(String profileId) {
+        synchronized (STATE_LOCK) {
         JSONObject oldState = read();
         JSONObject kept = new JSONObject();
         JSONArray saved = new JSONArray();
@@ -456,10 +569,12 @@ public final class GmailTokenVault {
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_DISCONNECT_NOT_SAVED", error);
         }
+        }
     }
 
     /** Explicit full local erasure, including owner-approved calendar items. */
     public synchronized void clearAll() {
+        synchronized (STATE_LOCK) {
         SharedPreferences preferences = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!preferences.edit().clear().commit()) {
             throw new IllegalStateException("GMAIL_LOCAL_STATE_NOT_CLEARED");
@@ -470,6 +585,7 @@ public final class GmailTokenVault {
             if (store.containsAlias(ALIAS)) store.deleteEntry(ALIAS);
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_KEY_NOT_CLEARED", error);
+        }
         }
     }
 
@@ -499,7 +615,10 @@ public final class GmailTokenVault {
                 "source_supported_exact_times", "owner_time_updated_at_epoch_ms",
                 "reminder_trigger_instant", "reminder_lead_millis",
                 "reminder_owner_requested_at_epoch_ms", "reminder_delivered_at_epoch_ms",
-                "reminder_blocked_at_epoch_ms", "calendar_removed_at_epoch_ms"
+                "reminder_blocked_at_epoch_ms", "calendar_removed_at_epoch_ms",
+                "conversation_prompt_state", "conversation_prompt_shown_at_epoch_ms",
+                "conversation_prompt_answered_at_epoch_ms",
+                "conversation_prompt_deferred_at_epoch_ms"
         };
         for (String key : keys) {
             if (oldValue.has(key)) newValue.put(key, oldValue.get(key));
@@ -507,6 +626,7 @@ public final class GmailTokenVault {
     }
 
     private JSONObject read() {
+        synchronized (STATE_LOCK) {
         try {
             SharedPreferences preferences = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             String iv = preferences.getString(ENVELOPE_IV, "");
@@ -524,9 +644,11 @@ public final class GmailTokenVault {
             // must never become a usable authorization state.
             return new JSONObject();
         }
+        }
     }
 
     private void write(JSONObject value) {
+        synchronized (STATE_LOCK) {
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key());
@@ -541,6 +663,7 @@ public final class GmailTokenVault {
             if (!committed) throw new IllegalStateException("preferences commit failed");
         } catch (Exception error) {
             throw new IllegalStateException("GMAIL_VAULT_WRITE_FAILED", error);
+        }
         }
     }
 

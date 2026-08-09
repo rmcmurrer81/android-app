@@ -114,6 +114,8 @@ public final class MainActivity extends Activity {
     private String pendingLocationPersonId = "";
     private String pendingLocationSpeaker = "";
     private long pendingLocationGeneration;
+    private String pendingEmailPromptMessageId = "";
+    private String pendingEmailPromptProfileId = "";
     private final AtomicLong lifecycleGeneration = new AtomicLong(1L);
     private final AtomicLong voiceRequestSequence = new AtomicLong();
     private volatile boolean turnInFlight;
@@ -364,6 +366,7 @@ public final class MainActivity extends Activity {
             scheduleDeferredKnowledgeRefresh();
             maybeOpenOwnerOnlineActivation();
         }
+        mainHandler.post(this::maybeSurfacePendingEmailPrompt);
     }
 
     @Override
@@ -566,6 +569,153 @@ public final class MainActivity extends Activity {
         TrustedSyncClient.syncAllAsync(this);
     }
 
+    /**
+     * Surface one exact source-bound Gmail proposal as foreground chat text.
+     * This deliberately does not call speak(): resuming Sarah must never make
+     * a background email finding start audio on its own.
+     */
+    private void maybeSurfacePendingEmailPrompt() {
+        if (destroyed || !activityResumed || turnInFlight || speakerContext == null
+                || speakerContext.hasPendingQuestion() || !pendingLocationMessage.isEmpty()
+                || db == null || chat == null) return;
+        String personId = speakerContext.activePersonId();
+        if (!ConfirmedOwnerLease.isExactActiveOwner(this, personId)) {
+            pendingEmailPromptMessageId = "";
+            pendingEmailPromptProfileId = "";
+            return;
+        }
+        JSONObject proposal;
+        try {
+            proposal = new GmailTokenVault(this).claimPendingConversationPrompt(
+                    personId, System.currentTimeMillis());
+        } catch (Exception error) {
+            updateSpeakerStatus("Email suggestion stayed pending for later review");
+            return;
+        }
+        if (proposal == null) {
+            pendingEmailPromptMessageId = "";
+            pendingEmailPromptProfileId = "";
+            return;
+        }
+        String messageId = proposal.optString("message_id", "").trim();
+        if (messageId.isEmpty()) return;
+        pendingEmailPromptMessageId = messageId;
+        pendingEmailPromptProfileId = personId;
+        if (!proposal.optBoolean("conversation_prompt_newly_claimed", false)) return;
+
+        String title = proposal.optString("subject", "")
+                .replaceAll("\\s+", " ").trim();
+        if (title.length() > 160) title = title.substring(0, 160) + "...";
+        if (title.isEmpty()) title = "a possible trip or event";
+        String question = "I saw this possible trip or event in your connected email: \""
+                + title
+                + "\". Would you like me to remember this exact item in Sarah's calendar? "
+                + "Please answer yes, no, or not now. I have not added it or scheduled a reminder.";
+        String persistedQuestion = "I found one exact possible trip or event in your connected "
+                + "email. Would you like me to remember that exact item in Sarah's calendar? "
+                + "Please answer yes, no, or not now. I have not added it or scheduled a reminder.";
+        lastTurnRoute = TurnRoute.LOCAL_TOOL_RESULT;
+        // Keep the exact email subject in the foreground bubble only. Ordinary
+        // chat history and its optional sync receive a source-redacted prompt.
+        db.addMessage("assistant", persistedQuestion, speakerContext.activeName(), lastTurnRoute);
+        addBubble("Sarah", question, false, lastTurnRoute);
+        updateSpeakerStatus("Email suggestion ready - no calendar change yet");
+    }
+
+    /** Stop a one-turn prompt without accepting, dismissing, or scheduling it. */
+    private boolean deferPendingEmailPrompt() {
+        String profileId = pendingEmailPromptProfileId;
+        String messageId = pendingEmailPromptMessageId;
+        pendingEmailPromptProfileId = "";
+        pendingEmailPromptMessageId = "";
+        if (profileId.isEmpty() || messageId.isEmpty()) return false;
+        try {
+            return new GmailTokenVault(this).deferConversationPrompt(
+                    profileId, messageId, System.currentTimeMillis());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** Handle only an explicit bounded yes/no/later for the bound opaque Gmail ID. */
+    private boolean handlePendingEmailPromptAnswer(
+            String answer,
+            String turnId,
+            long submittedAt) {
+        if (pendingEmailPromptMessageId.isEmpty()
+                || pendingEmailPromptProfileId.isEmpty()) return false;
+        int decision = EmailConversationPromptPolicy.classify(answer);
+        if (decision == EmailConversationPromptPolicy.NOT_AN_ANSWER) {
+            deferPendingEmailPrompt();
+            return false;
+        }
+        String activePersonId = speakerContext.activePersonId();
+        if (!EventTripProfilePolicy.profileKey(activePersonId).equals(
+                EventTripProfilePolicy.profileKey(pendingEmailPromptProfileId))
+                || !ConfirmedOwnerLease.isExactActiveOwner(this, activePersonId)) {
+            deferPendingEmailPrompt();
+            return false;
+        }
+        String profileId = pendingEmailPromptProfileId;
+        String messageId = pendingEmailPromptMessageId;
+        boolean remember = decision == EmailConversationPromptPolicy.REMEMBER;
+        boolean defer = decision == EmailConversationPromptPolicy.DEFER;
+        boolean changed;
+        GmailTokenVault vault = new GmailTokenVault(this);
+        try {
+            changed = defer
+                    ? vault.deferConversationPrompt(
+                            profileId, messageId, System.currentTimeMillis())
+                    : vault.decideCalendarCandidate(
+                            profileId, messageId, remember, System.currentTimeMillis());
+        } catch (Exception error) {
+            changed = false;
+        }
+        if (!changed && !defer) {
+            try {
+                vault.deferConversationPrompt(profileId, messageId, System.currentTimeMillis());
+            } catch (Exception ignored) { }
+        }
+        // A bound proposal is valid for this immediate next owner turn only.
+        // Never let an old binding capture an unrelated later "yes" or "no".
+        pendingEmailPromptMessageId = "";
+        pendingEmailPromptProfileId = "";
+        String reply;
+        if (!changed) {
+            reply = "I could not verify that exact pending email item, so I did not change Sarah's calendar or schedule a reminder.";
+        } else if (defer) {
+            reply = "Okay. I left that exact email item pending for later review. I did not add it to Sarah's calendar, schedule a reminder, or change the Gmail message.";
+        } else if (remember) {
+            reply = "I remembered that exact email item in Sarah's local calendar. I did not schedule a reminder or change the Gmail message. Open Sarah's calendar to review or correct its start, departure, end, or arrival time and choose a reminder if you want one.";
+        } else {
+            reply = "I did not add that exact email item to Sarah's calendar. I did not schedule a reminder or change the Gmail message.";
+        }
+        long completedAt = System.currentTimeMillis();
+        lastTurnRoute = TurnRoute.LOCAL_TOOL_RESULT;
+        MindEventStore.record(
+                this,
+                speakerContext.activeName(),
+                SarahChannelResponse.spokenOnly(
+                        reply,
+                        "Sarah applied only the owner's explicit yes/no/later answer to one exact source-bound email proposal; no Gmail message or reminder changed.")
+                        .withFactualAudit(TextTurnReceipt.build(
+                                turnId,
+                                TurnRoute.LOCAL_TOOL_RESULT,
+                                "on-device",
+                                "EmailConversationPromptPolicy",
+                                submittedAt,
+                                completedAt)),
+                TurnRoute.LOCAL_TOOL_RESULT);
+        db.addMessage("assistant", reply, speakerContext.activeName(), lastTurnRoute);
+        addBubble("Sarah", reply, false, lastTurnRoute);
+        updateSpeakerStatus(changed
+                ? (defer ? "Email suggestion left for later review" : "Exact email decision saved")
+                : "Email decision not applied");
+        speak(reply, turnId);
+        TrustedSyncClient.syncAllAsync(this);
+        return true;
+    }
+
     private void startTriviaGame() {
         Map<String, String> profile = currentProfile();
         List<CalmSupport.Question> questions = CalmSupport.questions(
@@ -634,6 +784,15 @@ public final class MainActivity extends Activity {
         }
         String text = input.getText().toString().trim();
         if (text.isEmpty() && pendingPhoto == null) return;
+        String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
+        if (!pendingEmailPromptMessageId.isEmpty()
+                && EmailConversationPromptPolicy.classify(display)
+                        == EmailConversationPromptPolicy.NOT_AN_ANSWER) {
+            // The proposal owns one immediate owner turn, not every later yes/no.
+            // Defer it while the exact owner binding is still active, before a
+            // location request or speaker/profile switch handles this message.
+            deferPendingEmailPrompt();
+        }
         if (!text.isEmpty() && ensureApproximateAreaForTurn(text)) return;
         final long turnSubmittedAt = System.currentTimeMillis();
         final String turnId = "turn-" + turnSubmittedAt + "-"
@@ -641,7 +800,6 @@ public final class MainActivity extends Activity {
         pauseBackgroundResearchForOwnerTurn();
         input.setText("");
 
-        String display = text.isEmpty() ? "What do you think of this trip photo?" : text;
         String speakerBefore = speakerContext.activeName();
         SpeakerContext.Result speakerResult = speakerContext.handle(display);
         if (speakerResult.speakerChanged && !invalidatePriorSpeakerWork()) return;
@@ -651,6 +809,9 @@ public final class MainActivity extends Activity {
         db.addMessage("user", display, turnSpeaker);
 
         if (speakerResult.handled) {
+            // A higher-priority profile/consent question consumed this turn.
+            // Do not let the email proposal remain armed for an unrelated turn.
+            deferPendingEmailPrompt();
             String replySpeaker = speakerContext.activeName();
             long completedAt = System.currentTimeMillis();
             MindEventStore.record(
@@ -673,8 +834,13 @@ public final class MainActivity extends Activity {
             updateSpeakerStatus(speakerContext.ageKnown() ? "Profile: " + replySpeaker : "Family-friendly until age is known");
             speak(speakerResult.reply, turnId);
             TrustedSyncClient.syncAllAsync(this);
+            if (speakerResult.speakerChanged) {
+                mainHandler.post(this::maybeSurfacePendingEmailPrompt);
+            }
             return;
         }
+
+        if (handlePendingEmailPromptAnswer(display, turnId, turnSubmittedAt)) return;
 
         Map<String, String> profile = currentProfile();
         if (connectivityMonitor != null) {

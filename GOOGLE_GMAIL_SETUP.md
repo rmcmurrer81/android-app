@@ -8,7 +8,7 @@ The connector uses Google Play services `AuthorizationClient` and requests exact
 
 Sarah never asks for a Gmail password. The APK contains no Google client secret, downloaded client JSON, refresh token, or custom embedded-browser sign-in. The Android OAuth client is selected by Google from the exact package name and APK signing SHA-1. The app does not expose a custom redirect or an app-managed PKCE verifier/state; that browser-protocol machinery remains inside Google's authorization broker. Sarah adds a one-use, ten-minute local authorization-attempt binding so a stale result is rejected.
 
-Google's `gmail.readonly` scope authorizes reading Gmail content. The narrower metadata-only behavior is an additional Sarah code boundary, not a narrower Google scope: this implementation calls only profile, message-list, and metadata-format message-get endpoints and never requests message bodies.
+Google's `gmail.readonly` scope authorizes reading Gmail content. Sarah adds a narrower application boundary, not a narrower Google scope: this implementation calls only profile, message-list, and message-get endpoints. Android's message-get uses `format=full` with a partial-response field mask limited to IDs, timestamps, `Subject`/`From`/`Date` headers, and Gmail's bounded short preview. It does not request MIME body parts, attachments, or raw message source. Windows remains metadata-only.
 
 ## Human maintainer setup
 
@@ -26,8 +26,9 @@ Google's `gmail.readonly` scope authorizes reading Gmail content. The narrower m
 - First-run same-Wi-Fi Sarah discovery is decided before Sarah asks the person's name. Failure, timeout, cancellation, or a **No** answer continues local profile setup.
 - After profile setup, Sarah offers Gmail as a clear **Yes / Not now** option. The same control remains in Settings and Connections.
 - Connecting does **not** enable monitoring. The owner must enable background travel-message checks separately; the default is off.
-- A check uses a fixed one-year travel query, excludes spam and trash, lists at most ten candidates, and retrieves only `Subject`, `From`, and `Date` metadata plus opaque Gmail message/thread IDs. It does not fetch message bodies or snippets.
-- Every candidate receipt records the exact account, message and thread IDs, header date, fetch time, query, endpoint, access mode, `body_read=false`, and `message_modified=false`.
+- A check uses a fixed one-year travel/event query, excludes spam and trash, lists at most ten candidates, and retrieves opaque Gmail message/thread IDs, `Subject`/`From`/`Date` metadata, and one bounded Gmail-generated short preview. It does not request MIME body parts, attachments, or raw message source.
+- Every candidate receipt records the exact account, message and thread IDs, header date, fetch time, query, endpoint, access mode, `body_read=false`, `bounded_snippet_read=true`, and `message_modified=false`.
+- When the confirmed owner returns to the foreground conversation, Sarah may surface one exact pending candidate as silent chat text. The prompt is deduplicated in the encrypted proposal state, does not compete with an existing profile/consent question, and does not start background voice. Only a conservative explicit yes/no bound to that opaque message ID can accept or reject it; **Not now** defers it. The binding lasts for the immediate next owner turn only: unrelated text disarms it and leaves the item pending for later Calendar review. Accepting does not schedule a reminder. The exact subject appears only in the foreground bubble; ordinary chat history stores a source-redacted version of the question.
 - Network calls are GET-only and bounded to the Gmail profile/messages endpoints. Send, modify, delete, trash, untrash, mark-read, draft, label, and settings actions are absent and blocked by policy tests.
 - Android access tokens are short-lived and encrypted under an Android Keystore AES-GCM key. No device refresh token is requested or stored. When a token cannot be refreshed silently by Google Play services, the UI requires reconnection.
 - Optional monitoring uses one WorkManager job about every six hours, requires a connected network, avoids low-battery execution, retries at most twice for transient failures, and stops immediately when disabled or disconnected.
@@ -41,7 +42,7 @@ Use a dedicated Google test account and one known recent travel message.
 2. On a clean profile, complete or decline same-Wi-Fi Sarah discovery first, then finish the local profile.
 3. Choose **Yes** on the optional Gmail offer. Confirm Google's screen names the intended account and requests only Gmail read-only access.
 4. Confirm Sarah's first supervised profile read succeeds and the UI shows the exact selected account.
-5. Run **Check recent travel email now**. Confirm the known message appears only as a source/time metadata receipt; inspect Google Gmail and prove it remains unread/unchanged.
+5. Run **Check recent travel email now**. Confirm the known message appears only as a source/time receipt with the bounded preview; inspect Google Gmail and prove it remains unread/unchanged.
 6. Confirm monitoring is still off. Enable it explicitly, inspect the WorkManager job and a bounded run, then disable it and prove the job is cancelled.
 7. Disconnect. Confirm local token and Gmail receipts disappear immediately, revocation succeeds or is truthfully unconfirmed, and a later check fails closed until Google consent is performed again.
 8. Capture the APK SHA-256, version, signing-certificate SHA-1, account alias (not the address in public evidence), requested/granted scopes, request endpoints/methods, timestamps, candidate count, and revocation result.

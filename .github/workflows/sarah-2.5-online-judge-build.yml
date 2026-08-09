@@ -734,9 +734,38 @@ jobs:
           payload = json.loads((roots[0] / 'turns.json').read_text(encoding='utf-8'))
           if payload.get('mode') != 'LIVE_CLOUDFLARE_OWNER_AUTHORIZED':
               raise SystemExit('Conversation battery did not use the explicit live route.')
-          if payload.get('objective_pass') is not True or payload.get('turn_count') != 10:
-              raise SystemExit('Bounded live conversation battery failed an objective gate.')
           turns = payload.get('turns') or []
+          if payload.get('objective_pass') is not True:
+              print(
+                  '::group::Redacted bounded-live objective failures '
+                  f"({payload.get('objective_passed_checks')}/{payload.get('objective_total_checks')} checks passed)"
+              )
+              for turn in turns:
+                  failed = [
+                      check for check in (turn.get('objective_checks') or [])
+                      if check.get('passed') is not True
+                  ]
+                  if not failed:
+                      continue
+                  print(
+                      'turn=', turn.get('turn_id'),
+                      'route=', turn.get('route'),
+                      'wall_latency_ms=', turn.get('wall_latency_ms'),
+                      'raw_reply_sha256=', turn.get('raw_model_reply_sha256'),
+                      'final_spoken_sha256=', turn.get('final_spoken_sha256'),
+                  )
+                  for check in failed:
+                      # Check details contain only static gate descriptions,
+                      # routes, counts, or timings. Never print prompts, replies,
+                      # tokens, endpoint URLs, or owner data into public CI logs.
+                      detail = str(check.get('detail') or '').replace('\n', ' ')[:500]
+                      print('  failed_check=', check.get('name'), 'detail=', detail)
+              print('::endgroup::')
+          if payload.get('objective_pass') is not True or payload.get('turn_count') != 10:
+              raise SystemExit(
+                  'Bounded live conversation battery failed an objective gate; '
+                  'see the redacted per-turn gate summary above.'
+              )
           by_id = {turn.get('turn_id'): turn for turn in turns}
           expected_transition = {
               'natural_conversation': 'ONLINE_WORKERS_AI',

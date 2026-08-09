@@ -409,6 +409,11 @@ public final class SpeakerContext implements AutoCloseable {
         return "yes".equals(activeProfile.getOrDefault("age_known", "no"));
     }
 
+    /** True while Sarah is already waiting for a bounded profile/consent answer. */
+    public boolean hasPendingQuestion() {
+        return pending != Pending.NONE;
+    }
+
     public String ageGroup() {
         if (!ageKnown()) return "unknown_use_child_safe_mode";
         int age = parseInt(activeProfile.get("age"), 0);
