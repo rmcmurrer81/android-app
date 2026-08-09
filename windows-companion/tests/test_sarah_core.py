@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 from types import SimpleNamespace
+import urllib.parse
 
 from PIL import Image
 import pytest
@@ -407,8 +408,16 @@ def test_windows_model_client_uses_shared_worker_contract(monkeypatch):
         assert "actual_provider=workers-ai" in response.factual_truth
         assert "actual_model=@cf/google/gemma-4-26b-a4b-it" in response.factual_truth
         assert "text_latency_ms=" in response.factual_truth
-        assert captured["url"] == "https://sarah.example.test"
+        parsed_url = urllib.parse.urlsplit(captured["url"])
+        parsed_query = urllib.parse.parse_qs(parsed_url.query)
+        assert urllib.parse.urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path, "", "")) == (
+            "https://sarah.example.test"
+        )
+        assert parsed_query["sarah_attempt"] == ["1"]
+        assert len(parsed_query["sarah_nonce"][0]) >= 12
         assert captured["headers"]["Authorization"] == "Bearer local-test-token"
+        assert captured["headers"]["Cache-Control"] == "no-cache"
+        assert captured["headers"]["Pragma"] == "no-cache"
         payload = captured["json"]
         assert payload["provider"] == "workers-ai"
         assert payload["model"] == "@cf/google/gemma-4-26b-a4b-it"
@@ -851,7 +860,13 @@ def test_windows_backend_failure_then_ollama_success_records_attempted_and_actua
 
         monkeypatch.setattr("sarah_core.requests.post", fake_post)
         response = ModelClient(database).respond("Continue")
-        assert calls.count("https://sarah.example.test") == 2
+        protected_calls = [url for url in calls if url.startswith("https://")]
+        assert len(protected_calls) == 2
+        protected_attempts = [
+            urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["sarah_attempt"][0]
+            for url in protected_calls
+        ]
+        assert protected_attempts == ["1", "2"]
         assert calls[-1].endswith("/api/chat")
         assert response.route == "ONLINE_FAILED_FELL_BACK_OFFLINE"
         assert "Attempted route: ONLINE_WORKERS_AI" in response.factual_truth
@@ -1056,7 +1071,7 @@ def test_windows_online_failure_retries_once_per_turn_then_falls_back(monkeypatc
         wait_for_windows_handles()
 
 
-def test_windows_connected_retry_succeeds_on_second_short_attempt(monkeypatch):
+def test_windows_connected_retry_preserves_second_attempt_after_fast_failure(monkeypatch):
     calls = []
 
     class FakeResponse:
@@ -1073,15 +1088,15 @@ def test_windows_connected_retry_succeeds_on_second_short_attempt(monkeypatch):
                 "online": True,
             }
 
-    def fake_post(_url, **kwargs):
-        calls.append(kwargs["timeout"])
+    def fake_post(url, **kwargs):
+        calls.append({"url": url, **kwargs})
         if len(calls) == 1:
             raise requests.ConnectionError("first short attempt failed")
         return FakeResponse()
 
     monkeypatch.setattr("sarah_core.requests.post", fake_post)
     data, started_at = ModelClient._post_connected_with_retry(
-        "https://sarah.example.test",
+        "https://sarah.example.test/?acceptance_probe=production_modelclient",
         "test-token",
         {"message": "Hello"},
     )
@@ -1089,7 +1104,64 @@ def test_windows_connected_retry_succeeds_on_second_short_attempt(monkeypatch):
     assert data["provider"] == "workers-ai"
     assert started_at > 0
     assert len(calls) == 2
-    assert all(connect <= 2.0 and read <= 5.5 for connect, read in calls)
+    assert all(
+        connect <= 2.0 and 5.5 < read <= 12.0
+        for connect, read in (call["timeout"] for call in calls)
+    )
+    parsed = [urllib.parse.urlsplit(call["url"]) for call in calls]
+    queries = [urllib.parse.parse_qs(item.query) for item in parsed]
+    assert all(item.scheme == "https" and item.netloc == "sarah.example.test" for item in parsed)
+    assert all(query["acceptance_probe"] == ["production_modelclient"] for query in queries)
+    assert [query["sarah_attempt"] for query in queries] == [["1"], ["2"]]
+    assert queries[0]["sarah_nonce"] != queries[1]["sarah_nonce"]
+    assert all(call["headers"] == {
+        "Authorization": "Bearer test-token",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    } for call in calls)
+
+
+def test_windows_ordinary_retry_uses_only_the_remaining_15_second_budget(monkeypatch):
+    clock = {"seconds": 0.0}
+    calls = []
+
+    class FakeResponse:
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {
+                "reply": "<SPOKEN>Recovered.</SPOKEN>",
+                "provider": "workers-ai",
+                "model": "fixture-model",
+                "online": True,
+            }
+
+    def fake_post(_url, **kwargs):
+        calls.append(kwargs["timeout"])
+        if len(calls) == 1:
+            clock["seconds"] += 12.0
+            raise requests.ReadTimeout("first useful read reached its bound")
+        return FakeResponse()
+
+    monkeypatch.setattr("sarah_core.time.monotonic", lambda: clock["seconds"])
+    monkeypatch.setattr("sarah_core.requests.post", fake_post)
+    data, _started_at = ModelClient._post_connected_with_retry(
+        "https://sarah.example.test",
+        "test-token",
+        {"message": "Hello"},
+    )
+
+    assert data["reply"] == "<SPOKEN>Recovered.</SPOKEN>"
+    assert len(calls) == 2
+    first_connect, first_read = calls[0]
+    second_connect, second_read = calls[1]
+    assert first_connect <= 2.0
+    assert first_read == 12.0
+    assert second_connect + second_read <= 3.0
+    assert 0.5 <= second_read < first_read
 
 
 def test_windows_current_source_request_gets_one_useful_bounded_read_window(monkeypatch):
@@ -1193,7 +1265,7 @@ def test_windows_connected_retry_rejects_nontransient_http_without_retry(monkeyp
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("transient_status", [408, 429, 503])
+@pytest.mark.parametrize("transient_status", [404, 408, 429, 503])
 def test_windows_connected_retry_accepts_only_explicit_transient_http(monkeypatch, transient_status):
     calls = []
 

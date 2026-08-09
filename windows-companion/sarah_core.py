@@ -2015,22 +2015,26 @@ class ModelClient:
         """Make at most two attempts inside the route-specific turn budget.
 
         A current-source turn performs a protected Tavily lookup and then
-        source-coupled model inference in the same Worker request. That
-        sequential operation needs one useful read window; splitting the
-        ordinary 15-second budget into two 5.5-second reads can time out both
-        attempts before either valid response completes. Ordinary chat keeps
-        its original limits. Current-source work gets a bounded 25-second
-        budget with an 18-second maximum read and up to three attempts inside
-        that unchanged wall-clock ceiling. The application source-receipt
-        gate remains mandatory.
+        source-coupled model inference in the same Worker request. Both normal
+        and current-source inference need one useful first read window.
+        Ordinary chat keeps its 15-second total budget but may spend up to 12
+        seconds on a read; a second attempt remains available only when an
+        earlier connection or transient HTTP failure returns quickly. Current-
+        source work keeps its bounded 25-second budget, 18-second maximum
+        read, and up to three attempts. The source-receipt gate remains
+        mandatory. Every attempt uses a distinct no-cache query so a stale
+        edge response cannot poison the retry. A 404 is retryable only inside
+        this already bounded loop because a newly deployed Worker route can
+        briefly return it; persistent or misconfigured routes still fall back
+        after the same attempt and wall-clock limits.
         """
         current_source_request = as_bool(payload.get("web_search"), False)
         turn_budget_seconds = 25.0 if current_source_request else 15.0
-        maximum_read_seconds = 18.0 if current_source_request else 5.5
+        maximum_read_seconds = 18.0 if current_source_request else 12.0
         maximum_attempts = 3 if current_source_request else 2
         deadline = time.monotonic() + turn_budget_seconds
         last_error: Exception | None = None
-        for _attempt in range(maximum_attempts):
+        for attempt_index in range(maximum_attempts):
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
                 break
@@ -2040,10 +2044,30 @@ class ModelClient:
                 max(0.5, remaining - connect_timeout),
             )
             request_started_at = now_ms()
+            parsed_endpoint = urllib.parse.urlsplit(endpoint)
+            attempt_query = urllib.parse.parse_qsl(
+                parsed_endpoint.query,
+                keep_blank_values=True,
+            )
+            attempt_query.extend((
+                ("sarah_attempt", str(attempt_index + 1)),
+                ("sarah_nonce", secrets.token_urlsafe(12)),
+            ))
+            attempt_endpoint = urllib.parse.urlunsplit((
+                parsed_endpoint.scheme,
+                parsed_endpoint.netloc,
+                parsed_endpoint.path,
+                urllib.parse.urlencode(attempt_query),
+                parsed_endpoint.fragment,
+            ))
             try:
                 response = requests.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {token}"} if token else {},
+                    attempt_endpoint,
+                    headers={
+                        **({"Authorization": f"Bearer {token}"} if token else {}),
+                        "Cache-Control": "no-cache",
+                        "Pragma": "no-cache",
+                    },
                     json=dict(payload),
                     timeout=(connect_timeout, read_timeout),
                 )
@@ -2061,7 +2085,7 @@ class ModelClient:
                 return data, request_started_at
             except requests.HTTPError as error:
                 status = int(error.response.status_code) if error.response is not None else 0
-                if status and status not in {408, 429} and not 500 <= status <= 599:
+                if status and status not in {404, 408, 429} and not 500 <= status <= 599:
                     raise
                 last_error = error
             except requests.RequestException as error:

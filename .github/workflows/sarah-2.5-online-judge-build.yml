@@ -956,6 +956,62 @@ jobs:
             rm -rf "$runtime_root" "$evidence_root"
           }
           trap cleanup EXIT
+          modelclient_backend_url="${BACKEND_URL%/}/?acceptance_probe=production_modelclient&run_id=${GITHUB_RUN_ID}&run_attempt=${GITHUB_RUN_ATTEMPT}"
+          export MODELCLIENT_BACKEND_URL="$modelclient_backend_url"
+          python - <<'PY'
+          import json
+          import os
+          json.dump({
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model': os.environ['SARAH_MODEL_ID'],
+              'system_prompt': 'Reply with exactly ONLINE_READY and no punctuation.',
+              'history': [],
+              'message': 'Reply ONLINE_READY.',
+              'web_search': False,
+          }, open('/tmp/sarah-modelclient-warm-request.json', 'w', encoding='utf-8'))
+          PY
+          modelclient_warm_status=000
+          for attempt in $(seq 1 4); do
+            if modelclient_warm_status="$(curl --silent --show-error \
+              --connect-timeout 5 --max-time 35 \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -H 'Pragma: no-cache' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/sarah-modelclient-warm-request.json \
+              --output /tmp/sarah-modelclient-warm-response.json \
+              --write-out '%{http_code}' \
+              "$MODELCLIENT_BACKEND_URL")"; then
+              :
+            else
+              modelclient_warm_status=000
+            fi
+            case "$modelclient_warm_status" in
+              200) break ;;
+              000|404|408|429|5??) ;;
+              *)
+                echo "::error::Production ModelClient warmup returned non-propagation HTTP $modelclient_warm_status."
+                exit 1
+                ;;
+            esac
+            if [ "$attempt" -lt 4 ]; then sleep 2; fi
+          done
+          if [ "$modelclient_warm_status" != '200' ]; then
+            echo "::error::The exact production ModelClient URL did not warm inside the bounded window (last HTTP $modelclient_warm_status)."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          response = json.load(open('/tmp/sarah-modelclient-warm-response.json', encoding='utf-8'))
+          if str(response.get('reply') or '').strip() != 'ONLINE_READY':
+              raise SystemExit('Production ModelClient warmup returned the wrong reply.')
+          if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
+              raise SystemExit('Production ModelClient warmup returned the wrong provider.')
+          if response.get('model') != os.environ['SARAH_MODEL_ID'] or response.get('online') is not True:
+              raise SystemExit('Production ModelClient warmup omitted the exact model/online receipt.')
+          print('Exact production ModelClient URL is warm and identity-bound.')
+          PY
           python -m pip install --disable-pip-version-check --no-input \
             'cryptography>=43,<47' 'Pillow>=10,<13' 'requests>=2.32,<3'
           SARAH_RUNTIME_ROOT="$runtime_root" python - <<'PY'
@@ -967,7 +1023,7 @@ jobs:
           from sarah_core import save_runtime_config
 
           save_runtime_config({
-              'SARAH_MODEL_BACKEND_URL': os.environ['BACKEND_URL'],
+              'SARAH_MODEL_BACKEND_URL': os.environ['MODELCLIENT_BACKEND_URL'],
               'SARAH_MODEL_BACKEND_TOKEN': os.environ['SARAH_BACKEND_TOKEN'],
               'SARAH_MODEL_PROVIDER': os.environ['SARAH_MODEL_PROVIDER'],
               'SARAH_MODEL_ID': os.environ['SARAH_MODEL_ID'],

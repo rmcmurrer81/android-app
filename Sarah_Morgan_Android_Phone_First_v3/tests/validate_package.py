@@ -400,10 +400,14 @@ for phrase in ['TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}','Run R3 sou
                'EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}',
                'EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}',
                'EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}',
+               'acceptance_probe=production_modelclient',
                'sarah-capabilities-absent.json','sarah-capabilities-wrong.json',
                'sarah-capabilities-exact.json',
                'Authenticated Sarah capability contract passed']:
     assert phrase in workflow, phrase
+assert 'maximum_read_seconds = 18.0 if current_source_request else 12.0' in (
+    REPO / 'windows-companion' / 'sarah_core.py'
+).read_text(encoding='utf-8')
 assert 'strings Sarah-Morgan-2.5-R3-CURRENT-OWNER-TEST.apk' not in workflow
 for phrase in ['d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c',
                'be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314',
