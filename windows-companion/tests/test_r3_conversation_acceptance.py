@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from sarah_r3_acceptance import LIVE_CONFIRMATION, fixture_battery, run_acceptance
+from sarah_r3_acceptance import (
+    LIVE_CONFIRMATION,
+    TurnSpec,
+    fixture_battery,
+    run_acceptance,
+    score_turn,
+)
 
 
 def test_fixture_battery_uses_production_database_and_model_routes(tmp_path: Path) -> None:
@@ -50,6 +56,41 @@ def test_current_source_gate_and_ticket_receipt_are_separate(tmp_path: Path) -> 
     ticket = by_id["official_event_ticket_link"]
     assert ticket["receipt"]["source_urls"] == ["https://events.example.test/official/tickets"]
     assert "not bought" in ticket["final_spoken"].lower()
+
+
+def test_current_source_latency_window_does_not_relax_ordinary_chat() -> None:
+    current = TurnSpec(
+        "current", "What current event is nearby?", "online", "current", ("ONLINE_WORKERS_AI",),
+    )
+    ordinary = TurnSpec(
+        "ordinary", "How are you?", "online", "ordinary", ("ONLINE_WORKERS_AI",),
+    )
+    record = {
+        "route": "ONLINE_WORKERS_AI",
+        "final_spoken": "I am here.",
+        "captured_prompt": "",
+        "captured_history": [],
+        "factual_truth": "",
+        "wall_latency_ms": 20_000,
+    }
+    current_latency = next(
+        check for check in score_turn(current, record)
+        if check["name"] == "bounded_text_latency"
+    )
+    ordinary_latency = next(
+        check for check in score_turn(ordinary, record)
+        if check["name"] == "bounded_text_latency"
+    )
+    assert current_latency == {
+        "name": "bounded_text_latency",
+        "passed": True,
+        "detail": "wall_latency_ms=20000; limit_ms=25500",
+    }
+    assert ordinary_latency == {
+        "name": "bounded_text_latency",
+        "passed": False,
+        "detail": "wall_latency_ms=20000; limit_ms=15500",
+    }
 
 
 def test_interest_and_trip_reach_later_connected_prompt(tmp_path: Path) -> None:

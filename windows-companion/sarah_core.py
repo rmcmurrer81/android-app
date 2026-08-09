@@ -2006,15 +2006,31 @@ class ModelClient:
         token: str,
         payload: Mapping[str, Any],
     ) -> tuple[Mapping[str, Any], int]:
-        """Make at most two short attempts inside one 15-second turn budget."""
-        deadline = time.monotonic() + 15.0
+        """Make at most two attempts inside the route-specific turn budget.
+
+        A current-source turn performs a protected Tavily lookup and then
+        source-coupled model inference in the same Worker request. That
+        sequential operation needs one useful read window; splitting the
+        ordinary 15-second budget into two 5.5-second reads can time out both
+        attempts before either valid response completes. Ordinary chat keeps
+        its original limits. Current-source work gets a bounded 25-second
+        budget with an 18-second maximum read, while retaining the same two-
+        attempt ceiling and the application source-receipt gate.
+        """
+        current_source_request = as_bool(payload.get("web_search"), False)
+        turn_budget_seconds = 25.0 if current_source_request else 15.0
+        maximum_read_seconds = 18.0 if current_source_request else 5.5
+        deadline = time.monotonic() + turn_budget_seconds
         last_error: Exception | None = None
         for _attempt in range(2):
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
                 break
             connect_timeout = min(2.0, max(0.25, remaining / 4.0))
-            read_timeout = min(5.5, max(0.5, remaining - connect_timeout))
+            read_timeout = min(
+                maximum_read_seconds,
+                max(0.5, remaining - connect_timeout),
+            )
             request_started_at = now_ms()
             try:
                 response = requests.post(

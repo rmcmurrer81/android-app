@@ -367,7 +367,12 @@ def score_turn(spec: TurnSpec, record: dict[str, Any]) -> list[dict[str, Any]]:
     if spec.turn_id == "correction_after_error":
         add("correction_acknowledged", any(word in final.lower() for word in ("understood", "correct", "not treat")), "Correction should be accepted naturally")
         add("test_error_visible_in_model_context", "Your trip is limited to Auckland." in model_context, "A clearly labeled injected error must precede the correction")
-    add("bounded_text_latency", int(record.get("wall_latency_ms") or 0) <= 15_500, f"wall_latency_ms={record.get('wall_latency_ms')}")
+    latency_limit_ms = 25_500 if sarah_core.needs_current_sources(spec.message) else 15_500
+    add(
+        "bounded_text_latency",
+        int(record.get("wall_latency_ms") or 0) <= latency_limit_ms,
+        f"wall_latency_ms={record.get('wall_latency_ms')}; limit_ms={latency_limit_ms}",
+    )
     return checks
 
 

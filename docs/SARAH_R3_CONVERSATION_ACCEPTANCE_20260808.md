@@ -60,8 +60,13 @@ py -B sarah_r3_acceptance.py `
 ```
 
 No paid OpenAI service is required or selected. The live path is bounded by
-the production ModelClient's at-most-two attempts and 15-second per-turn
-deadline. Evidence records only whether an access token was present; it never
+the production ModelClient's at-most-two attempts. Ordinary conversation keeps
+the 15-second route budget and 15.5-second acceptance limit. A request that
+requires current sources has a separate 25-second route budget and 25.5-second
+acceptance limit because the protected Worker performs Tavily retrieval and
+then source-coupled model inference sequentially. This does not relax the
+source gate: current claims still require an applied search plus HTTPS source
+receipts. Evidence records only whether an access token was present; it never
 writes the token value.
 
 ## Objective versus subjective evidence

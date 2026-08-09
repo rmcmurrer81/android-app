@@ -1090,6 +1090,44 @@ def test_windows_connected_retry_succeeds_on_second_short_attempt(monkeypatch):
     assert all(connect <= 2.0 and read <= 5.5 for connect, read in calls)
 
 
+def test_windows_current_source_request_gets_one_useful_bounded_read_window(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {
+                "reply": "<SPOKEN>Source-bound.</SPOKEN><FACTUAL_TRUTH>Fixture.</FACTUAL_TRUTH>",
+                "provider": "workers-ai",
+                "model": "fixture-model",
+                "online": True,
+                "web_search_applied": True,
+                "source_urls": ["https://example.test/source"],
+            }
+
+    def fake_post(_url, **kwargs):
+        calls.append(kwargs["timeout"])
+        return FakeResponse()
+
+    monkeypatch.setattr("sarah_core.requests.post", fake_post)
+    data, started_at = ModelClient._post_connected_with_retry(
+        "https://sarah.example.test",
+        "test-token",
+        {"message": "What current event is nearby?", "web_search": True},
+    )
+
+    assert data["web_search_applied"] is True
+    assert started_at > 0
+    assert len(calls) == 1
+    connect, read = calls[0]
+    assert connect <= 2.0
+    assert 5.5 < read <= 18.0
+
+
 def test_windows_online_forced_offline_restored_online_transcript_and_actual_receipts(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         root = make_sarah_home(Path(temp) / "route-sequence")
