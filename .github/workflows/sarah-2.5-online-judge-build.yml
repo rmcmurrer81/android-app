@@ -463,7 +463,13 @@ jobs:
           require_worker_unauthorized_capability \
             wrong /tmp/sarah-capabilities-wrong.json \
             -H 'Authorization: Bearer deliberately-wrong-sarah-token'
+          # The exact unauthorized contract above may become reachable a few
+          # seconds before the authenticated cache key on a newly named
+          # workers.dev route. Retry only transient HTTP/transport failures;
+          # the Python check below still requires this run's exact deployment,
+          # source, config, provider, model, voice, rate-limit, and search truth.
           curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+            --retry 7 --retry-all-errors --retry-delay 2 \
             -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
             -H 'Cache-Control: no-cache' \
             "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID" \
