@@ -1,0 +1,20 @@
+{
+  "request": {
+    "requestId": "example-voice-001",
+    "personScopeId": "example-person-001",
+    "spokenText": "Here is the text reply that was already delivered.",
+    "approvedVoiceProfileId": "approved-sarah-profile"
+  },
+  "result": {
+    "requestId": "example-voice-001",
+    "actualRoute": "NONE",
+    "completed": false,
+    "startedAtEpochMs": 1700000001000,
+    "completedAtEpochMs": 1700000001500,
+    "error": {
+      "code": "AUTH_UNAVAILABLE",
+      "retryable": true,
+      "factualTruth": "The host could not renew protected voice access. Text remained available and no substitute voice was claimed."
+    }
+  }
+}

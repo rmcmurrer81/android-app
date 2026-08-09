@@ -1,0 +1,37 @@
+{
+  "request": {
+    "requestId": "example-turn-001",
+    "personScopeId": "example-person-001",
+    "submittedAtEpochMs": 1700000000000,
+    "message": "What is happening near my location this weekend?",
+    "conversationMode": "ONLINE_PREFERRED",
+    "currentSourcesRequested": true,
+    "approximateArea": {
+      "label": "Example City area",
+      "source": "OWNER_ENTERED_APPROXIMATE",
+      "capturedAtEpochMs": 1700000000000,
+      "expiresAtEpochMs": 1700000900000
+    }
+  },
+  "result": {
+    "requestId": "example-turn-001",
+    "personScopeId": "example-person-001",
+    "completedAtEpochMs": 1700000001000,
+    "spoken": "I could not verify current listings, so I will not guess.",
+    "privateMind": "Sarah wants to stay useful without inventing a result.",
+    "factualTruth": "The current-source host returned no applied source receipt.",
+    "classification": "TRUTHFUL_STATEMENT",
+    "route": "TOOL_UNAVAILABLE",
+    "sourceReceipt": {
+      "applied": false,
+      "observedAtEpochMs": 1700000001000,
+      "scope": "this exact request",
+      "sourceIds": []
+    },
+    "error": {
+      "code": "CURRENT_SOURCE_UNAVAILABLE",
+      "retryable": true,
+      "factualTruth": "No current result was supplied."
+    }
+  }
+}
