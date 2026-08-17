@@ -145,16 +145,19 @@ public final class SarahDatabase extends SQLiteOpenHelper {
         boolean includeUnassigned = cleanName.isEmpty() || cleanName.equalsIgnoreCase(owner);
         List<Map<String, String>> reversed = new ArrayList<>();
         String sql = includeUnassigned
-                ? "SELECT role,content,speaker_name FROM messages WHERE lower(speaker_name)=lower(?) OR speaker_name='' ORDER BY id DESC LIMIT ?"
-                : "SELECT role,content,speaker_name FROM messages WHERE lower(speaker_name)=lower(?) ORDER BY id DESC LIMIT ?";
+                ? "SELECT id,role,content,speaker_name,created_at FROM messages WHERE lower(speaker_name)=lower(?) OR speaker_name='' ORDER BY id DESC LIMIT ?"
+                : "SELECT id,role,content,speaker_name,created_at FROM messages WHERE lower(speaker_name)=lower(?) ORDER BY id DESC LIMIT ?";
         try (Cursor c = getReadableDatabase().rawQuery(
                 sql,
                 new String[]{cleanName.isEmpty() ? owner : cleanName, String.valueOf(Math.max(1, limit))})) {
             while (c.moveToNext()) {
                 Map<String, String> row = new LinkedHashMap<>();
-                row.put("role", c.getString(0));
-                row.put("content", c.getString(1));
-                row.put("speaker_name", c.getString(2));
+                row.put("id", String.valueOf(c.getLong(0)));
+                row.put("event_id", "android-message-" + c.getLong(0));
+                row.put("role", c.getString(1));
+                row.put("content", c.getString(2));
+                row.put("speaker_name", c.getString(3));
+                row.put("created_at", String.valueOf(c.getLong(4)));
                 reversed.add(row);
             }
         }
@@ -227,6 +230,22 @@ public final class SarahDatabase extends SQLiteOpenHelper {
         values.put("caption", caption);
         values.put("created_at", System.currentTimeMillis());
         return getWritableDatabase().insert("photos", null, values);
+    }
+
+    public List<Map<String, String>> listPhotos(int limit) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT local_path,caption,created_at FROM photos ORDER BY id DESC LIMIT ?",
+                new String[]{String.valueOf(Math.max(1, limit))})) {
+            while (c.moveToNext()) {
+                Map<String, String> row = new LinkedHashMap<>();
+                row.put("local_path", c.getString(0));
+                row.put("caption", c.getString(1));
+                row.put("created_at", String.valueOf(c.getLong(2)));
+                rows.add(row);
+            }
+        }
+        return rows;
     }
 
     public void queueKnowledgePack(String destination) {

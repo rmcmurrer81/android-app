@@ -89,18 +89,24 @@ public final class SettingsActivity extends Activity {
 
         CheckBox web = findViewById(R.id.webSearchCheck);
         CheckBox autoResearch = findViewById(R.id.autoResearchCheck);
+        CheckBox nearbyDiscoveries = findViewById(R.id.nearbyDiscoveryCheck);
+        android.widget.EditText nearbyArea = findViewById(R.id.nearbyAreaInput);
         CheckBox mediaPreviews = findViewById(R.id.mediaPreviewCheck);
         CheckBox dealAlerts = findViewById(R.id.dealAlertsCheck);
         CheckBox autoSpeak = findViewById(R.id.autoSpeakCheck);
         CheckBox learn = findViewById(R.id.learnCheck);
+        CheckBox autoDeviceSync = findViewById(R.id.autoDeviceSyncCheck);
         SeekBar speed = findViewById(R.id.speedSeek);
 
         web.setChecked(preferences.getBoolean("web_search", true));
         autoResearch.setChecked(preferences.getBoolean("auto_destination_research", true));
+        nearbyDiscoveries.setChecked(preferences.getBoolean("nearby_discoveries", false));
+        nearbyArea.setText(preferences.getString("nearby_area", ""));
         mediaPreviews.setChecked(preferences.getBoolean("inline_media_previews", true));
         dealAlerts.setChecked(preferences.getBoolean("deal_alerts_enabled", true));
         autoSpeak.setChecked(preferences.getBoolean("auto_speak", true));
         learn.setChecked(preferences.getBoolean("learn", true));
+        autoDeviceSync.setChecked(preferences.getBoolean("auto_device_sync", true));
         speed.setProgress(preferences.getInt("speed", 45));
 
         Button save = findViewById(R.id.saveSettingsButton);
@@ -113,10 +119,13 @@ public final class SettingsActivity extends Activity {
                     .putInt("voice_mode", voice.getSelectedItemPosition())
                     .putBoolean("web_search", web.isChecked())
                     .putBoolean("auto_destination_research", autoResearch.isChecked())
+                    .putBoolean("nearby_discoveries", nearbyDiscoveries.isChecked())
+                    .putString("nearby_area", nearbyArea.getText().toString().trim())
                     .putBoolean("inline_media_previews", mediaPreviews.isChecked())
                     .putBoolean("deal_alerts_enabled", dealAlerts.isChecked())
                     .putBoolean("auto_speak", autoSpeak.isChecked())
                     .putBoolean("learn", learn.isChecked())
+                    .putBoolean("auto_device_sync", autoDeviceSync.isChecked())
                     .putInt("speed", speed.getProgress())
                     .apply();
 
@@ -125,8 +134,11 @@ public final class SettingsActivity extends Activity {
                 DealWatchScheduler.runSoon(this);
                 EventMonitorScheduler.ensureScheduled(this);
                 EventMonitorScheduler.runSoon(this);
+                ProactiveDiscoveryScheduler.ensureScheduled(this);
+                ProactiveDiscoveryScheduler.runSoon(this);
             } else {
                 DealWatchScheduler.cancel(this);
+                ProactiveDiscoveryScheduler.cancel(this);
             }
 
             if (dealAlerts.isChecked()

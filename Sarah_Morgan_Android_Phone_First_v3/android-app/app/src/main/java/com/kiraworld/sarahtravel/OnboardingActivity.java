@@ -40,6 +40,7 @@ public final class OnboardingActivity extends Activity {
 
     private SarahDatabase db;
     private SarahTts tts;
+    private SarahVoiceRouter voiceRouter;
     private LinearLayout chat;
     private ScrollView scroll;
     private EditText input;
@@ -80,6 +81,8 @@ public final class OnboardingActivity extends Activity {
                 runOnUiThread(() -> status.setText("Voice unavailable — text still works"));
             }
         });
+
+        voiceRouter = new SarahVoiceRouter(this, tts);
 
         ImageButton send = findViewById(R.id.onboardingSend);
         send.setOnClickListener(v -> submitAnswer());
@@ -185,7 +188,8 @@ public final class OnboardingActivity extends Activity {
     private void ask(String text) {
         addBubble("Sarah", text, false);
         status.setText(tts != null && tts.isReady() ? "Sarah is speaking" : "Preparing Sarah’s voice…");
-        if (tts != null) tts.speak(text);
+        if (voiceRouter != null) voiceRouter.speak(text);
+        else if (tts != null) tts.speak(text);
         updateHint();
     }
 

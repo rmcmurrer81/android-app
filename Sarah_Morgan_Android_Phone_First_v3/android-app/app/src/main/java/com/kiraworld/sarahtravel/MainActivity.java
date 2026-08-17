@@ -59,6 +59,7 @@ public final class MainActivity extends Activity {
         db = new SarahDatabase(this);
         DealNotificationManager.createChannel(this);
         if (!db.listActiveDealWatches(1).isEmpty()) DealWatchScheduler.ensureScheduled(this);
+        ProactiveDiscoveryScheduler.ensureScheduled(this);
         if (!db.hasProfile()) {
             startActivity(new Intent(this, OnboardingActivity.class));
             finish();
@@ -199,10 +200,18 @@ public final class MainActivity extends Activity {
     }
 
     private void postLocalSarahReply(String reply, String mode) {
+        MindEventStore.record(
+                this,
+                speakerContext.activeName(),
+                SarahChannelResponse.spokenOnly(
+                        reply,
+                        "Sarah returned a local calm, trivia, grounding, or offline-support response. No booking or external action was completed."),
+                "local-tool");
         db.addMessage("assistant", reply, speakerContext.activeName());
         addBubble("Sarah", reply, false);
         updateSpeakerStatus(mode);
         speak(reply);
+        TrustedSyncClient.syncAllAsync(this);
     }
 
     private void startTriviaGame() {
@@ -277,10 +286,18 @@ public final class MainActivity extends Activity {
 
         if (speakerResult.handled) {
             String replySpeaker = speakerContext.activeName();
+            MindEventStore.record(
+                    this,
+                    replySpeaker,
+                    SarahChannelResponse.spokenOnly(
+                            speakerResult.reply,
+                            "Sarah returned a local identity, profile, consent, or calm-support response. No booking or external action was completed."),
+                    "local-profile");
             db.addMessage("assistant", speakerResult.reply, replySpeaker);
             addBubble("Sarah", speakerResult.reply, false);
             updateSpeakerStatus(speakerContext.ageKnown() ? "Profile: " + replySpeaker : "Family-friendly until age is known");
             speak(speakerResult.reply);
+            TrustedSyncClient.syncAllAsync(this);
             return;
         }
 
@@ -354,18 +371,26 @@ public final class MainActivity extends Activity {
                 smartFallback = useSmart;
             }
 
-            String finalReply = reply;
+            SarahChannelResponse parsedChannels = SarahChannelResponse.parse(reply);
+            String finalReply = parsedChannels.spoken;
+            SarahChannelResponse finalChannels = parsedChannels;
             boolean finalSmartFallback = smartFallback;
             boolean finalSmartSucceeded = smartSucceeded;
             runOnUiThread(() -> {
                 if (finalSmartSucceeded) lastSmartCallFailed = false;
                 if (finalSmartFallback) lastSmartCallFailed = true;
+                MindEventStore.record(
+                        this,
+                        responseSpeaker,
+                        finalChannels,
+                        finalSmartSucceeded ? "connected-model" : (finalSmartFallback ? "local-fallback" : "public-or-local"));
                 db.addMessage("assistant", finalReply, responseSpeaker);
                 if (imageFile != null) db.addPhoto(imageFile.getAbsolutePath(), display);
                 if (speakerContext.activeName().equalsIgnoreCase(responseSpeaker)) {
                     addBubble("Sarah", finalReply, false);
                     updateSpeakerStatus(null);
                     speak(finalReply);
+                    TrustedSyncClient.syncAllAsync(this);
                 } else {
                     Toast.makeText(
                             this,
@@ -385,7 +410,16 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshKnowledgeAsync() {
-        if (!internetAvailable || !SarahModelConfig.fullConversationAvailable()) return;
+        SharedPreferences researchPrefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
+        int researchMode = SettingsActivity.getConversationMode(this);
+        Map<String, String> researchProfile = currentProfile();
+        if (!internetAvailable
+                || researchMode == ConversationModePolicy.MODE_LOCAL_ONLY
+                || !SarahModelConfig.fullConversationAvailable()
+                || !researchPrefs.getBoolean("web_search", true)
+                || !researchPrefs.getBoolean("auto_destination_research", true)
+                || !isOwner(researchProfile)
+                || !"yes".equals(researchProfile.getOrDefault("memory_consent", "no"))) return;
         String key = SecureStore.loadApiKey(this);
         executor.submit(() -> {
             SarahDatabase backgroundDb = new SarahDatabase(getApplicationContext());
@@ -396,6 +430,12 @@ public final class MainActivity extends Activity {
                         key,
                         SarahModelConfig.MODEL_ID,
                         2);
+                try {
+                    ProactiveDiscoveryCoordinator.refresh(
+                            getApplicationContext(),
+                            researchProfile,
+                            currentTrips(researchProfile));
+                } catch (Exception ignored) { }
                 if (refreshed > 0) {
                     runOnUiThread(() -> Toast.makeText(
                             this,

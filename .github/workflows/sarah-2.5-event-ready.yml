@@ -1,0 +1,10 @@
+name: Sarah 2.5 early release workflow — superseded
+
+on:
+  workflow_dispatch:
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Use sarah-2.5-final-release.yml. This early workflow is retained only for history.'

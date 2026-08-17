@@ -1,0 +1,170 @@
+name: Sarah 2.6 Windows Physical-Test Repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/sarah-2.6-windows-repair-final]
+    paths:
+      - 'windows-companion/**'
+      - '.github/workflows/sarah-2.6-windows-repair.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'windows-companion/**'
+      - '.github/workflows/sarah-2.6-windows-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sarah-2-6-windows-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-build-publish:
+    runs-on: windows-latest
+    timeout-minutes: 80
+    steps:
+      - name: Check out Sarah 2.6 repair source
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows-companion/requirements.txt
+
+      - name: Install dependencies
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run source and regression tests
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah Windows repair self-test failed.' }
+
+      - name: Verify the composer is visible at an ordinary window size
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          @'
+          import sarah_windows
+          sarah_windows.pystray = None
+          from sarah_event_ready import SarahWindowsRepairApp
+          app = SarahWindowsRepairApp()
+          app.root.geometry('900x600+0+0')
+          app.root.update_idletasks()
+          app.root.update()
+          assert app.entry.winfo_ismapped(), 'The chat entry is not mapped at 900x600.'
+          assert app.entry.winfo_height() >= 20, app.entry.winfo_height()
+          assert app.corner.state() == 'withdrawn', 'The companion must not cover the main app by default.'
+          app.sync_server.stop()
+          app.root.destroy()
+          print('SARAH_RESPONSIVE_UI_SMOKE_OK')
+          '@ | Set-Content -Encoding UTF8 ui_smoke.py
+          python ui_smoke.py
+
+      - name: Verify Windows can actually synthesize Sarah's offline fallback audio
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Speech
+          $path = Join-Path $env:RUNNER_TEMP 'sarah-voice-test.wav'
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile($path)
+          $voice.Speak('Sarah voice fallback test')
+          $voice.Dispose()
+          $file = Get-Item $path
+          if ($file.Length -lt 1000) { throw 'Windows speech produced no usable audio.' }
+          Write-Host "WINDOWS_VOICE_WAV_OK $($file.Length) bytes"
+
+      - name: Build Sarah application
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahTravelOS `
+            --collect-all pystray `
+            --collect-all PIL `
+            --collect-all playsound3 `
+            --hidden-import googleapiclient.discovery `
+            --hidden-import google_auth_oauthlib.flow `
+            sarah_event_ready.py
+          if (!(Test-Path 'dist\SarahTravelOS.exe')) { throw 'SarahTravelOS.exe was not created.' }
+
+      - name: Build one self-installing Windows EXE
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahMorganTravelOS-Setup `
+            --add-binary 'dist\SarahTravelOS.exe;payload' `
+            sarah_installer_26.py
+          if (!(Test-Path 'dist\SarahMorganTravelOS-Setup.exe')) { throw 'The installer was not created.' }
+
+      - name: Self-test the exact public installer and safe remover
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          & '.\dist\SarahMorganTravelOS-Setup.exe' --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Installer self-test returned $LASTEXITCODE." }
+          $file = Get-Item '.\dist\SarahMorganTravelOS-Setup.exe'
+          if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
+          $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'The Windows file is not a PE executable.' }
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List
+
+      - name: Upload validated Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.6-Windows-Repair-Installer
+          path: windows-companion/dist/SarahMorganTravelOS-Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the Windows physical-test release
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'sarah-travel-os-v2.6-windows-repair'
+          gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag 2>$null
+          $notes = @'
+          ## Sarah Travel OS 2.6 — Windows physical-test repair
+
+          This replaces the unusable Windows 2.5 build. It does not replace the Android APK.
+
+          Download **SarahMorganTravelOS-Setup.exe** only after removing the broken 2.5 Windows installation.
+
+          Automated acceptance gates passed for:
+
+          - chat composer visible at 900×600 rather than only full screen;
+          - companion window hidden by default so it cannot cover the app;
+          - useful offline responses for ordinary conversation and possible destinations;
+          - automatic local Ollama detection when a compatible local model is installed;
+          - Windows System.Speech produced a real non-empty WAV file;
+          - visible voice diagnostics instead of silently swallowing errors;
+          - responsive futuristic UI and a layered humanoid Sarah companion;
+          - exact installer self-test;
+          - Smart App Control-safe removal using Windows PowerShell;
+          - trusted-device approval and encrypted sync source tests.
+
+          Robert still needs to verify speakers, microphone, Smart App Control behavior, and physical phone-to-computer synchronization on his own devices.
+          '@
+          $notes | Set-Content -Encoding UTF8 $env:RUNNER_TEMP\sarah26-notes.md
+          gh release create $tag `
+            --repo $env:GITHUB_REPOSITORY `
+            --target agent/sarah-2.6-windows-repair-final `
+            --title 'Sarah Travel OS 2.6 — Windows Repair' `
+            --notes-file $env:RUNNER_TEMP\sarah26-notes.md `
+            --prerelease `
+            windows-companion/dist/SarahMorganTravelOS-Setup.exe
