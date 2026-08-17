@@ -1,0 +1,16 @@
+name: Sarah 2.6 manual repair fallback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the release gate
+        run: |
+          echo 'Sarah 2.6 is built and published by the observable PR validation workflow.'
+          echo 'This manual workflow is intentionally non-publishing so two workflows cannot race and replace the tested APK or EXE.'

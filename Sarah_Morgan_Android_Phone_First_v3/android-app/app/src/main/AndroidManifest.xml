@@ -2,9 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
@@ -28,11 +31,11 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@drawable/ic_sarah_launcher_v2"
-        android:label="Sarah Morgan"
+        android:label="Sarah"
         android:roundIcon="@drawable/ic_sarah_launcher_v2"
         android:supportsRtl="true"
         android:theme="@style/Theme.SarahMorgan"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
 
         <service
             android:name=".DealWatchWorker"
@@ -40,6 +43,10 @@
             android:permission="android.permission.BIND_JOB_SERVICE" />
         <service
             android:name=".EventMonitorJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service
+            android:name=".ProactiveDiscoveryJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
@@ -58,6 +65,10 @@
         <activity android:name=".HospitalityOpsActivity" android:exported="false" />
         <activity android:name=".VoiceConciergeActivity" android:exported="false" />
         <activity android:name=".TravelExplorerActivity" android:exported="false" />
+        <activity android:name=".DiscoveryActivity" android:exported="false" />
+        <activity android:name=".TrustedSyncActivity" android:exported="false" />
+        <activity android:name=".HackathonDemoActivity" android:exported="false" />
+        <activity android:name=".SponsorConnectionsActivity" android:exported="false" />
 
         <activity
             android:name=".BookingImportActivity"
@@ -77,7 +88,10 @@
 
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".TravelNotebookActivity" android:exported="false" />
-        <activity android:name=".OnboardingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
