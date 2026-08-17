@@ -1,0 +1,45 @@
+name: Daily NYFW and NYC Model Event Monitor
+
+on:
+  schedule:
+    # 9:13 a.m. Eastern while New York is on daylight time.
+    - cron: '13 13 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/nyfw-event-monitor.yml'
+      - 'tools/nyfw_event_monitor.py'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nyfw-event-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Search for new free or low-cost events
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Check out monitor code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install monitor dependencies
+        run: python -m pip install --quiet requests beautifulsoup4 feedparser
+
+      - name: Search and notify only about new matches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MONITOR_ISSUE: '26'
+          TZ: America/New_York
+        run: python tools/nyfw_event_monitor.py
