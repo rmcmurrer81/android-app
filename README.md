@@ -1,25 +1,68 @@
 # Sarah Morgan Travel OS
 
+R2 adaptive offline/calming and opt-in source-backed research boundaries remain recorded in `SARAH_ADAPTIVE_OFFLINE_AND_RESEARCH_R2.md` as historical evidence. The current owner-repair source is R3; rejected R2 binaries remain preserved and must not be reused as the current owner test.
+
 Sarah Morgan is a phone-first Android travel companion and general conversational companion. She combines continuing personal memory, shared-phone profiles, trip planning, hotels, transportation, local experiences, accessibility, hotel guest support, public travel research, premium online voice, and reliable offline fallback.
 
 This repository is the authoritative hackathon source.
 
+The bounded 2026-08-09 owner-reopened Android/Windows location, keyboard,
+scaled-window, and automatic event-capability source repair is recorded in
+`docs/SARAH_LOCATION_COMPOSER_CONNECTION_REPAIR_20260809.md`. It has static and
+local-test evidence only; no replacement APK/EXE or deployment is claimed.
+
 Current development version:
 
 ```text
-Sarah Morgan Android 2.1-offline-flight-companion
+Sarah Morgan Android 2.5-r3-owner-repair
 ```
+
+The R3 source is a repair candidate following Robert's rejection of the physical R2 Android and Windows artifacts.
+It is not a replacement APK yet. The previous passed APK and Windows installer
+remain preserved while R3 awaits the real Android compile/CI gates and a fresh
+phone acceptance run.
+
+R3 retains the application-owned route truth on every Sarah reply, migrates
+the old placeholder `Phone owner` without inventing age 18, keeps unknown age
+family-safe, keeps current location separate from hometown, removes unsupported
+promises of background work, and does not create a fare/event watch when its
+provider is absent. Android records only an approximate city/area for the
+active profile and never stores raw coordinates. Windows now preserves reply
+routes through sync, treats unknown imported age as unknown, stores current
+area separately, and falls back to Windows speech if ElevenLabs fails.
+
+The repair also keeps Tavily credentials on the protected Worker, binds
+current-source queries to the actual conversation/trip context, exposes exact
+HTTPS source receipts, makes explicit mode questions use the actual completed
+turn route, and prevents network callbacks from claiming the online mind is
+ready before a successful authenticated reply. Discovery says research was
+saved only after its real preconditions and JobScheduler acceptance pass.
+
+Only `.github/workflows/sarah-2.5-online-judge-build.yml` may produce artifacts
+whose names contain `R3-CURRENT-OWNER-TEST`. Generic, pull-request, and legacy
+artifacts are explicitly labeled `ENGINEERING-EVIDENCE-DO-NOT-INSTALL` or
+`LEGACY-EVIDENCE-DO-NOT-INSTALL`. R3 is not owner-accepted or judge-ready.
+Physical Galaxy A17 migration, fresh-profile,
+online/offline/reconnect, location, ten-message keyboard/inset, voice-hearing,
+and latency gates remain pending. Android source now uses a Media3 progressive,
+one-shot POST for the approved ElevenLabs MP3 rather than waiting for a full
+response or cache file before handing audio to the player. Receipts preserve
+`requested_at`, `synthesis_start`, `first_network_byte`, `player_ready`,
+`response_complete`, the compatibility alias `synthesis_end`,
+`playback_start`, and `playback_end`. This is implemented source truth only:
+Android CI compilation and physical Galaxy A17 hearing/latency measurement have
+not passed, so no audible latency improvement is claimed yet.
 
 Expected GitHub Actions artifact:
 
 ```text
-Sarah-Morgan-2.1-offline-flight-companion
+Sarah-Morgan-2.2-phone-windows-continuity
 ```
 
 Expected APK inside the artifact:
 
 ```text
-Sarah-Morgan-2.1-offline-flight-companion.apk
+Sarah-Morgan-2.2-phone-windows-continuity.apk
 ```
 
 Private-test application ID:
@@ -53,6 +96,17 @@ Offline Local fallback and Flight Companion when internet disappears
 ```
 
 Sarah separates suggestions from confirmed facts. Opening a website is not a booking. Saving a draft is not proof that a hotel received it. Model output is not proof that a price, event, reservation, notification, call, or completed task exists.
+
+
+## Sarah 2.2 phone and Windows continuity
+
+Version 2.2 fixes emotional-state words being mistaken for names, adds universal transport-aware calm support, routes onboarding through Sarah Morgan's ElevenLabs voice when connected, records separate SPOKEN / PRIVATE MIND / FACTUAL TRUTH channels, adds Tavily-backed proactive discoveries, hides the empty visual panel, and introduces explicitly verified same-Wi-Fi synchronization with the Windows companion.
+
+The Windows companion lives in `windows-companion/`. Its current R3 owner shell uses the approved Sarah portrait with bounded blink, gaze, head, and playback-bound mouth motion; a persistent power-saving control stops the render loop while retaining text and voice. It provides a restored Travel Workbench, maps and source-bearing public media, trips, ElevenLabs plus labeled offline speech, optional local or connected conversation, read-only Gmail travel review, proactive research, encrypted backup, secure two-device pairing, and an encrypted active-profile loyalty/ticket/QR wallet.
+
+No search result is treated as a booking or confirmed event. Nearby discoveries require the owner's setting, and private mind records are not displayed or sent to speech.
+
+See `docs/SARAH_2_2_EVENT_READ_FIRST.md` and `docs/SARAH_2_2_REAL_WORLD_TESTS.md`.
 
 ## What Sarah 2.1 adds
 
@@ -602,9 +656,13 @@ The person installing Sarah does not choose a provider or enter a key.
 Default source configuration:
 
 ```text
-Provider: OpenAI
-Model: gpt-5.1
+Provider: Cloudflare Workers AI through Sarah's protected Worker
+Model: @cf/google/gemma-4-26b-a4b-it
 ```
+
+This event route uses Cloudflare's bounded free Workers AI allocation and does
+not require Robert or the judges to buy OpenAI credits. OpenAI remains an
+explicit optional rollback provider, not the R3 candidate default.
 
 Core files:
 
@@ -620,9 +678,11 @@ Recommended architecture:
 
 ```text
 Sarah Android app
-    → authenticated HTTPS
-Sarah team backend
-    → OpenAI
+    → authenticated HTTPS with a revocable app token
+Sarah protected per-candidate Worker
+    → Workers AI conversation
+    → protected current-source search when configured
+    → protected ElevenLabs voice
 ```
 
 Detailed provider-change instructions, including how to replace OpenAI with Claude:
@@ -637,8 +697,8 @@ Sarah uses Automatic mode by default.
 
 | State | Behavior |
 |---|---|
-| Internet + team OpenAI connection | full connected conversation and configured tools |
-| Internet without OpenAI | public event, map, media, route and factual tools, then Local fallback |
+| Validated internet + protected Worker | Workers AI conversation; one short retry after a failed first attempt, then an explicit offline answer for that turn |
+| Internet without an accepted Worker reply | saved/offline knowledge and local tools; no false web-search claim |
 | Internet + ElevenLabs | Sarah Morgan premium voice |
 | ElevenLabs unavailable or offline | Android speech fallback |
 | No internet | Local Travel Brain, profiles, saved state, calm tools and offline games |

@@ -9,7 +9,7 @@ public final class TravelCommerceConfig {
     }
 
     public static String token() {
-        return clean(BuildConfig.SARAH_TRAVEL_COMMERCE_TOKEN);
+        return "";
     }
 
     public static boolean isConfigured() {

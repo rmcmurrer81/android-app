@@ -1,0 +1,51 @@
+name: Sarah Team Integration source package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Verify reusable source and deterministic packaging
+        run: python -B -m unittest discover -s integration/sarah-team-integration/tests -v
+
+      - name: Build source package
+        run: python -B integration/sarah-team-integration/tools/build_package.py
+
+      - name: Verify source and archive contain no packaged secrets
+        run: |
+          python -B integration/sarah-team-integration/tools/secret_scan.py integration/sarah-team-integration
+          python -B integration/sarah-team-integration/tools/secret_scan.py dist/Sarah-Team-Integration-Source.zip
+
+      - name: Verify published checksum
+        run: sha256sum --check dist/Sarah-Team-Integration-Source.zip.sha256
+
+      - name: Upload team integration source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Team-Integration-Source
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/Sarah-Team-Integration-Source.zip
+            dist/Sarah-Team-Integration-Source.zip.sha256
+            dist/Sarah-Team-Integration-Source.manifest.json

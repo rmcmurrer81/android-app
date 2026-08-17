@@ -1,0 +1,218 @@
+name: ENGINEERING EVIDENCE - Sarah 2.5 R3 - DO NOT INSTALL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/sarah-2.5-event-ready]
+    paths:
+      - '.github/workflows/sarah-2.5-final-release.yml'
+      - 'public-release/2.5/FINAL_RELEASE_KICKOFF.json'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sarah-2-5-final-release
+  cancel-in-progress: true
+
+env:
+  # Release artifacts receive public route/model identity only. Reusable
+  # credentials are activated after installation or remain server-side.
+  SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
+  SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
+  SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
+  SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+  SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+  SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
+  SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
+  SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
+
+jobs:
+  android:
+    name: Genuine Android 2.5 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.5-event-ready
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run Android package and runtime privacy contracts
+        run: |
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/validate_package.py
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
+      - name: Test Sarah core and approval-gated sync
+        working-directory: windows-companion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+      - name: Test Android identity, calm support, channels, and crypto
+        run: |
+          rm -rf build/sarah25-core && mkdir -p build/sarah25-core
+          javac -encoding UTF-8 -d build/sarah25-core \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/IdentityIntent.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java
+          java -cp build/sarah25-core Sarah22CoreTest
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build and inspect the APK
+        run: |
+          set -euo pipefail
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          gradle = Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle').read_text(encoding='utf-8')
+          code_match = re.search(r'^\s*versionCode\s+(\d+)\s*$', gradle, re.MULTILINE)
+          name_match = re.search(r"^\s*versionName\s+['\"]([^'\"]+)['\"]\s*$", gradle, re.MULTILINE)
+          suffix_match = re.search(r"^\s*versionNameSuffix\s+['\"]([^'\"]+)['\"]\s*$", gradle, re.MULTILINE)
+          if code_match is None or name_match is None:
+              raise SystemExit('Could not derive Android version identity from app/build.gradle.')
+          source_code = int(code_match.group(1))
+          source_name = name_match.group(1)
+          expected_variant_name = source_name + (suffix_match.group(1) if suffix_match else '')
+          if source_code != 27 or source_name != '2.5-r3-owner-repair':
+              raise SystemExit(
+                  f'R3 engineering build requires source 27/2.5-r3-owner-repair, found {source_code}/{source_name}.'
+              )
+          metadata = json.loads(Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json').read_text(encoding='utf-8'))
+          element = metadata['elements'][0]
+          name = str(element.get('versionName', ''))
+          code = int(element.get('versionCode', 0))
+          if name != expected_variant_name or code != source_code:
+              raise SystemExit(
+                  f'Built Android identity differs from source: expected {expected_variant_name}/{source_code}, found {name}/{code}.'
+              )
+          print('Verified internal Android build:', name, code)
+          PY
+          unzip -t Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk >/dev/null
+          test -s Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          sha256sum Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Android
+          path: Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    name: One self-installing Windows EXE
+    runs-on: windows-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/sarah-2.5-event-ready
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows-companion/requirements.txt
+      - name: Test Sarah's Windows source
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah source self-test failed.' }
+      - name: Build Sarah and the single installer
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahTravelOS-R3-Candidate `
+            --collect-all pystray `
+            --collect-all PIL `
+            --collect-all playsound3 `
+            --hidden-import googleapiclient.discovery `
+            --hidden-import google_auth_oauthlib.flow `
+            sarah_event_ready.py
+          if (!(Test-Path 'dist\SarahTravelOS-R3-Candidate.exe')) { throw 'SarahTravelOS-R3-Candidate.exe was not created.' }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL `
+            --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' `
+            sarah_installer.py
+          if (!(Test-Path 'dist\SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe')) { throw 'Engineering installer was not created.' }
+      - name: Install and self-test the exact public EXE
+        working-directory: windows-companion
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath '.\dist\SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
+          $file = Get-Item '.\dist\SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe'
+          if ($file.Length -lt 1000000) { throw 'The installer is unexpectedly small.' }
+          $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'The Windows download is not a PE executable.' }
+          Get-FileHash $file.FullName -Algorithm SHA256 | Format-List
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Windows
+          path: windows-companion/dist/SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish the two tested installers
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Sarah-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Android
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: Sarah-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Windows
+          path: release
+      - name: Verify and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s release/Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          test -s release/SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe
+          sha256sum release/Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk release/SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe > release/SHA256SUMS.txt
+          TAG='sarah-travel-os-v2.5-r3-engineering-evidence'
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          cat > release/README.txt <<'EOF'
+          Sarah Travel OS 2.5 R3 — ENGINEERING EVIDENCE — DO NOT INSTALL
+
+          Android evidence: Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          Windows evidence: SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe
+
+          DO NOT INSTALL either file. These are credential-free engineering artifacts, not the current owner test. Only the separately gated online-judge artifacts may be offered for Robert's next physical test.
+
+          Start Sarah on Windows and allow Private network access if Windows Firewall asks. Open Sarah on the Android phone while both devices use the same private Wi-Fi. Sarah can discover the computer, but no details move until the computer displays the same six-digit code and you approve the named phone. The first approved synchronization moves permitted details in both directions.
+          EOF
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target agent/sarah-2.5-event-ready \
+            --title 'Sarah Travel OS 2.5 R3 — ENGINEERING EVIDENCE — DO NOT INSTALL' \
+            --notes-file release/README.txt \
+            --prerelease \
+            release/Sarah-Morgan-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk \
+            release/SarahMorganTravelOS-2.5-R3-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe \
+            release/SHA256SUMS.txt \
+            release/README.txt

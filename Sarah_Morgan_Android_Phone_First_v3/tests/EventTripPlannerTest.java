@@ -16,6 +16,10 @@ public final class EventTripPlannerTest {
                 List.of());
         require(ces.handled(), "CES statement must be handled");
         require(hasAction(ces, AgenticTravelPlanner.CREATE_EVENT_TRIP), "CES must create event trip");
+        require(!eventAction(ces).monitoringRequested,
+                "attending CES must create a static event without an inferred monitor");
+        require(ces.reply.contains("without silently turning on background monitoring"),
+                "save-only event reply must state the non-monitoring truth");
         require(hasAction(ces, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK), "CES must queue destination research");
         require(!ces.reply.endsWith("?"), "CES reply must not become another questionnaire");
 
@@ -26,6 +30,14 @@ public final class EventTripPlannerTest {
                 List.of());
         require(hasAction(comicCon, AgenticTravelPlanner.CREATE_EVENT_TRIP), "Comic-Con must create event trip");
         require(comicCon.reply.contains("nearby"), "Comic-Con reply should include nearby planning");
+
+        AgenticTravelPlanner.Plan monitoredComicCon = AgenticTravelPlanner.plan(
+                "Monitor updates for San Diego Comic-Con",
+                profile,
+                List.of(),
+                List.of());
+        require(eventAction(monitoredComicCon).monitoringRequested,
+                "explicit monitoring language must survive into the executable action");
 
         AgenticTravelPlanner.Plan booking = AgenticTravelPlanner.plan(
                 "My Expedia hotel booking is https://www.expedia.com/trips/abc123",
@@ -43,6 +55,13 @@ public final class EventTripPlannerTest {
             if (type.equals(action.type)) return true;
         }
         return false;
+    }
+
+    private static AgenticTravelPlanner.Action eventAction(AgenticTravelPlanner.Plan plan) {
+        for (AgenticTravelPlanner.Action action : plan.actions) {
+            if (AgenticTravelPlanner.CREATE_EVENT_TRIP.equals(action.type)) return action;
+        }
+        throw new AssertionError("event action missing");
     }
 
     private static void require(boolean condition, String message) {

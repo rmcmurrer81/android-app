@@ -1,0 +1,7 @@
+{
+  "provider": "workers-ai",
+  "model": "@cf/google/gemma-4-26b-a4b-it",
+  "repair_revision": "R3_OWNER_LOCATION_COMPOSER_CONNECTION_REPAIR",
+  "requested_at": "2026-08-09T16:13:47Z",
+  "reason": "OWNER_AUTHORIZED_BUILD_RERUN: build a new append-only 72-hour event candidate from the statically verified location, Android Samsung-IME composer, Windows scaled-window composer, startup capability-race, atomic endpoint-plus-token, fail-closed expiry, and automatic packaged-event connection repairs. Re-evaluate the exact protected Workers AI, Tavily, current-location/current-source, and ElevenLabs routes because Robert reports that ElevenLabs credits were added; do not assume voice is available unless the workflow proves it. Preserve all prior runs, artifacts, Workers, diagnostics, R1 data/signing boundaries, separate event application ID and signer, Gmail-off truth, ordinary 15,000ms/11,500ms and explicit current-source 25,000ms/18,000ms deadline classes, truthful offline fallback, provider-key boundary, exact per-run Worker, and authorized 72-hour extractable-bearer boundary. Do not merge or publish a release; produce private candidate artifacts pending Galaxy A17 and 8GB Windows owner acceptance."
+}

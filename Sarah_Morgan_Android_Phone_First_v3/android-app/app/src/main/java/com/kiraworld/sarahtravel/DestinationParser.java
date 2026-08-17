@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -12,10 +13,11 @@ import java.util.regex.Pattern;
 public final class DestinationParser {
     private static final Map<String, String[]> KNOWN = new LinkedHashMap<>();
     private static final Pattern AFTER_TRAVEL_VERB = Pattern.compile(
-            "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|fly to|flights to|ride to|head to|heading to|take a train to|take the train to|planning on going to|thinking about going to)\\s+([A-Za-z][A-Za-z .,'-]{1,80})");
+            "(?i)\\b(?:visit|visiting|go to|going to|trip to|travel to|traveling to|travelling to|fly to|flights to|ride to|head to|heading to|take a train to|take the train to|planning on going to|thinking about going to)\\s+([A-Za-z][A-Za-z .,'-]{1,80})");
 
     static {
-        KNOWN.put("Paris", new String[]{"paris"});
+        KNOWN.put("Paris, Texas", new String[]{"paris texas", "paris, texas", "paris tx", "paris, tx"});
+        KNOWN.put("Paris", new String[]{"paris france", "paris, france", "paris"});
         KNOWN.put("London", new String[]{"london"});
         KNOWN.put("New York City", new String[]{"new york city", "new york", "nyc", "manhattan"});
         KNOWN.put("California", new String[]{"california"});
@@ -46,6 +48,7 @@ public final class DestinationParser {
         KNOWN.put("Beijing", new String[]{"beijing"});
         KNOWN.put("Shanghai", new String[]{"shanghai"});
         KNOWN.put("Hong Kong", new String[]{"hong kong"});
+        KNOWN.put("New Zealand", new String[]{"new zealand", "aotearoa"});
     }
 
     private DestinationParser() { }
@@ -54,8 +57,10 @@ public final class DestinationParser {
         List<String> result = new ArrayList<>();
         String lower = normalize(text);
         if (lower.isEmpty()) return result;
+        boolean parisTexasNamed = containsParisTexas(lower);
 
         for (Map.Entry<String, String[]> entry : KNOWN.entrySet()) {
+            if (parisTexasNamed && "Paris".equals(entry.getKey())) continue;
             for (String alias : entry.getValue()) {
                 if (containsWholePhrase(lower, alias)) {
                     addUnique(result, entry.getKey());
@@ -84,7 +89,7 @@ public final class DestinationParser {
             List<String> found = extractDestinations(row.getOrDefault("content", ""));
             if (!found.isEmpty()) return found;
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     public static String join(List<String> destinations) {
@@ -128,6 +133,13 @@ public final class DestinationParser {
         cleaned = cleaned.replaceAll("[?.!,]+$", "").trim();
         if (cleaned.length() < 2 || cleaned.length() > 50) return "";
         return cleaned;
+    }
+
+    private static boolean containsParisTexas(String text) {
+        return containsWholePhrase(text, "paris texas")
+                || containsWholePhrase(text, "paris, texas")
+                || containsWholePhrase(text, "paris tx")
+                || containsWholePhrase(text, "paris, tx");
     }
 
     private static boolean containsWholePhrase(String text, String phrase) {

@@ -1,0 +1,249 @@
+name: Sarah 2.5 observable validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  SARAH_OPENAI_API_KEY: ''
+  SARAH_MODEL_PROVIDER: workers-ai
+  SARAH_MODEL_ID: '@cf/google/gemma-4-26b-a4b-it'
+  # Pull-request validation must never expose or package repository secrets.
+  # The separately gated online-judge workflow deploys the protected Worker,
+  # smoke-tests it, and bundles only non-secret route/model/voice identity.
+  # A confirmed owner supplies revocable Sarah access after installation.
+  SARAH_MODEL_BACKEND_URL: ''
+  SARAH_MODEL_BACKEND_TOKEN: ''
+  SARAH_TRAVEL_COMMERCE_URL: ''
+  SARAH_TRAVEL_COMMERCE_TOKEN: ''
+  SARAH_VOICE_CONCIERGE_URL: ''
+  SARAH_VOICE_CONCIERGE_TOKEN: ''
+  SARAH_ELEVENLABS_API_KEY: ''
+  SARAH_ELEVENLABS_VOICE_ID: ''
+  SARAH_ELEVENLABS_MODEL_ID: eleven_flash_v2_5
+  SARAH_ELEVENLABS_BACKEND_URL: ''
+  SARAH_ELEVENLABS_BACKEND_TOKEN: ''
+  SARAH_TAVILY_API_KEY: ''
+  SARAH_STAY22_AID: ''
+  SARAH_STAY22_BACKEND_URL: ''
+  SARAH_STAY22_BACKEND_TOKEN: ''
+
+jobs:
+  android-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Protected online-mind source contract
+        run: |
+          cd services/sarah-model-proxy
+          npm install --no-audit --no-fund
+          npm run check
+          cd ../..
+          grep -Fq "SARAH_MODEL_PROVIDER" Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle
+          grep -Fq "BuildConfig.SARAH_MODEL_ID" Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahModelConfig.java
+          grep -Fq '"binding": "AI"' services/sarah-model-proxy/wrangler.jsonc
+          grep -Fq "SARAH_BACKEND_TOKEN" services/sarah-model-proxy/src/index.js
+          grep -Fq "WORKER_CONTRACT_VERSION" services/sarah-model-proxy/src/index.js
+          grep -Fq "EXPECTED_DEPLOYMENT_ID" .github/workflows/sarah-2.5-online-judge-build.yml
+          grep -Fq "EXPECTED_SOURCE_SHA256" .github/workflows/sarah-2.5-online-judge-build.yml
+          grep -Fq "EXPECTED_CONFIG_SHA256" .github/workflows/sarah-2.5-online-judge-build.yml
+      - name: Windows core and approval-gate tests
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows dependencies failed to install.' }
+          python -m pytest -q tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source tests failed.' }
+          python -m compileall -q .
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source compilation failed.' }
+          python sarah_event_ready.py --self-test
+      - name: Android pure-Java contracts
+        run: |
+          python Sarah_Morgan_Android_Phone_First_v3/tests/validate_package.py
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_windows_artifact_lineage.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_android_presence_surface.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_online_owner_activation_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_secure_sync_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_ticket_pass_wallet_contract.py -v
+          rm -rf build/sarah25-core && mkdir -p build/sarah25-core
+          javac -encoding UTF-8 -d build/sarah25-core \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/IdentityIntent.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OwnerOnlineActivationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22SearchPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnRoute.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CurrentLocationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BackgroundResearchPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AdaptiveResearchPlan.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileLearningContext.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConnectedModelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationSourcePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/PublicSourceResult.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/VoiceRoutePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ReplyTruthGuard.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TextTurnReceipt.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GmailTravelConnection.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EmailCalendarPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelPlanningConversationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelSearchQueryPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OfflineTuringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingImportTextPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TripWindowParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CityVisitPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/FinalDisplayedResponsePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnowledgePackSchedulingPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnowledgeProfileKey.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConnectedTurnPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SyncPhotoPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/VoiceFallbackPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedLanEndpointPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahPairingProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SecureVaultReadPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TicketPassPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnLifecyclePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah25ConversationContextTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Stay22SearchPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahR2PolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/GmailReadOnlyPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EmailCalendarPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahPairingProtocolTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SecureVaultReadPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahSecureSyncInteropTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TicketPassPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ProtectedBackendCapabilityPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPreUpgradeVersionPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripProfilePolicyTest.java
+          java -cp build/sarah25-core Sarah22CoreTest
+          java -cp build/sarah25-core Sarah25ConversationContextTest
+          java -cp build/sarah25-core ConversationModePolicyTest
+          java -cp build/sarah25-core Stay22SearchPolicyTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.SarahR2PolicyTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.GmailReadOnlyPolicyTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.EmailCalendarPolicyTest
+          java -cp build/sarah25-core SarahPairingProtocolTest
+          java -cp build/sarah25-core SecureVaultReadPolicyTest
+          java -cp build/sarah25-core SarahSecureSyncInteropTest
+          java -cp build/sarah25-core TicketPassPolicyTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.ProtectedBackendCapabilityPolicyTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.EventTripPreUpgradeVersionPolicyTest
+          java -cp build/sarah25-core EventTripIntentParserTest
+          java -cp build/sarah25-core com.kiraworld.sarahtravel.EventTripProfilePolicyTest
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build and verify real Android 2.5 APK
+        run: |
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          metadata=json.loads(Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/output-metadata.json').read_text())
+          element=metadata['elements'][0]
+          assert str(element['versionName']).startswith('2.5-r3-owner-repair'), element
+          assert element['versionCode']==27, element
+          print('Verified physical-test APK:', element)
+          PY
+          unzip -t Sarah-Morgan-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Android
+          path: Sarah-Morgan-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.apk
+          if-no-files-found: error
+
+  windows-validation:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows-companion/requirements.txt
+      - name: Test Windows source
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pytest -q tests
+          python -m compileall -q .
+          python sarah_event_ready.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Source self-test failed.' }
+      - name: Build Sarah application and one-file installer
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow --hidden-import google.oauth2.credentials --hidden-import google.auth.transport.requests --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorganTravelOS-R3-Candidate-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
+          if (!(Test-Path 'dist\SarahMorganTravelOS-R3-Candidate-Setup.exe')) { throw 'Installer was not created.' }
+      - name: Self-test the exact public EXE
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          $process = Start-Process -FilePath '.\dist\SarahMorganTravelOS-R3-Candidate-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
+          $file=Get-Item '.\dist\SarahMorganTravelOS-R3-Candidate-Setup.exe'
+          if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
+          $bytes=[System.IO.File]::ReadAllBytes($file.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'Not a PE executable.' }
+      - name: Label the PR build as engineering evidence, not the owner voice test
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          Copy-Item -LiteralPath '.\dist\SarahMorganTravelOS-R3-Candidate-Setup.exe' -Destination '.\dist\SarahMorganTravelOS-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Windows
+          path: |
+            windows-companion/dist/SarahMorganTravelOS-2.5-R3-CURRENT-ENGINEERING-EVIDENCE-DO-NOT-INSTALL.exe
+            docs/SARAH_WINDOWS_ARTIFACT_LINEAGE_20260808.md
+          if-no-files-found: error

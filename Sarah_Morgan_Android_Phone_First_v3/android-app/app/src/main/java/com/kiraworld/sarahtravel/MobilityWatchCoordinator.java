@@ -10,27 +10,44 @@ public final class MobilityWatchCoordinator {
     private MobilityWatchCoordinator() { }
 
     /** Returns true when at least one check failed temporarily and should retry. */
-    public static boolean run(Context context) {
+    public static boolean run(Context context, ConfirmedOwnerLease ownerLease) {
+        if (ownerLease == null) return false;
+        ownerLease.requireActive();
         MobilityWatchStore store = new MobilityWatchStore(context.getApplicationContext());
         boolean temporaryFailure = false;
         try {
+            ownerLease.requireActive();
             List<Map<String, String>> watches = store.listActiveWatches(100);
             for (Map<String, String> watch : watches) {
+                if (Thread.currentThread().isInterrupted()) return true;
+                if (!ownerLease.isActive()) return false;
                 long id = longValue(watch, "id", 0);
                 try {
-                    MobilityResult result = MobilityGateway.check(context, watch);
+                    ownerLease.requireActive();
+                    MobilityResult result = MobilityGateway.check(
+                            context, watch, ownerLease);
+                    ownerLease.requireActive();
                     long now = System.currentTimeMillis();
                     if (!result.configured) {
-                        store.updateWatch(id, "backend_not_configured", now, "", result.sourceNote);
+                        ownerLease.requireActive();
+                        store.updateWatch(id, "setup_required", now, "", result.sourceNote);
                     } else if (!result.found) {
+                        ownerLease.requireActive();
                         store.updateWatch(id, "checked_no_result", now, "", result.sourceNote);
                     } else {
                         String status = result.significant ? "update_notified" : "checked_no_significant_change";
+                        ownerLease.requireActive();
                         store.updateWatch(id, status, now, result.summary, result.sourceNote);
-                        if (result.significant) MobilityNotificationManager.post(context, watch, result);
+                        if (result.significant) {
+                            ownerLease.requireActive();
+                            MobilityNotificationManager.post(context, watch, result);
+                        }
                     }
-                } catch (Exception ignored) {
+                } catch (Exception failure) {
+                    if (Thread.currentThread().isInterrupted()) return true;
+                    if (!ownerLease.isActive()) return false;
                     temporaryFailure = true;
+                    ownerLease.requireActive();
                     store.updateWatch(id, "temporary_error", System.currentTimeMillis(), "", "Temporary backend error");
                 }
             }

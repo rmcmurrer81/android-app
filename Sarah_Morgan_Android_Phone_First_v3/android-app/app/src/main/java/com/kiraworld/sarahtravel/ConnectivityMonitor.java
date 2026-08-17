@@ -64,6 +64,16 @@ public final class ConnectivityMonitor {
     }
 
     public boolean currentValidatedInternet() {
+        return hasValidatedInternet(manager);
+    }
+
+    public static boolean hasValidatedInternet(Context context) {
+        ConnectivityManager connectivity = context == null ? null
+                : (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        return hasValidatedInternet(connectivity);
+    }
+
+    private static boolean hasValidatedInternet(ConnectivityManager manager) {
         if (manager == null) return false;
         Network active = manager.getActiveNetwork();
         if (active == null) return false;

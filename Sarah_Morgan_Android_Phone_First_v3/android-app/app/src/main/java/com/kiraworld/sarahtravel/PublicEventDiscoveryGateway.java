@@ -35,10 +35,11 @@ public final class PublicEventDiscoveryGateway {
 
     private PublicEventDiscoveryGateway() { }
 
-    public static String answer(
+    public static PublicSourceResult answerResult(
             Context context,
             String message,
-            List<Map<String, String>> history) {
+            List<Map<String, String>> history,
+            String personId) {
         if (context == null) return null;
         String eventName = GenericEventReference.recentEvent(history, message);
         if (eventName.isEmpty()) return null;
@@ -62,6 +63,7 @@ public final class PublicEventDiscoveryGateway {
                     candidate.url,
                     "Discovered from public search and read from the likely official public event page. Verify before travel because search ranking and event details can change.");
 
+            boolean saved = false;
             if (!result.destination.isEmpty()) {
                 KnownEventCatalog.Entry dynamic = new KnownEventCatalog.Entry(
                         stableKey(result.eventName),
@@ -71,9 +73,10 @@ public final class PublicEventDiscoveryGateway {
                         result.venue,
                         result.address,
                         result.eventName);
-                EventTripStore store = new EventTripStore(context.getApplicationContext());
+                EventTripStore store = new EventTripStore(
+                        context.getApplicationContext(), personId);
                 try {
-                    OfficialEventPageLookup.apply(store, dynamic, result);
+                    saved = OfficialEventPageLookup.apply(store, dynamic, result) > 0;
                 } finally {
                     store.close();
                 }
@@ -88,11 +91,30 @@ public final class PublicEventDiscoveryGateway {
             } else {
                 reply.append(" I could not extract a verified date yet, so I will not invent one.");
             }
-            reply.append(" I saved verified fields when available. Use the media panel for the official page, map, public photos, videos, and route. Because this event was discovered rather than pre-cataloged, check the official page before booking.");
-            return reply.toString();
+            reply.append(saved
+                    ? " I saved verified fields for the active profile when available."
+                    : " I did not save this event because no stable active profile remained selected.");
+            reply.append(" Use the media panel for the official page, map, public photos, videos, and route. Because this event was discovered rather than pre-cataloged, check the official page before booking.");
+            return PublicSourceResult.verified(reply.toString(), candidate.url);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    public static PublicSourceResult answerResult(
+            Context context,
+            String message,
+            List<Map<String, String>> history) {
+        return answerResult(context, message, history, EventTripStore.activePersonId(context));
+    }
+
+    public static String answer(
+            Context context,
+            String message,
+            List<Map<String, String>> history) {
+        PublicSourceResult result = answerResult(
+                context, message, history, EventTripStore.activePersonId(context));
+        return result == null ? null : result.reply;
     }
 
     private static Candidate findCandidate(String eventName) throws Exception {
@@ -105,7 +127,7 @@ public final class PublicEventDiscoveryGateway {
         candidates.sort(Comparator.comparingInt((Candidate c) -> c.score).reversed());
         for (Candidate candidate : candidates) {
             if (candidate.score < 1) continue;
-            if (candidate.url.startsWith("https://") || candidate.url.startsWith("http://")) return candidate;
+            if (candidate.url.startsWith("https://")) return candidate;
         }
         return null;
     }
@@ -265,6 +287,9 @@ public final class PublicEventDiscoveryGateway {
     }
 
     private static String get(String url, String accept) throws Exception {
+        if (url == null || !url.startsWith("https://")) {
+            throw new SecurityException("Public event sources must use HTTPS.");
+        }
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(12000);
         connection.setReadTimeout(18000);
@@ -272,6 +297,10 @@ public final class PublicEventDiscoveryGateway {
         connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.6 (public event discovery)");
         connection.setRequestProperty("Accept", accept);
         int status = connection.getResponseCode();
+        if (!"https".equalsIgnoreCase(connection.getURL().getProtocol())) {
+            connection.disconnect();
+            throw new SecurityException("Public event source redirected outside HTTPS.");
+        }
         if (status < 200 || status >= 400) {
             connection.disconnect();
             throw new IllegalStateException("Public event source returned " + status);

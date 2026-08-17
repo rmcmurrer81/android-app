@@ -80,6 +80,7 @@ public final class TravelExplorerActivity extends Activity {
         });
         root.addView(webView);
         setContentView(root);
+        SafeAreaInsets.apply(this, root, null, null);
         webView.loadUrl(currentUrl);
     }
 

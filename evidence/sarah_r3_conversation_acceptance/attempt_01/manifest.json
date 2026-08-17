@@ -1,0 +1,16 @@
+{
+  "schema": "sarah-r3-conversation-acceptance-v1",
+  "attempt": "attempt_01",
+  "created_at_utc": "2026-08-09T00:07:00.097930Z",
+  "append_only": true,
+  "files": {
+    "turns.json": {
+      "sha256": "694a9b1e896b642635ab6a4a09069b35ac141eddd3aac43a693a4d05edcbeb47",
+      "bytes": 157691
+    },
+    "REPORT.md": {
+      "sha256": "9fe91608061a7573e822b46ed20088a69629a2bc7ebfcb1a0f08960819cdba9e",
+      "bytes": 2838
+    }
+  }
+}

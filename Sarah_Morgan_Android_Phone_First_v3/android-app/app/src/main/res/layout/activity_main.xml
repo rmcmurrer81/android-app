@@ -4,84 +4,46 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/chat_background"
-    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/sarah_navy"
+        android:background="@drawable/futuristic_header_background"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="18dp"
-        android:paddingTop="14dp"
-        android:paddingRight="8dp"
-        android:paddingBottom="14dp">
+        android:paddingLeft="12dp"
+        android:paddingTop="7dp"
+        android:paddingRight="7dp"
+        android:paddingBottom="7dp">
 
-        <LinearLayout
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SARAH MORGAN"
+            android:textColor="#F2FCFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/statusText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginLeft="10dp"
             android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Sarah Morgan"
-                android:textColor="@color/white"
-                android:textSize="24sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
-                android:background="@drawable/mode_status_background"
-                android:clickable="true"
-                android:contentDescription="Conversation and public lookup status. Tap to change connection settings."
-                android:focusable="true"
-                android:paddingLeft="10dp"
-                android:paddingTop="5dp"
-                android:paddingRight="10dp"
-                android:paddingBottom="5dp"
-                android:text="Local mode • tap to switch"
-                android:textColor="#F2F7FA"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <ImageButton
-            android:id="@+id/calmButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Calm and trivia mode"
-            android:src="@android:drawable/ic_menu_help"
-            android:tint="@color/white" />
-
-        <com.kiraworld.sarahtravel.FlightCalmButton
-            android:id="@+id/flightCalmButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless" />
-
-        <com.kiraworld.sarahtravel.ProfileButton
-            android:id="@+id/profileButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Switch the person talking with Sarah"
-            android:padding="8dp"
-            android:tint="@color/white" />
-
-        <ImageButton
-            android:id="@+id/notebookButton"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Travel notebook"
-            android:src="@android:drawable/ic_menu_agenda"
-            android:tint="@color/white" />
+            android:background="@drawable/mode_status_background"
+            android:clickable="true"
+            android:contentDescription="Conversation, voice, and connection status. Tap for connection choices."
+            android:ellipsize="end"
+            android:focusable="true"
+            android:maxLines="2"
+            android:paddingLeft="9dp"
+            android:paddingTop="5dp"
+            android:paddingRight="9dp"
+            android:paddingBottom="5dp"
+            android:text="Sarah is ready"
+            android:textColor="#F2FCFF"
+            android:textSize="11sp" />
 
         <ImageButton
             android:id="@+id/settingsButton"
@@ -89,35 +51,227 @@
             android:layout_height="42dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Settings"
+            android:padding="8dp"
             android:src="@android:drawable/ic_menu_preferences"
-            android:tint="@color/white" />
+            android:tint="#EAFBFF" />
     </LinearLayout>
 
-    <com.kiraworld.sarahtravel.ExploreButton
-        android:id="@+id/exploreButton"
+    <!--
+      The owner composer must remain visible above a resized Samsung keyboard.
+      SafeAreaInsets hides this nonessential upper surface only while the IME is
+      visible; Sarah's conversation, exact draft, Send control, and history stay.
+    -->
+    <LinearLayout
+        android:id="@+id/keyboardCollapsibleContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginRight="10dp"
-        android:layout_marginBottom="2dp"
-        android:minHeight="76dp"
-        android:contentDescription="Explore maps, public photos, videos, routes, and current travel sources"
-        android:text="Explore maps • photos • videos • routes"
-        android:textAllCaps="false"
-        android:textColor="@color/sarah_navy"
-        android:textSize="14sp" />
+        android:orientation="vertical">
 
-    <com.kiraworld.sarahtravel.TravelHubButton
-        android:id="@+id/travelHubButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginLeft="10dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginRight="10dp"
-        android:layout_marginBottom="4dp"
-        android:minHeight="70dp"
-        android:contentDescription="Open Sarah Travel OS for hotels, transport, local experiences, road trips, loyalty, accessibility, and hotel stay tools" />
+        <FrameLayout
+            android:id="@+id/sarahPresenceHost"
+            android:layout_width="match_parent"
+            android:layout_height="218dp"
+            android:layout_marginLeft="10dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginRight="10dp"
+            android:background="@drawable/futuristic_media_panel"
+            android:contentDescription="Sarah's live animated presence">
+
+        <com.kiraworld.sarahtravel.SarahPortraitView
+            android:id="@+id/sarahPortraitView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Approved portrait of Sarah with lightweight live motion" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="left|bottom"
+            android:layout_margin="10dp"
+            android:background="@drawable/mode_status_background"
+            android:paddingLeft="9dp"
+            android:paddingTop="4dp"
+            android:paddingRight="9dp"
+            android:paddingBottom="4dp"
+            android:text="Sarah is here"
+            android:textColor="#F2FCFF"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="right|top"
+            android:gravity="right"
+            android:orientation="vertical">
+
+            <ImageButton
+                android:id="@+id/presencePowerButton"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/icon_button"
+                android:contentDescription="Turn portrait motion power saving on or off"
+                android:padding="9dp"
+                android:src="@drawable/ic_presence_power"
+                android:tint="@color/sarah_navy" />
+
+            <TextView
+                android:id="@+id/presenceModeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/mode_status_background"
+                android:paddingLeft="7dp"
+                android:paddingTop="2dp"
+                android:paddingRight="7dp"
+                android:paddingBottom="2dp"
+                android:text="Motion on"
+                android:textColor="#F2FCFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingLeft="10dp"
+            android:paddingTop="6dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="5dp">
+
+        <Button
+            android:id="@+id/voiceCallButton"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginRight="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/send_button"
+            android:contentDescription="Talk with Sarah by voice"
+            android:text="Talk with Sarah"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <com.kiraworld.sarahtravel.TravelHubButton
+            android:id="@+id/travelHubButton"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginLeft="4dp"
+            android:layout_weight="1"
+            android:contentDescription="Open Sarah's Travel Workbench"
+            android:textSize="14sp" />
+        </LinearLayout>
+
+        <com.kiraworld.sarahtravel.ExploreButton
+            android:id="@+id/exploreButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:layout_marginBottom="5dp"
+            android:background="@drawable/futuristic_media_panel"
+            android:contentDescription="Source-bound destination photo preview with maps, more public photos, videos, routes, and current sources"
+            android:minHeight="52dp"
+            android:text="Maps, photos, video and routes"
+            android:textAllCaps="false"
+            android:textColor="#F4FDFF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tripContextToggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:contentDescription="Show optional travel and calm tools"
+            android:focusable="true"
+            android:paddingLeft="16dp"
+            android:paddingTop="5dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="5dp"
+            android:text="More tools"
+            android:textColor="@color/sarah_navy"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/tripContextPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:animateLayoutChanges="true"
+            android:orientation="vertical"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="5dp"
+            android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/calmButton"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Calm, grounding, and trivia"
+                android:padding="9dp"
+                android:src="@android:drawable/ic_menu_help"
+                android:tint="@color/sarah_navy" />
+
+            <com.kiraworld.sarahtravel.FlightCalmButton
+                android:id="@+id/flightCalmButton"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackgroundBorderless" />
+
+            <com.kiraworld.sarahtravel.ProfileButton
+                android:id="@+id/profileButton"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Switch the person talking with Sarah"
+                android:padding="9dp"
+                android:tint="@color/sarah_navy" />
+
+            <ImageButton
+                android:id="@+id/notebookButton"
+                android:layout_width="0dp"
+                android:layout_height="42dp"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Travel notebook"
+                android:padding="9dp"
+                android:src="@android:drawable/ic_menu_agenda"
+                android:tint="@color/sarah_navy" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <com.kiraworld.sarahtravel.ProactiveDiscoveryButton
+                android:id="@+id/proactiveDiscoveryButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <com.kiraworld.sarahtravel.TrustedSyncButton
+                android:id="@+id/trustedSyncButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+        </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/chatScroll"
@@ -126,7 +280,7 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:fillViewport="true"
-        android:paddingBottom="8dp">
+        android:paddingBottom="6dp">
 
         <LinearLayout
             android:id="@+id/chatContainer"
@@ -134,43 +288,43 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingLeft="14dp"
-            android:paddingTop="14dp"
+            android:paddingTop="10dp"
             android:paddingRight="14dp"
-            android:paddingBottom="16dp" />
+            android:paddingBottom="12dp" />
     </ScrollView>
 
     <LinearLayout
-        android:id="@+id/composerBar"
+        android:id="@+id/bottomControls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginLeft="10dp"
         android:layout_marginTop="4dp"
         android:layout_marginRight="10dp"
-        android:layout_marginBottom="10dp"
+        android:layout_marginBottom="8dp"
         android:background="@drawable/composer_background"
         android:gravity="center_vertical"
-        android:minHeight="68dp"
+        android:minHeight="66dp"
         android:orientation="horizontal"
         android:padding="6dp">
 
         <ImageButton
             android:id="@+id/photoButton"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:background="@drawable/icon_button"
-            android:contentDescription="Choose trip photo"
-            android:padding="11dp"
+            android:contentDescription="Choose a travel photo"
+            android:padding="10dp"
             android:src="@android:drawable/ic_menu_camera"
             android:tint="@color/sarah_navy" />
 
         <ImageButton
             android:id="@+id/micButton"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
-            android:layout_marginLeft="5dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginLeft="4dp"
             android:background="@drawable/icon_button"
-            android:contentDescription="Push to talk"
-            android:padding="11dp"
+            android:contentDescription="Talk with Sarah"
+            android:padding="10dp"
             android:src="@android:drawable/ic_btn_speak_now"
             android:tint="@color/sarah_navy" />
 
@@ -183,26 +337,26 @@
             android:layout_weight="1"
             android:background="@drawable/input_field"
             android:gravity="center_vertical|start"
-            android:hint="Type a message to Sarah"
+            android:hint="Message Sarah"
             android:imeOptions="actionSend"
             android:inputType="textCapSentences|textMultiLine"
             android:maxLines="4"
-            android:minHeight="50dp"
+            android:minHeight="48dp"
             android:paddingLeft="13dp"
-            android:paddingTop="10dp"
+            android:paddingTop="9dp"
             android:paddingRight="13dp"
-            android:paddingBottom="10dp"
+            android:paddingBottom="9dp"
             android:textColor="@color/sarah_text"
             android:textColorHint="#746F68"
             android:textSize="16sp" />
 
         <ImageButton
             android:id="@+id/sendButton"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:background="@drawable/send_button"
-            android:contentDescription="Send"
-            android:padding="12dp"
+            android:contentDescription="Send message"
+            android:padding="11dp"
             android:src="@android:drawable/ic_menu_send"
             android:tint="@color/white" />
     </LinearLayout>

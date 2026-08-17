@@ -67,7 +67,7 @@ public final class TravelContextSnapshot {
         String end = "";
         String source = "";
 
-        EventTripStore events = new EventTripStore(app);
+        EventTripStore events = new EventTripStore(app, personId);
         PersonProfileStore participation = new PersonProfileStore(app);
         try {
             for (Map<String, String> event : events.listActiveEventTrips(50)) {

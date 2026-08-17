@@ -30,7 +30,7 @@ public final class TravelHubActivity extends Activity {
                 : "Talk with Sarah about a place or event and it will appear here.";
         root.addView(TravelUi.hero(
                 this,
-                "Sarah Travel OS 2.1",
+                "Sarah Travel OS " + BuildConfig.VERSION_NAME,
                 trip.title(),
                 subtitle));
 
@@ -40,6 +40,10 @@ public final class TravelHubActivity extends Activity {
                 "Build an itinerary, compare where to stay and how to get there, discover food and events, open local rides, plan road-trip stops, use loyalty value, respect accessibility needs, manage hotel requests, and keep offline support available during the flight."));
         now.addView(TravelUi.primaryButton(this, "Open Sarah's travel notebook",
                 v -> TravelUi.start(this, TravelNotebookActivity.class)));
+        if (trip.hasDestination() && !trip.hasDates()) {
+            now.addView(TravelUi.outlineButton(this, "Add dates",
+                    v -> TravelUi.start(this, TripPlannerActivity.class)));
+        }
         root.addView(now);
 
         root.addView(TravelUi.section(this, "Plan and book"));
@@ -48,9 +52,14 @@ public final class TravelHubActivity extends Activity {
                 "Turn ideas into an editable day-by-day plan, track planned and actual spending, and keep a preparation list separated by the active profile.",
                 TravelUi.MINT,
                 TripPlannerActivity.class));
+        if (BuildConfig.SARAH_GMAIL_AVAILABLE) root.addView(feature(
+                "📅", "Sarah's calendar and email proposals",
+                "Review possible trips or events found through optional Gmail read-only access, choose what Sarah may remember, preserve exact departure/arrival or event times, and request individual local reminders.",
+                TravelUi.SKY,
+                TravelCalendarActivity.class));
         root.addView(feature(
                 "🏨", "Hotels and rooms",
-                "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and live team-backend results when configured.",
+                "Compare major booking sites, direct hotel websites, total-price details, cancellation rules, loyalty value, and verified live results when available.",
                 TravelUi.PEACH,
                 HotelSearchActivity.class));
         root.addView(feature(
@@ -93,6 +102,11 @@ public final class TravelHubActivity extends Activity {
                 TravelUi.LAVENDER,
                 LoyaltyWalletActivity.class));
         root.addView(feature(
+                "🎟️", "Tickets and passes",
+                "Keep owner-selected ticket, badge and QR-code images encrypted for the active profile, alongside exact official event links when known. This never stores payment secrets or invents a purchase.",
+                TravelUi.SKY,
+                TicketPassWalletActivity.class));
+        root.addView(feature(
                 "♿", "Accessibility, pace and greener choices",
                 "Save walking limits, step-free needs, sensory preferences, food needs, pace, and sustainability priorities for the active profile.",
                 TravelUi.MINT,
@@ -104,16 +118,24 @@ public final class TravelHubActivity extends Activity {
                 StayAssistantActivity.class));
         root.addView(feature(
                 "📞", "Supervised voice concierge",
-                "Prepare a hotel call, review the script, dial manually, or use an optional team voice-agent backend that never purchases or changes a booking without confirmation.",
+                "Prepare a hotel call, review the script, dial manually, or use the optional connected voice assistant. Nothing purchases or changes a booking without confirmation.",
                 TravelUi.LAVENDER,
                 VoiceConciergeActivity.class));
 
-        root.addView(TravelUi.section(this, "Hackathon hospitality track"));
+        root.addView(TravelUi.section(this, "Hotel and event-travel connections"));
         root.addView(feature(
                 "🏢", "Hotel operations demo",
                 "Show how Sarah can turn guest requests into a front-desk, housekeeping, maintenance, and guest-experience task board while keeping unverified requests separate from completed work.",
                 TravelUi.SKY,
                 HospitalityOpsActivity.class));
+        root.addView(feature(
+                "🔗", "Event partner connections",
+                "Open the installed ElevenLabs, Tavily, Stay22, Rove, booking-import, location, and trusted-device connection surfaces. Each connection reports whether it is live, a bounded demo, or still awaiting setup.",
+                TravelUi.LAVENDER,
+                SponsorConnectionsActivity.class));
+
+        // Keep the complete workbench visible. Hiding every section made the
+        // retained sponsor and travel integrations appear to be missing.
     }
 
     private LinearLayout feature(

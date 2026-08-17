@@ -1,121 +1,260 @@
-name: Materialize Sarah Public Source Baseline
+name: ENGINEERING EVIDENCE - Generic Sarah Android APK - DO NOT INSTALL
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-    paths:
-      - 'public-release/2.5/BASELINE_KICKOFF.json'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  materialize:
+  build:
     runs-on: ubuntu-latest
+    env:
+      # Only non-secret route/model identity reaches the artifact build.
+      SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
+      SARAH_EXPECTED_DEPLOYMENT_ID: ${{ secrets.SARAH_EXPECTED_DEPLOYMENT_ID }}
+      SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ secrets.SARAH_EXPECTED_WORKER_SOURCE_SHA256 }}
+      SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ secrets.SARAH_EXPECTED_WORKER_CONFIG_SHA256 }}
+      SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
+      SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
+      SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+      SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+      SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
     steps:
-      - name: Check out main
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+      - name: Check out Sarah source
+        uses: actions/checkout@v4
 
-      - name: Reconstruct and verify the complete Sarah 2.3 source archive
-        id: source
+      - name: Fail closed on a partially bound protected backend
         shell: bash
         run: |
-          set -euo pipefail
-          mapfile -t parts < <(find public-release/parts -maxdepth 1 -type f -name 'part-*.txt' | sort)
-          if [ "${#parts[@]}" -ne 15 ]; then
-            echo "Expected 15 source parts and found ${#parts[@]}."
+          fields=(
+            SARAH_MODEL_BACKEND_URL
+            SARAH_EXPECTED_DEPLOYMENT_ID
+            SARAH_EXPECTED_WORKER_SOURCE_SHA256
+            SARAH_EXPECTED_WORKER_CONFIG_SHA256
+          )
+          present=0
+          for field in "${fields[@]}"; do
+            if [ -n "${!field}" ]; then present=$((present + 1)); fi
+          done
+          if [ "$present" -ne 0 ] && [ "$present" -ne "${#fields[@]}" ]; then
+            echo 'Protected backend configuration is partial. Refusing to publish an APK that can never pass its authenticated identity contract.'
             exit 1
           fi
-          cat "${parts[@]}" > /tmp/sarah23.b64
-          base64 --decode /tmp/sarah23.b64 > /tmp/Sarah_Travel_OS_2.3_Source.zip
-          expected="$(awk '{print $1}' public-release/SOURCE_SHA256.txt)"
-          actual="$(sha256sum /tmp/Sarah_Travel_OS_2.3_Source.zip | awk '{print $1}')"
-          if [ "$actual" != "$expected" ]; then
-            echo "Sarah source checksum mismatch: expected $expected, received $actual."
-            exit 1
-          fi
-          rm -rf /tmp/sarah23-extract
-          mkdir -p /tmp/sarah23-extract
-          unzip -q /tmp/Sarah_Travel_OS_2.3_Source.zip -d /tmp/sarah23-extract
-          release_file="$(find /tmp/sarah23-extract -type f -name PUBLIC_RELEASE.json -print -quit)"
-          if [ -z "$release_file" ]; then
-            echo 'PUBLIC_RELEASE.json was not found in the verified source archive.'
-            exit 1
-          fi
-          source_root="$(dirname "$release_file")"
-          echo "SOURCE_ROOT=$source_root" >> "$GITHUB_ENV"
-          test -d "$source_root/windows-companion"
-          test -d "$source_root/android-upgrade"
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path(os.environ['SOURCE_ROOT'])
-          release = json.loads((root / 'PUBLIC_RELEASE.json').read_text(encoding='utf-8'))
-          if release.get('version') != '2.3-public-continuity':
-              raise SystemExit(f"Unexpected baseline version: {release.get('version')}")
-          print(f"Verified Sarah baseline at {root} with {sum(p.is_file() for p in root.rglob('*'))} files")
-          PY
-
-      - name: Materialize readable phone and Windows source on main
-        id: materialize
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf windows-companion development-tools/sarah-2.3-android-upgrade docs/sarah-2.3
-          cp -a "$SOURCE_ROOT/windows-companion" ./windows-companion
-          mkdir -p development-tools docs/sarah-2.3
-          cp -a "$SOURCE_ROOT/android-upgrade" development-tools/sarah-2.3-android-upgrade
-          if [ -d "$SOURCE_ROOT/docs" ]; then cp -a "$SOURCE_ROOT/docs/." docs/sarah-2.3/; fi
-          if [ -d "$SOURCE_ROOT/email" ]; then mkdir -p docs/sarah-2.3/email && cp -a "$SOURCE_ROOT/email/." docs/sarah-2.3/email/; fi
-          if [ -f "$SOURCE_ROOT/README_FIRST.md" ]; then cp "$SOURCE_ROOT/README_FIRST.md" README_SARAH_2_3_PUBLIC.md; fi
-          if [ -f "$SOURCE_ROOT/PUBLIC_RELEASE.json" ]; then cp "$SOURCE_ROOT/PUBLIC_RELEASE.json" SARAH_PUBLIC_RELEASE.json; fi
-          python development-tools/sarah-2.3-android-upgrade/apply_android_upgrade.py "$GITHUB_WORKSPACE"
-          rm -rf .sarah-upgrade-backup
-          find windows-companion development-tools/sarah-2.3-android-upgrade -type d -name __pycache__ -prune -exec rm -rf {} +
-          find windows-companion development-tools/sarah-2.3-android-upgrade -type f -name '*.pyc' -delete
-
-      - name: Verify baseline tests before committing
-        id: tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --quiet -r windows-companion/requirements.txt
-          python -m unittest discover -s windows-companion/tests -v
-          python -m compileall -q windows-companion
-          python development-tools/sarah-2.3-android-upgrade/run_android_upgrade_tests.py
-
-      - name: Record result and commit readable baseline source
-        if: always()
-        shell: bash
-        env:
-          SOURCE_RESULT: ${{ steps.source.outcome }}
-          MATERIALIZE_RESULT: ${{ steps.materialize.outcome }}
-          TEST_RESULT: ${{ steps.tests.outcome }}
-          RUN_ID: ${{ github.run_id }}
-          EVENT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p public-release/2.5
-          {
-            echo "run_id=$RUN_ID"
-            echo "event_sha=$EVENT_SHA"
-            echo "source=$SOURCE_RESULT"
-            echo "materialize=$MATERIALIZE_RESULT"
-            echo "tests=$TEST_RESULT"
-            echo "baseline_files=$(find windows-companion development-tools/sarah-2.3-android-upgrade -type f 2>/dev/null | wc -l)"
-          } > public-release/2.5/BASELINE_STATUS.txt
-          git config user.name 'Sarah Source Materializer'
-          git config user.email 'actions@users.noreply.github.com'
-          git add public-release/2.5/BASELINE_STATUS.txt
-          if [ "$SOURCE_RESULT" = success ] && [ "$MATERIALIZE_RESULT" = success ] && [ "$TEST_RESULT" = success ]; then
-            git add windows-companion development-tools/sarah-2.3-android-upgrade docs/sarah-2.3 README_SARAH_2_3_PUBLIC.md SARAH_PUBLIC_RELEASE.json Sarah_Morgan_Android_Phone_First_v3
-          fi
-          if git diff --cached --quiet; then
-            echo 'No Sarah baseline changes were needed.'
+          if [ "$present" -eq "${#fields[@]}" ]; then
+            echo 'Protected backend URL, deployment ID, source digest, and config digest are all bound; runtime owner activation remains required.'
           else
-            git commit -m '[skip ci] Materialize verified Sarah phone and Windows baseline source'
-            git push origin HEAD:main
+            echo 'No protected backend is bound; this artifact will remain honestly local/offline.'
           fi
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Test automatic OpenAI public and Local routing
+        run: |
+          mkdir -p build/pure-java-test
+          javac -encoding UTF-8 -d build/pure-java-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OwnerOnlineActivationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java
+          java -cp build/pure-java-test ConversationModePolicyTest
+
+      - name: Test protected backend capability truth
+        run: |
+          rm -rf build/protected-capability-test
+          mkdir -p build/protected-capability-test
+          javac -encoding UTF-8 -d build/protected-capability-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ProtectedBackendCapabilityPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPreUpgradeVersionPolicyTest.java
+          java -cp build/protected-capability-test com.kiraworld.sarahtravel.ProtectedBackendCapabilityPolicyTest
+          java -cp build/protected-capability-test com.kiraworld.sarahtravel.EventTripPreUpgradeVersionPolicyTest
+
+      - name: Test all four hackathon track capabilities
+        run: |
+          rm -rf build/travel-os-feature-test
+          mkdir -p build/travel-os-feature-test
+          javac -encoding UTF-8 -d build/travel-os-feature-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelOsFeatureCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelOsFeatureCatalogTest.java
+          java -cp build/travel-os-feature-test TravelOsFeatureCatalogTest
+
+      - name: Test offline flight companion calm games and public-domain songs
+        run: |
+          rm -rf build/offline-flight-test
+          mkdir -p build/offline-flight-test
+          javac -encoding UTF-8 -d build/offline-flight-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileLearningContext.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OfflineSongCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/OfflineFlightCompanionTest.java
+          java -cp build/offline-flight-test OfflineFlightCompanionTest
+
+      - name: Test Travel Brain active context and multimodal routes
+        run: |
+          rm -rf build/travel-brain-test
+          mkdir -p build/travel-brain-test
+          javac -encoding UTF-8 -d build/travel-brain-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelKnowledgeBase.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelBrainCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelBrainCoreTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelContextResolverTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/JourneyIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/MemoryExtractorTravelBrainTest.java
+          java -cp build/travel-brain-test TravelBrainCoreTest
+          java -cp build/travel-brain-test TravelContextResolverTest
+          java -cp build/travel-brain-test JourneyIntentParserTest
+          java -cp build/travel-brain-test MemoryExtractorTravelBrainTest
+
+      - name: Test event discovery timed trips and agentic planning
+        run: |
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          rm -rf build/agentic-test
+          mkdir -p build/agentic-test
+          javac -encoding UTF-8 -d build/agentic-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelPlanningConversationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TripWindowParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CityVisitPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticGlobalActionPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationPackResponder.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelMediaHelper.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/AgenticTravelPlannerTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/DestinationPackResponderTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripProfilePolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/BookingLinkParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPlannerTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/KnownEventCatalogTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/GenericEventReferenceTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TripWindowParserTest.java
+          java -cp build/agentic-test AgenticTravelPlannerTest
+          java -cp build/agentic-test DestinationPackResponderTest
+          java -cp build/agentic-test EventTripIntentParserTest
+          java -cp build/agentic-test com.kiraworld.sarahtravel.EventTripProfilePolicyTest
+          java -cp build/agentic-test BookingLinkParserTest
+          java -cp build/agentic-test EventTripPlannerTest
+          java -cp build/agentic-test KnownEventCatalogTest
+          java -cp build/agentic-test GenericEventReferenceTest
+          java -cp build/agentic-test TripWindowParserTest
+
+      - name: Check that app users are not asked for provider credentials
+        run: |
+          if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic|ElevenLabs) API key' \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main; then
+            echo 'Found a forbidden end-user provider credential field'
+            exit 1
+          fi
+
+      - name: Prove release artifacts cannot inherit reusable credentials
+        run: python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
+
+      - name: Report optional team integrations without printing secrets
+        run: |
+          if [ -n "$SARAH_MODEL_BACKEND_URL" ] \
+             && [ -n "$SARAH_EXPECTED_DEPLOYMENT_ID" ] \
+             && [ -n "$SARAH_EXPECTED_WORKER_SOURCE_SHA256" ] \
+             && [ -n "$SARAH_EXPECTED_WORKER_CONFIG_SHA256" ]; then
+            echo 'Protected online conversation: public identity present; owner activation required after install'
+          else
+            echo 'Protected online conversation: not identity-bound; local/offline routes only'
+          fi
+          echo 'ElevenLabs voice ID: Sarah Morgan source default selected'
+          test -n "$SARAH_ELEVENLABS_BACKEND_URL" && echo 'ElevenLabs protected route identity present; owner activation required' || echo 'ElevenLabs service: Android TTS fallback build'
+          test -n "$SARAH_TRAVEL_COMMERCE_URL" && echo 'Travel commerce: configured' || echo 'Travel commerce: external links only'
+          echo 'Offline flight companion: bundled and network independent'
+
+      - name: Validate Sarah Morgan ElevenLabs voice
+        env:
+          SARAH_ELEVENLABS_VALIDATION_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+        run: |
+          if [ -z "$SARAH_ELEVENLABS_VALIDATION_API_KEY" ]; then
+            echo 'Direct ElevenLabs validation skipped because this build uses no direct service key.'
+            exit 0
+          fi
+          VOICE_ID="${SARAH_ELEVENLABS_VOICE_ID:-WcGvc9xxaOYbKswm3NBx}"
+          MODEL_ID="${SARAH_ELEVENLABS_MODEL_ID:-eleven_multilingual_v2}"
+          printf '{"text":"Sarah voice connection test.","model_id":"%s","voice_settings":{"stability":0.5,"similarity_boost":0.75,"style":0.0,"use_speaker_boost":true,"speed":1.0}}' "$MODEL_ID" > /tmp/sarah-elevenlabs-request.json
+          HTTP_CODE=$(curl -sS -o /tmp/sarah-elevenlabs-response.bin -w '%{http_code}' \
+            -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream?output_format=mp3_44100_128" \
+            -H "xi-api-key: ${SARAH_ELEVENLABS_VALIDATION_API_KEY}" \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/sarah-elevenlabs-request.json)
+          if [ "$HTTP_CODE" != '200' ]; then
+            echo "ElevenLabs Sarah Morgan voice validation failed with HTTP ${HTTP_CODE}."
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('/tmp/sarah-elevenlabs-response.bin')
+          raw = path.read_bytes()[:8192]
+          try:
+              data = json.loads(raw.decode('utf-8', errors='replace'))
+              detail = data.get('detail', data) if isinstance(data, dict) else data
+              if isinstance(detail, dict):
+                  print('ElevenLabs error status:', detail.get('status', 'unknown'))
+                  print('ElevenLabs error message:', detail.get('message', 'No message supplied'))
+              else:
+                  print('ElevenLabs error response:', str(detail)[:500])
+          except Exception:
+              print('ElevenLabs returned a non-JSON error response of', len(raw), 'bytes.')
+          PY
+            exit 1
+          fi
+          AUDIO_BYTES=$(wc -c < /tmp/sarah-elevenlabs-response.bin)
+          if [ "$AUDIO_BYTES" -lt 1000 ]; then
+            echo "ElevenLabs returned too little audio (${AUDIO_BYTES} bytes)."
+            exit 1
+          fi
+          echo "ElevenLabs Sarah Morgan voice: live TTS validated (${AUDIO_BYTES} bytes)."
+
+      - name: Preserve Sarah's private-test debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-debug-signing-v1
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build Sarah Travel OS 2.1 APK
+        run: gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+
+      - name: Give APK a versioned filename
+        run: cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.1.apk
+
+      - name: Upload Sarah Travel OS 2.1 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-Android
+          path: ENGINEERING-EVIDENCE-DO-NOT-INSTALL-Sarah-Morgan-2.1.apk
+          if-no-files-found: error

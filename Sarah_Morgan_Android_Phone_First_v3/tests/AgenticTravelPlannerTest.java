@@ -1,4 +1,5 @@
 import com.kiraworld.sarahtravel.AgenticTravelPlanner;
+import com.kiraworld.sarahtravel.AgenticGlobalActionPolicy;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ public final class AgenticTravelPlannerTest {
         profile.put("hometown", "Newark, New Jersey");
         profile.put("age_group", "adult");
         profile.put("active_speaker_is_owner", "yes");
+        profile.put("memory_consent", "yes");
         profile.put("interests", "history, movies and technology");
 
         List<Map<String, String>> history = new ArrayList<>();
@@ -21,7 +23,8 @@ public final class AgenticTravelPlannerTest {
         AgenticTravelPlanner.Plan orlando = AgenticTravelPlanner.plan(
                 "I am thinking about going to Orlando", profile, history, memories);
         require(orlando.handled(), "Orlando planning statement must be handled");
-        require(orlando.reply.contains("planning list"), "must proactively create a plan");
+        require(orlando.reply.contains("destination research request"),
+                "must truthfully describe the separately gated research request");
         require(hasAction(orlando, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "Orlando"),
                 "must queue Orlando knowledge");
         require(!orlando.reply.endsWith("?"), "Orlando plan must not start a questionnaire");
@@ -46,8 +49,10 @@ public final class AgenticTravelPlannerTest {
                 "I am planning on going to Austin", profile, new ArrayList<>(), memories);
         require(hasAction(austin, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "Austin"),
                 "Austin must queue destination research");
-        require(hasAction(austin, AgenticTravelPlanner.SAVE_WISH, "Austin"),
-                "Austin must be stored as a possible trip");
+        require(!hasAction(austin, AgenticTravelPlanner.SAVE_PLANNED_TRIP, "Austin"),
+                "tentative planning-on-going language must not become a confirmed trip");
+        require(!hasAction(austin, AgenticTravelPlanner.SAVE_WISH, "Austin"),
+                "tentative planning language must not invent a wish-list preference");
         require(!austin.reply.endsWith("?"), "Austin must not start an interview");
 
         AgenticTravelPlanner.Plan nextWeek = AgenticTravelPlanner.plan(
@@ -76,12 +81,12 @@ public final class AgenticTravelPlannerTest {
         say(chinaHistory, "user", "I always wanted to visit China");
         AgenticTravelPlanner.Plan china = AgenticTravelPlanner.plan(
                 "I always wanted to visit China", profile, chinaHistory, memories);
-        require(hasAction(china, AgenticTravelPlanner.CREATE_MOBILITY_WATCH, "China"),
-                "dream destination must create multimodal watch");
+        require(!hasAction(china, AgenticTravelPlanner.CREATE_MOBILITY_WATCH, "China"),
+                "a dream destination must not silently create background monitoring");
         require(hasAction(china, AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK, "China"),
                 "China must queue a country-level pack");
-        require(china.reply.toLowerCase().contains("air") && china.reply.toLowerCase().contains("rail"),
-                "dream watch must not assume airfare only");
+        require(china.reply.toLowerCase().contains("not your home area"),
+                "the dream destination must remain conversational rather than a running watch");
         require(!china.reply.endsWith("?"), "dream destination must not start a questionnaire");
 
         AgenticTravelPlanner.Plan train = AgenticTravelPlanner.plan(
@@ -121,6 +126,25 @@ public final class AgenticTravelPlannerTest {
         require(flexible.reply.toLowerCase().contains("flexible"),
                 "I don't care after deal context must mean flexible dates");
         require(!flexible.reply.endsWith("?"), "must not ask the same date question again");
+
+        for (String ownerGlobalType : new String[]{
+                AgenticTravelPlanner.SAVE_WISH,
+                AgenticTravelPlanner.CREATE_DEAL_WATCH,
+                AgenticTravelPlanner.UPDATE_DESTINATION_FOCUS,
+                AgenticTravelPlanner.SET_FLEXIBLE_DATES,
+                AgenticTravelPlanner.SAVE_JOURNEY_PLAN,
+                AgenticTravelPlanner.CREATE_MOBILITY_WATCH}) {
+            require(
+                    AgenticGlobalActionPolicy.requiresExactConfirmedOwner(ownerGlobalType),
+                    ownerGlobalType + " must remain exact-confirmed-owner only");
+        }
+        require(!AgenticGlobalActionPolicy.requiresExactConfirmedOwner(
+                        AgenticTravelPlanner.QUEUE_KNOWLEDGE_PACK),
+                "profile-keyed knowledge requests must remain separately gated");
+        require(AgenticGlobalActionPolicy.rejectedReceipt(
+                        AgenticTravelPlanner.SAVE_WISH, "Austin")
+                        .contains("No global travel data changed"),
+                "owner-global rejection must be a truthful no-write receipt");
 
         System.out.println("AgenticTravelPlannerTest passed");
     }

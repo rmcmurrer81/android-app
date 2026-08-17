@@ -9,7 +9,7 @@ public final class VoiceConciergeConfig {
     }
 
     public static String token() {
-        return clean(BuildConfig.SARAH_VOICE_CONCIERGE_TOKEN);
+        return "";
     }
 
     public static boolean isConfigured() {

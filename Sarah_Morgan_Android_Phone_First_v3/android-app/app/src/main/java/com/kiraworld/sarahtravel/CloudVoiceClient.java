@@ -1,102 +1,586 @@
 package com.kiraworld.sarahtravel;
 
 import android.content.Context;
-import android.media.MediaPlayer;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DataSpec;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.ResolvingDataSource;
+import androidx.media3.datasource.TransferListener;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy;
 
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Sarah's premium online voice.
+ * Sarah's approved online ElevenLabs voice.
  *
- * The legacy method signature is retained so older MainActivity code can call
- * this class without knowing which provider supplies speech. ElevenLabs is the
- * selected provider. Android TTS remains the automatic offline/error fallback.
+ * Media3 consumes ElevenLabs' progressive MP3 response directly. It does not
+ * wait for the complete response or write a complete MP3 to the app cache
+ * before beginning playback. Android TTS remains the automatic offline/error
+ * fallback owned by MainActivity.
  */
+@UnstableApi
 public final class CloudVoiceClient {
-    private static final AtomicReference<MediaPlayer> ACTIVE_PLAYER = new AtomicReference<>();
+    private static final AtomicReference<PlaybackSession> ACTIVE_SESSION = new AtomicReference<>();
+    private static final AtomicLong REQUEST_SEQUENCE = new AtomicLong();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final int MAX_SPOKEN_CHARACTERS = 9000;
+    private static final long MAX_STREAM_BYTES = 20_000_000L;
+    private static final long MIN_USABLE_STREAM_BYTES = 128L;
 
     private CloudVoiceClient() { }
 
+    public interface ReceiptListener {
+        /** Exact progressive-playback boundary; optional for existing callers. */
+        default void onPlaybackStarted(long playbackStartedAt) { }
+        void onFinished(Receipt receipt);
+    }
+
+    public static final class Receipt {
+        public final String attemptedRoute;
+        public final String actualRoute;
+        public final String failureReason;
+        public final long requestedAt;
+        public final long synthesisStart;
+        /** Compatibility alias: the exact response-complete time. */
+        public final long synthesisEnd;
+        public final long firstNetworkByte;
+        public final long playerReady;
+        public final long responseComplete;
+        public final long playbackStart;
+        public final long playbackEnd;
+        public final boolean completed;
+
+        Receipt(
+                String attemptedRoute,
+                String actualRoute,
+                String failureReason,
+                long requestedAt,
+                long synthesisStart,
+                long firstNetworkByte,
+                long playerReady,
+                long responseComplete,
+                long playbackStart,
+                long playbackEnd,
+                boolean completed) {
+            this.attemptedRoute = attemptedRoute;
+            this.actualRoute = actualRoute;
+            this.failureReason = failureReason;
+            this.requestedAt = requestedAt;
+            this.synthesisStart = synthesisStart;
+            this.synthesisEnd = responseComplete;
+            this.firstNetworkByte = firstNetworkByte;
+            this.playerReady = playerReady;
+            this.responseComplete = responseComplete;
+            this.playbackStart = playbackStart;
+            this.playbackEnd = playbackEnd;
+            this.completed = completed;
+        }
+    }
+
+    private static final class StreamingRequest {
+        final String endpoint;
+        final byte[] body;
+        final Map<String, String> headers;
+
+        StreamingRequest(String endpoint, byte[] body, Map<String, String> headers) {
+            this.endpoint = endpoint;
+            this.body = body;
+            this.headers = Collections.unmodifiableMap(new HashMap<>(headers));
+        }
+    }
+
+    /**
+     * A one-connection data source that records real network milestones and
+     * enforces the same bounded response size as the old full-buffer path.
+     */
+    private static final class TimingBoundedDataSource implements DataSource {
+        private final DataSource upstream;
+        private final AtomicLong firstNetworkByte;
+        private final AtomicLong responseComplete;
+        private final AtomicLong responseBytes;
+        private final boolean requireProtectedRouteReceipt;
+        private long expectedBytes = C.LENGTH_UNSET;
+        private long bytesThisSource;
+
+        TimingBoundedDataSource(
+                DataSource upstream,
+                AtomicLong firstNetworkByte,
+                AtomicLong responseComplete,
+                AtomicLong responseBytes,
+                boolean requireProtectedRouteReceipt) {
+            this.upstream = upstream;
+            this.firstNetworkByte = firstNetworkByte;
+            this.responseComplete = responseComplete;
+            this.responseBytes = responseBytes;
+            this.requireProtectedRouteReceipt = requireProtectedRouteReceipt;
+        }
+
+        @Override
+        public void addTransferListener(TransferListener transferListener) {
+            upstream.addTransferListener(transferListener);
+        }
+
+        @Override
+        public long open(DataSpec dataSpec) throws IOException {
+            expectedBytes = upstream.open(dataSpec);
+            String contentType = firstHeader(upstream.getResponseHeaders(), "Content-Type");
+            String normalizedType = contentType.toLowerCase(Locale.US);
+            if (!(normalizedType.startsWith("audio/mpeg")
+                    || normalizedType.startsWith("audio/mp3")
+                    || normalizedType.startsWith("application/octet-stream"))) {
+                throw new IOException("Voice response content type was not approved audio.");
+            }
+            if (requireProtectedRouteReceipt) {
+                String route = firstHeader(
+                        upstream.getResponseHeaders(),
+                        "X-Sarah-Voice-Route");
+                if (!"elevenlabs-protected".equals(route)) {
+                    throw new IOException(
+                            "Protected voice response did not prove the approved ElevenLabs route.");
+                }
+            }
+            return expectedBytes;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int count = upstream.read(buffer, offset, length);
+            if (count > 0) {
+                long now = System.currentTimeMillis();
+                firstNetworkByte.compareAndSet(0L, now);
+                bytesThisSource += count;
+                long total = responseBytes.addAndGet(count);
+                if (total > MAX_STREAM_BYTES) {
+                    throw new IOException("Voice response exceeded the 20 MB limit.");
+                }
+                if (expectedBytes != C.LENGTH_UNSET && bytesThisSource >= expectedBytes) {
+                    responseComplete.compareAndSet(0L, now);
+                }
+            } else if (count == C.RESULT_END_OF_INPUT) {
+                responseComplete.compareAndSet(0L, System.currentTimeMillis());
+            }
+            return count;
+        }
+
+        @Override
+        public Uri getUri() {
+            return upstream.getUri();
+        }
+
+        @Override
+        public Map<String, List<String>> getResponseHeaders() {
+            return upstream.getResponseHeaders();
+        }
+
+        @Override
+        public void close() throws IOException {
+            upstream.close();
+        }
+
+        private static String firstHeader(Map<String, List<String>> headers, String name) {
+            for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
+                if (entry.getKey() == null || !entry.getKey().equalsIgnoreCase(name)) continue;
+                List<String> values = entry.getValue();
+                return values == null || values.isEmpty() || values.get(0) == null
+                        ? "" : values.get(0).trim();
+            }
+            return "";
+        }
+    }
+
+    private static final class PlaybackSession {
+        private final ExoPlayer player;
+        private final String attemptedRoute;
+        private final long requestedAt;
+        private final long synthesisStart;
+        private final AtomicLong firstNetworkByte;
+        private final AtomicLong playerReady;
+        private final AtomicLong responseComplete;
+        private final AtomicLong responseBytes;
+        private final ReceiptListener listener;
+        private final AtomicBoolean reported;
+        private final AtomicLong playbackStart = new AtomicLong();
+
+        PlaybackSession(
+                ExoPlayer player,
+                String attemptedRoute,
+                long requestedAt,
+                long synthesisStart,
+                AtomicLong firstNetworkByte,
+                AtomicLong playerReady,
+                AtomicLong responseComplete,
+                AtomicLong responseBytes,
+                ReceiptListener listener,
+                AtomicBoolean reported) {
+            this.player = player;
+            this.attemptedRoute = attemptedRoute;
+            this.requestedAt = requestedAt;
+            this.synthesisStart = synthesisStart;
+            this.firstNetworkByte = firstNetworkByte;
+            this.playerReady = playerReady;
+            this.responseComplete = responseComplete;
+            this.responseBytes = responseBytes;
+            this.listener = listener;
+            this.reported = reported;
+        }
+
+        void markReady() {
+            playerReady.compareAndSet(0L, System.currentTimeMillis());
+        }
+
+        void markPlaying() {
+            long startedAt = System.currentTimeMillis();
+            if (playbackStart.compareAndSet(0L, startedAt) && listener != null) {
+                try {
+                    listener.onPlaybackStarted(startedAt);
+                } catch (RuntimeException ignored) {
+                    // Presentation callbacks must never break approved audio playback.
+                }
+            }
+        }
+
+        void complete() {
+            if (firstNetworkByte.get() == 0L || responseBytes.get() < MIN_USABLE_STREAM_BYTES) {
+                finish(false, "stream_ended_without_usable_audio", System.currentTimeMillis());
+            } else if (responseComplete.get() == 0L) {
+                finish(false, "stream_ended_before_response_complete", System.currentTimeMillis());
+            } else if (playerReady.get() == 0L || playbackStart.get() == 0L) {
+                finish(false, "stream_completed_without_playback_start", System.currentTimeMillis());
+            } else {
+                finish(true, "", System.currentTimeMillis());
+            }
+        }
+
+        void fail(String reason) {
+            finish(false, reason, System.currentTimeMillis());
+        }
+
+        void interrupt() {
+            runOnMain(() -> finish(
+                    false,
+                    "interrupted_by_new_voice_request",
+                    System.currentTimeMillis()));
+        }
+
+        void cancelByLifecycle() {
+            runOnMain(() -> finish(
+                    false,
+                    "cancelled_by_lifecycle",
+                    System.currentTimeMillis()));
+        }
+
+        private void finish(boolean completed, String reason, long endedAt) {
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                MAIN.post(() -> finish(completed, reason, endedAt));
+                return;
+            }
+            if (!reported.compareAndSet(false, true)) return;
+            ACTIVE_SESSION.compareAndSet(this, null);
+            try { player.stop(); } catch (Exception ignored) { }
+            try { player.release(); } catch (Exception ignored) { }
+            if (listener == null) return;
+
+            long startedAt = playbackStart.get();
+            String actualRoute;
+            if (completed) {
+                actualRoute = attemptedRoute;
+            } else if (startedAt > 0L) {
+                actualRoute = attemptedRoute + (reason.startsWith("interrupted")
+                        ? "_started_interrupted" : "_started_failed");
+            } else {
+                actualRoute = "not_started";
+            }
+            listener.onFinished(new Receipt(
+                    attemptedRoute,
+                    actualRoute,
+                    reason,
+                    requestedAt,
+                    synthesisStart,
+                    firstNetworkByte.get(),
+                    playerReady.get(),
+                    responseComplete.get(),
+                    startedAt,
+                    endedAt,
+                    completed));
+        }
+    }
+
     public static void speak(Context context, String ignoredModelKey, String text, Runnable fallback) {
+        speak(context, ignoredModelKey, text, receipt -> {
+            if (!receipt.completed
+                    && VoiceFallbackPolicy.shouldStartAndroidFallback(
+                            receipt.playbackStart, receipt.failureReason)
+                    && fallback != null) {
+                fallback.run();
+            }
+        });
+    }
+
+    /** Stops active/provisional cloud playback and invalidates its preparation generation. */
+    public static void cancel() {
+        REQUEST_SEQUENCE.incrementAndGet();
+        PlaybackSession active = ACTIVE_SESSION.getAndSet(null);
+        if (active != null) active.cancelByLifecycle();
+    }
+
+    public static void speak(
+            Context context,
+            String ignoredModelKey,
+            String text,
+            ReceiptListener listener) {
         Context app = context.getApplicationContext();
+        long requestedAt = System.currentTimeMillis();
+        long requestGeneration = REQUEST_SEQUENCE.incrementAndGet();
+        PlaybackSession active = ACTIVE_SESSION.getAndSet(null);
+        if (active != null) active.interrupt();
+
         new Thread(() -> {
-            File file = null;
+            String attemptedRoute = ElevenLabsVoiceConfig.backendConfigured()
+                    ? "elevenlabs_protected_backend" : "elevenlabs_direct";
+            AtomicBoolean reported = new AtomicBoolean(false);
             try {
                 if (!ElevenLabsVoiceConfig.isConfigured()) {
                     throw new IllegalStateException("ElevenLabs voice is not configured in this build.");
                 }
                 String spoken = normalizeForSpeech(text);
-                if (spoken.isEmpty()) return;
+                if (spoken.isEmpty()) {
+                    throw new IllegalArgumentException("Speech text was empty after normalization.");
+                }
                 if (spoken.length() > MAX_SPOKEN_CHARACTERS) {
                     spoken = spoken.substring(0, MAX_SPOKEN_CHARACTERS);
                 }
-
-                byte[] audio = ElevenLabsVoiceConfig.backendConfigured()
-                        ? requestFromTeamBackend(spoken)
-                        : requestDirectly(spoken);
-                if (audio.length < 128) throw new IllegalStateException("ElevenLabs returned no usable audio.");
-
-                file = new File(app.getCacheDir(), "sarah_elevenlabs_" + System.currentTimeMillis() + ".mp3");
-                try (FileOutputStream out = new FileOutputStream(file)) {
-                    out.write(audio);
-                }
-
-                MediaPlayer old = ACTIVE_PLAYER.getAndSet(null);
-                if (old != null) {
-                    try { old.stop(); } catch (Exception ignored) { }
-                    old.release();
-                }
-
-                MediaPlayer player = new MediaPlayer();
-                ACTIVE_PLAYER.set(player);
-                File finalFile = file;
-                player.setDataSource(app, Uri.fromFile(file));
-                player.setOnCompletionListener(mp -> release(mp, finalFile));
-                player.setOnErrorListener((mp, what, extra) -> {
-                    release(mp, finalFile);
-                    if (fallback != null) fallback.run();
-                    return true;
+                StreamingRequest request = buildStreamingRequest(spoken);
+                runOnMain(() -> {
+                    if (REQUEST_SEQUENCE.get() != requestGeneration) {
+                        reportBeforePlayback(
+                                attemptedRoute,
+                                "superseded_before_playback",
+                                requestedAt,
+                                0L,
+                                listener,
+                                reported);
+                        return;
+                    }
+                    startStreaming(
+                            app,
+                            requestGeneration,
+                            request,
+                            attemptedRoute,
+                            requestedAt,
+                            listener,
+                            reported);
                 });
-                player.prepare();
-                player.start();
             } catch (Exception e) {
-                if (file != null) file.delete();
-                if (fallback != null) fallback.run();
+                reportBeforePlayback(
+                        attemptedRoute,
+                        REQUEST_SEQUENCE.get() != requestGeneration
+                                ? "superseded_before_playback" : boundedReason(e),
+                        requestedAt,
+                        0L,
+                        listener,
+                        reported);
             }
-        }, "Sarah-ElevenLabs-Voice").start();
+        }, "Sarah-ElevenLabs-Voice-Prepare").start();
     }
 
-    private static byte[] requestDirectly(String text) throws Exception {
-        String endpoint = "https://api.elevenlabs.io/v1/text-to-speech/"
-                + Uri.encode(ElevenLabsVoiceConfig.voiceId())
-                + "/stream?output_format=" + ElevenLabsVoiceConfig.OUTPUT_FORMAT;
-        HttpURLConnection connection = open(endpoint);
-        connection.setRequestProperty("xi-api-key", ElevenLabsVoiceConfig.apiKey());
-        writeJson(connection, requestBody(text));
-        return responseBytes(connection);
+    private static void startStreaming(
+            Context app,
+            long requestGeneration,
+            StreamingRequest request,
+            String attemptedRoute,
+            long requestedAt,
+            ReceiptListener listener,
+            AtomicBoolean reported) {
+        if (REQUEST_SEQUENCE.get() != requestGeneration) {
+            reportBeforePlayback(
+                    attemptedRoute,
+                    "superseded_before_playback",
+                    requestedAt,
+                    0L,
+                    listener,
+                    reported);
+            return;
+        }
+
+        long synthesisStart = System.currentTimeMillis();
+        AtomicLong firstNetworkByte = new AtomicLong();
+        AtomicLong playerReady = new AtomicLong();
+        AtomicLong responseComplete = new AtomicLong();
+        AtomicLong responseBytes = new AtomicLong();
+        AtomicInteger connectionCount = new AtomicInteger();
+        ExoPlayer player = null;
+        PlaybackSession session = null;
+        try {
+            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                    .setUserAgent("SarahTravelOS/2.5")
+                    .setConnectTimeoutMs(20_000)
+                    .setReadTimeoutMs(120_000)
+                    .setAllowCrossProtocolRedirects(false)
+                    .setKeepPostFor302Redirects(true);
+
+            DataSource.Factory timingFactory = () -> new TimingBoundedDataSource(
+                    httpFactory.createDataSource(),
+                    firstNetworkByte,
+                    responseComplete,
+                    responseBytes,
+                    "elevenlabs_protected_backend".equals(attemptedRoute));
+            ResolvingDataSource.Factory resolvingFactory = new ResolvingDataSource.Factory(
+                    timingFactory,
+                    dataSpec -> {
+                        if (connectionCount.incrementAndGet() != 1) {
+                            throw new IOException(
+                                    "Duplicate voice synthesis connection was blocked; request was not retried.");
+                        }
+                        if (dataSpec.position != 0L) {
+                            throw new IOException(
+                                    "Voice stream range/seek request was blocked; synthesis POST is one-shot.");
+                        }
+                        return dataSpec.buildUpon()
+                                .setUri(request.endpoint)
+                                .setHttpMethod(DataSpec.HTTP_METHOD_POST)
+                                .setHttpBody(request.body)
+                                .setHttpRequestHeaders(request.headers)
+                                .build();
+                    });
+
+            MediaItem item = new MediaItem.Builder()
+                    .setUri(request.endpoint)
+                    .setMimeType(MimeTypes.AUDIO_MPEG)
+                    .build();
+            ProgressiveMediaSource mediaSource = new ProgressiveMediaSource.Factory(resolvingFactory)
+                    .setLoadErrorHandlingPolicy(new DefaultLoadErrorHandlingPolicy(0))
+                    .createMediaSource(item);
+
+            player = new ExoPlayer.Builder(app).build();
+            session = new PlaybackSession(
+                    player,
+                    attemptedRoute,
+                    requestedAt,
+                    synthesisStart,
+                    firstNetworkByte,
+                    playerReady,
+                    responseComplete,
+                    responseBytes,
+                    listener,
+                    reported);
+            PlaybackSession finalSession = session;
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlaybackStateChanged(int playbackState) {
+                    if (playbackState == Player.STATE_READY) {
+                        finalSession.markReady();
+                    } else if (playbackState == Player.STATE_ENDED) {
+                        finalSession.complete();
+                    }
+                }
+
+                @Override
+                public void onIsPlayingChanged(boolean isPlaying) {
+                    if (isPlaying) finalSession.markPlaying();
+                }
+
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    finalSession.fail(boundedPlayerReason(error));
+                }
+            });
+
+            if (REQUEST_SEQUENCE.get() != requestGeneration) {
+                session.fail("superseded_before_playback");
+                return;
+            }
+            PlaybackSession previous = ACTIVE_SESSION.getAndSet(session);
+            if (previous != null) previous.interrupt();
+            if (releaseIfStale(requestGeneration, session)) return;
+            player.setMediaSource(mediaSource);
+            if (releaseIfStale(requestGeneration, session)) return;
+            player.prepare();
+            if (releaseIfStale(requestGeneration, session)) return;
+            player.play();
+        } catch (Exception e) {
+            if (session != null) {
+                session.fail(boundedReason(e));
+            } else {
+                if (player != null) {
+                    try { player.release(); } catch (Exception ignored) { }
+                }
+                reportBeforePlayback(
+                        attemptedRoute,
+                        boundedReason(e),
+                        requestedAt,
+                        synthesisStart,
+                        listener,
+                        reported);
+            }
+        }
     }
 
-    private static byte[] requestFromTeamBackend(String text) throws Exception {
-        HttpURLConnection connection = open(ElevenLabsVoiceConfig.backendUrl());
-        String token = ElevenLabsVoiceConfig.backendToken();
-        if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
+    /**
+     * Closes the cancellation/supersession window between publishing a
+     * provisional player and each operation that can advance it toward
+     * playback. A stale or displaced session owns no permission to prepare or
+     * play, even if its player construction already completed.
+     */
+    private static boolean releaseIfStale(
+            long requestGeneration,
+            PlaybackSession session) {
+        if (REQUEST_SEQUENCE.get() == requestGeneration
+                && ACTIVE_SESSION.get() == session) {
+            return false;
+        }
+        session.fail("superseded_before_playback");
+        return true;
+    }
+
+    private static StreamingRequest buildStreamingRequest(String text) throws Exception {
+        String endpoint;
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json; charset=utf-8");
+        headers.put("Accept", "audio/mpeg,application/octet-stream");
         JSONObject body = requestBody(text);
-        body.put("voice_id", ElevenLabsVoiceConfig.voiceId());
-        body.put("output_format", ElevenLabsVoiceConfig.OUTPUT_FORMAT);
-        writeJson(connection, body);
-        return responseBytes(connection);
+        if (ElevenLabsVoiceConfig.backendConfigured()) {
+            endpoint = ElevenLabsVoiceConfig.backendUrl();
+            String token = ElevenLabsVoiceConfig.backendToken();
+            if (!token.isEmpty()) headers.put("Authorization", "Bearer " + token);
+            body.put("voice_id", ElevenLabsVoiceConfig.voiceId());
+            body.put("output_format", ElevenLabsVoiceConfig.OUTPUT_FORMAT);
+        } else {
+            endpoint = "https://api.elevenlabs.io/v1/text-to-speech/"
+                    + Uri.encode(ElevenLabsVoiceConfig.voiceId())
+                    + "/stream?output_format=" + ElevenLabsVoiceConfig.OUTPUT_FORMAT;
+            headers.put("xi-api-key", ElevenLabsVoiceConfig.apiKey());
+        }
+        if (endpoint == null || !endpoint.startsWith("https://")) {
+            throw new IllegalArgumentException("Sarah voice endpoint must use HTTPS.");
+        }
+        return new StreamingRequest(
+                endpoint,
+                body.toString().getBytes(StandardCharsets.UTF_8),
+                headers);
     }
 
     private static JSONObject requestBody(String text) throws Exception {
@@ -115,60 +599,54 @@ public final class CloudVoiceClient {
         return body;
     }
 
-    private static HttpURLConnection open(String endpoint) throws Exception {
-        if (endpoint == null || !endpoint.startsWith("https://")) {
-            throw new IllegalArgumentException("Sarah voice endpoint must use HTTPS.");
-        }
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setConnectTimeout(20000);
-        connection.setReadTimeout(120000);
-        connection.setRequestMethod("POST");
-        connection.setDoOutput(true);
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        connection.setRequestProperty("Accept", "audio/mpeg,application/octet-stream");
-        connection.setRequestProperty("User-Agent", "SarahTravelOS/2.0");
-        return connection;
+    private static void reportBeforePlayback(
+            String attemptedRoute,
+            String reason,
+            long requestedAt,
+            long synthesisStart,
+            ReceiptListener listener,
+            AtomicBoolean reported) {
+        if (!reported.compareAndSet(false, true) || listener == null) return;
+        listener.onFinished(new Receipt(
+                attemptedRoute,
+                "not_started",
+                reason,
+                requestedAt,
+                synthesisStart,
+                0L,
+                0L,
+                0L,
+                0L,
+                System.currentTimeMillis(),
+                false));
     }
 
-    private static void writeJson(HttpURLConnection connection, JSONObject body) throws Exception {
-        try (OutputStream out = connection.getOutputStream()) {
-            out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+    private static String boundedPlayerReason(PlaybackException error) {
+        String detail = error.getMessage();
+        Throwable cause = error.getCause();
+        if ((detail == null || detail.isEmpty()) && cause != null) {
+            detail = cause.getClass().getSimpleName() + ": " + cause.getMessage();
         }
+        return boundedText("exo_player_" + error.getErrorCodeName()
+                + (detail == null || detail.isEmpty() ? "" : ": " + detail));
     }
 
-    private static byte[] responseBytes(HttpURLConnection connection) throws Exception {
-        int status = connection.getResponseCode();
-        InputStream stream = status >= 200 && status < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
-        byte[] result;
-        try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            if (in != null) {
-                byte[] buffer = new byte[8192];
-                int count;
-                int total = 0;
-                while ((count = in.read(buffer)) >= 0) {
-                    total += count;
-                    if (total > 20_000_000) throw new IllegalStateException("Voice response was too large.");
-                    out.write(buffer, 0, count);
-                }
-            }
-            result = out.toByteArray();
-        } finally {
-            connection.disconnect();
-        }
-        if (status < 200 || status >= 300) {
-            String detail = new String(result, StandardCharsets.UTF_8);
-            if (detail.length() > 240) detail = detail.substring(0, 240);
-            throw new IllegalStateException("ElevenLabs voice returned " + status + ": " + detail);
-        }
-        return result;
+    private static String boundedReason(Exception e) {
+        return boundedText(e.getClass().getSimpleName() + ": "
+                + (e.getMessage() == null ? "voice request failed" : e.getMessage()));
     }
 
-    private static void release(MediaPlayer player, File file) {
-        ACTIVE_PLAYER.compareAndSet(player, null);
-        try { player.release(); } catch (Exception ignored) { }
-        if (file != null) file.delete();
+    private static String boundedText(String value) {
+        String result = value == null ? "voice request failed" : value;
+        return result.length() > 300 ? result.substring(0, 300) : result;
+    }
+
+    private static void runOnMain(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        } else {
+            MAIN.post(action);
+        }
     }
 
     private static String normalizeForSpeech(String value) {

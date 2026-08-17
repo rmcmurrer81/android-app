@@ -1,0 +1,1700 @@
+name: Sarah 2.5 online judge build
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Protected online model provider
+        required: true
+        default: workers-ai
+        type: choice
+        options:
+          - workers-ai
+          - openai
+      model:
+        description: Provider model ID requested by this APK
+        required: true
+        default: '@cf/google/gemma-4-26b-a4b-it'
+        type: string
+  push:
+    branches:
+      - agent/sarah-2.5-event-ready
+    paths:
+      - .github/ONLINE_JUDGE_BUILD_REQUEST.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sarah-2-5-r3-owner-repair-online-judge
+  cancel-in-progress: true
+
+jobs:
+  deploy-smoke-test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SARAH_CANDIDATE_WORKER_NAME: sarah-r3-${{ github.run_id }}-${{ github.run_attempt }}
+      # Explicit owner-authorized event lane. The normal R1 upgrade lane and
+      # its exact signer gate remain below, but are not silently bypassed.
+      SARAH_ANDROID_DISTRIBUTION: event_side_by_side
+      # The artifact-scoped bootstrap capability is intentionally short lived.
+      # The Worker enforces this deadline even if it is not manually retired.
+      SARAH_EVENT_TOKEN_TTL_HOURS: '72'
+      # Preserved normal-lane evidence vocabulary for validators and rollback:
+      # CURRENT_OWNER_TEST_PENDING_PHYSICAL_ACCEPTANCE; r1_signer_sha256;
+      # r3_signer_sha256; same-package-in-place-only. The event lane below is
+      # intentionally distinct and makes none of those continuity claims.
+      # Public preserved-R1 evidence: exact installed APK and signer certificate.
+      SARAH_R1_SIGNING_CERT_SHA256: d49b6dea8f8ddb332c170abd2d79240de011d302bdbec8a732f783910134c63c
+      SARAH_R1_APK_SHA256: be67ceb0adf6d920532bb46a8b79a2be4b6c98dca20a5765f33a70489204b314
+    outputs:
+      backend_url: ${{ steps.deploy.outputs.backend_url }}
+      model_provider: ${{ steps.config.outputs.provider }}
+      model_id: ${{ steps.config.outputs.model }}
+      event_auth_expires_utc: ${{ steps.event_auth.outputs.expires_utc }}
+      event_auth_token_sha256: ${{ steps.event_auth.outputs.token_sha256 }}
+      event_auth_context_sha256: ${{ steps.event_auth.outputs.context_sha256 }}
+      candidate_worker_name: ${{ steps.event_auth.outputs.worker_name }}
+
+    steps:
+      - name: Check out Sarah 2.5 source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run R3 source and pure-policy acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python Sarah_Morgan_Android_Phone_First_v3/tests/validate_package.py
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_event_trip_store_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_runtime_privacy_contracts.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_artifact_credential_boundary.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_android_presence_surface.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_online_owner_activation_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_secure_sync_contract.py -v
+          python -B Sarah_Morgan_Android_Phone_First_v3/tests/test_ticket_pass_wallet_contract.py -v
+          rm -rf build/sarah25-r3 && mkdir -p build/sarah25-r3
+          javac -encoding UTF-8 -d build/sarah25-r3 \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnownEventCatalog.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GenericEventReference.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelContextResolver.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnRoute.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CurrentLocationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BackgroundResearchPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AdaptiveResearchPlan.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileLearningContext.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConnectedModelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/DestinationSourcePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/PublicSourceResult.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/VoiceRoutePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ReplyTruthGuard.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TextTurnReceipt.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GmailTravelConnection.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/GmailReadOnlyPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EmailCalendarPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelPlanningConversationPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MaturityAccessPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelSearchQueryPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OfflineTuringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MemoryExtractor.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingLinkParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/BookingImportTextPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripProfilePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripMonitoringPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyIntentParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TripWindowParser.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CityVisitPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/JourneyPlannerCore.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/AgenticTravelPlanner.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/FinalDisplayedResponsePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnowledgePackSchedulingPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/KnowledgeProfileKey.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConnectedTurnPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SyncPhotoPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/VoiceFallbackPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedLanEndpointPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahPairingProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SecureVaultReadPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TicketPassPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProtectedBackendCapabilityPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/EventTripPreUpgradeVersionPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnLifecyclePolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahR2PolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/GmailReadOnlyPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EmailCalendarPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahPairingProtocolTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SecureVaultReadPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/SarahSecureSyncInteropTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TicketPassPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/ProtectedBackendCapabilityPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripPreUpgradeVersionPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripIntentParserTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/EventTripProfilePolicyTest.java
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.SarahR2PolicyTest
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.GmailReadOnlyPolicyTest
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.EmailCalendarPolicyTest
+          java -cp build/sarah25-r3 SarahPairingProtocolTest
+          java -cp build/sarah25-r3 SecureVaultReadPolicyTest
+          java -cp build/sarah25-r3 SarahSecureSyncInteropTest
+          java -cp build/sarah25-r3 TicketPassPolicyTest
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.ProtectedBackendCapabilityPolicyTest
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.EventTripPreUpgradeVersionPolicyTest
+          java -cp build/sarah25-r3 EventTripIntentParserTest
+          java -cp build/sarah25-r3 com.kiraworld.sarahtravel.EventTripProfilePolicyTest
+
+      - name: Require the R3 owner-repair Android version identity
+        id: version_truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          gradle_path = Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/build.gradle')
+          gradle_text = gradle_path.read_text(encoding='utf-8')
+          code_match = re.search(r'^\s*versionCode\s+(\d+)\s*$', gradle_text, re.MULTILINE)
+          name_match = re.search(r"^\s*versionName\s+['\"]([^'\"]+)['\"]\s*$", gradle_text, re.MULTILINE)
+          suffix_match = re.search(r"^\s*versionNameSuffix\s+['\"]([^'\"]+)['\"]\s*$", gradle_text, re.MULTILINE)
+          if code_match is None or name_match is None:
+              raise SystemExit('Could not read Android versionCode/versionName from app/build.gradle.')
+
+          version_code = int(code_match.group(1))
+          version_name = name_match.group(1)
+          variant_version_name = version_name + (suffix_match.group(1) if suffix_match else '')
+          required_prefix = '2.5-r3-owner-repair'
+          if version_code != 27:
+              raise SystemExit(f'R3 judge build requires Android versionCode 27, found {version_code}.')
+          if not version_name.startswith(required_prefix):
+              raise SystemExit(
+                  f'R3 judge build requires versionName prefix {required_prefix!r}, found {version_name!r}.'
+              )
+
+          source_target = Path('BUILD_VERSION.txt').read_text(encoding='utf-8').strip()
+          if required_prefix not in source_target:
+              raise SystemExit(f'BUILD_VERSION.txt does not identify the R3 owner-repair source: {source_target!r}')
+
+          github_env = Path(os.environ['GITHUB_ENV'])
+          with github_env.open('a', encoding='utf-8') as handle:
+              handle.write(f'SARAH_R3_ANDROID_VERSION_CODE={version_code}\n')
+              handle.write(f'SARAH_R3_ANDROID_VERSION_NAME={version_name}\n')
+              handle.write(f'SARAH_R3_ANDROID_VARIANT_VERSION_NAME={variant_version_name}\n')
+              handle.write(f'SARAH_R3_SOURCE_TARGET={source_target}\n')
+          print('R3 Android version identity:', version_code, version_name)
+          PY
+
+      - name: Resolve provider and model and require deployment credentials
+        id: config
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
+          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
+          # Voice IDs are public identifiers, not credentials. Prefer an owner
+          # override, otherwise use Sarah's established approved voice.
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
+          # Accept the current app-token name or the legacy protected-voice
+          # app-token name. Both are revocable client-to-backend credentials;
+          # neither is an ElevenLabs/provider API key.
+          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          DISPATCH_PROVIDER: ${{ inputs.provider }}
+          DISPATCH_MODEL: ${{ inputs.model }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SARAH_ELEVENLABS_API_KEY SARAH_ELEVENLABS_VOICE_ID SARAH_MODEL_BACKEND_TOKEN; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository Actions secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          if ! [[ "$SARAH_MODEL_BACKEND_TOKEN" =~ ^[A-Za-z0-9_-]{32,256}$ ]]; then
+            echo "::error::SARAH_MODEL_BACKEND_TOKEN must be a 32-256 character URL-safe random value."
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
+            PROVIDER="${DISPATCH_PROVIDER:-workers-ai}"
+            MODEL="${DISPATCH_MODEL:-@cf/google/gemma-4-26b-a4b-it}"
+          else
+            readarray -t CONFIG < <(python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('.github/ONLINE_JUDGE_BUILD_REQUEST.json').read_text(encoding='utf-8'))
+          print(str(data.get('provider') or 'workers-ai').strip())
+          print(str(data.get('model') or '@cf/google/gemma-4-26b-a4b-it').strip())
+          PY
+            )
+            PROVIDER="${CONFIG[0]}"
+            MODEL="${CONFIG[1]}"
+          fi
+
+          if [ "$PROVIDER" != 'workers-ai' ] && [ "$PROVIDER" != 'openai' ]; then
+            echo "::error::Unsupported provider: $PROVIDER"
+            exit 1
+          fi
+          if [ "$PROVIDER" = 'openai' ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY is required only when the explicitly selected provider is openai."
+            exit 1
+          fi
+          if ! [[ "$MODEL" =~ ^[@A-Za-z0-9][@A-Za-z0-9._:/-]{0,119}$ ]]; then
+            echo "::error::Invalid model ID: $MODEL"
+            exit 1
+          fi
+          echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "Selected provider/model: $PROVIDER / $MODEL"
+
+      - name: Derive and mask the artifact-scoped event Worker capability
+        id: event_auth
+        shell: bash
+        env:
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import hashlib
+          import hmac
+          import os
+          import re
+          from datetime import datetime, timedelta, timezone
+
+          key = os.environ['SARAH_EVENT_DERIVATION_KEY'].encode('utf-8')
+          if not re.fullmatch(rb'[A-Za-z0-9_-]{32,256}', key):
+              raise SystemExit('The repository app token cannot be used as the event derivation key.')
+          worker = os.environ['SARAH_CANDIDATE_WORKER_NAME']
+          expected_worker = f"sarah-r3-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          if worker != expected_worker:
+              raise SystemExit('Candidate Worker name does not match the exact run context.')
+          ttl_hours = int(os.environ['SARAH_EVENT_TOKEN_TTL_HOURS'])
+          if ttl_hours < 1 or ttl_hours > 168:
+              raise SystemExit('Event capability TTL must be between 1 and 168 hours.')
+          now = datetime.now(timezone.utc).replace(microsecond=0)
+          expires = now + timedelta(hours=ttl_hours)
+          # JavaScript Date.toISOString() reports UTC with millisecond
+          # precision. Emit the same canonical representation so the
+          # deployment proof compares the exact instant byte-for-byte.
+          expires_utc = expires.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+          if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z', expires_utc):
+              raise SystemExit('Event capability expiry was not canonical UTC milliseconds.')
+          context = '\n'.join((
+              'domain=sarah-event-artifact-worker-auth-v1',
+              f"repository={os.environ['GITHUB_REPOSITORY']}",
+              f"run_id={os.environ['GITHUB_RUN_ID']}",
+              f"run_attempt={os.environ['GITHUB_RUN_ATTEMPT']}",
+              f"sha={os.environ['GITHUB_SHA']}",
+              f'worker={worker}',
+              f'expires_utc={expires_utc}',
+          ))
+          digest = hmac.new(key, context.encode('utf-8'), hashlib.sha256).digest()
+          token = 'sevt1_' + base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+          token_sha256 = hashlib.sha256(token.encode('ascii')).hexdigest()
+          context_sha256 = hashlib.sha256(context.encode('utf-8')).hexdigest()
+          print(f'::add-mask::{token}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'SARAH_EVENT_DERIVED_TOKEN={token}\n')
+              handle.write(f'SARAH_BACKEND_TOKEN={token}\n')
+              handle.write(f'SARAH_EVENT_AUTH_EXPIRES_UTC={expires_utc}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              handle.write(f'expires_utc={expires_utc}\n')
+              handle.write(f'token_sha256={token_sha256}\n')
+              handle.write(f'context_sha256={context_sha256}\n')
+              handle.write(f'worker_name={worker}\n')
+          print('Derived one masked event capability for the exact Worker/run context; expires:', expires_utc)
+          PY
+
+      - name: Install and syntax-check the protected Sarah model proxy
+        working-directory: services/sarah-model-proxy
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+
+      - name: Deploy Sarah's protected R3 candidate online mind
+        id: deploy
+        working-directory: services/sarah-model-proxy
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
+          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
+          SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
+          SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
+          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
+          SARAH_DEPLOYMENT_ID: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          SOURCE_SHA256=$(sha256sum src/index.js | awk '{print $1}')
+          CONFIG_SHA256=$(sha256sum wrangler.jsonc | awk '{print $1}')
+          if ! [[ "$SOURCE_SHA256" =~ ^[a-f0-9]{64}$ ]] || ! [[ "$CONFIG_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo '::error::Could not calculate the exact Worker source/config hashes.'
+            exit 1
+          fi
+
+          # Wrangler consumes dotenv syntax here. Only the HMAC-derived,
+          # artifact-scoped bootstrap capability is deployed; the repository
+          # derivation key is never written to an artifact or Worker secret.
+          umask 077
+          printf 'SARAH_BACKEND_TOKEN=%s\n' "$SARAH_BACKEND_TOKEN" \
+            > /tmp/sarah-model-proxy-secrets.env
+          if [ "$SARAH_MODEL_PROVIDER" = 'openai' ]; then
+            printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" \
+              >> /tmp/sarah-model-proxy-secrets.env
+          fi
+          printf 'ELEVENLABS_API_KEY=%s\n' "$SARAH_ELEVENLABS_API_KEY" \
+            >> /tmp/sarah-model-proxy-secrets.env
+          if [ -n "${TAVILY_API_KEY:-}" ]; then
+            printf 'TAVILY_API_KEY=%s\n' "$TAVILY_API_KEY" \
+              >> /tmp/sarah-model-proxy-secrets.env
+            protected_search_configured=true
+          else
+            protected_search_configured=false
+          fi
+
+          set +e
+          npx wrangler deploy \
+            --config wrangler.jsonc \
+            --name "$SARAH_CANDIDATE_WORKER_NAME" \
+            --secrets-file /tmp/sarah-model-proxy-secrets.env \
+            --var "SARAH_MODEL_PROVIDER:$SARAH_MODEL_PROVIDER" \
+            --var "SARAH_MODEL_ID:$SARAH_MODEL_ID" \
+            --var "SARAH_ELEVENLABS_VOICE_ID:$SARAH_ELEVENLABS_VOICE_ID" \
+            --var "SARAH_ELEVENLABS_MODEL_ID:$SARAH_ELEVENLABS_MODEL_ID" \
+            --var "SARAH_EVENT_AUTH_EXPIRES_UTC:$SARAH_EVENT_AUTH_EXPIRES_UTC" \
+            --var "SARAH_DEPLOYMENT_ID:$SARAH_DEPLOYMENT_ID" \
+            --var "SARAH_SOURCE_SHA256:$SOURCE_SHA256" \
+            --var "SARAH_CONFIG_SHA256:$CONFIG_SHA256" \
+            --keep-vars 2>&1 | tee /tmp/sarah-model-proxy-deploy.log
+          deploy_status=${PIPESTATUS[0]}
+          set -e
+          rm -f /tmp/sarah-model-proxy-secrets.env
+          if [ "$deploy_status" -ne 0 ]; then
+            exit "$deploy_status"
+          fi
+
+          BACKEND_URL=$(python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          text = Path('/tmp/sarah-model-proxy-deploy.log').read_text(encoding='utf-8', errors='replace')
+          matches = re.findall(r'https://[A-Za-z0-9.-]+\.workers\.dev(?:/[A-Za-z0-9._~!$&\'()*+,;=:@%/-]*)?', text)
+          if not matches:
+              raise SystemExit('Could not find the deployed workers.dev URL in Wrangler output.')
+          backend = matches[-1].rstrip('/')
+          worker_name = os.environ['SARAH_CANDIDATE_WORKER_NAME']
+          if not re.fullmatch(rf'https://{re.escape(worker_name)}\.[A-Za-z0-9-]+\.workers\.dev', backend):
+              raise SystemExit(f'Wrangler returned an unexpected Worker URL: {backend}')
+          print(backend)
+          PY
+          )
+          echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
+          echo "deployment_id=$SARAH_DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+          echo "source_sha256=$SOURCE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "config_sha256=$CONFIG_SHA256" >> "$GITHUB_OUTPUT"
+          echo "protected_search_configured=$protected_search_configured" >> "$GITHUB_OUTPUT"
+          echo "Deployed Sarah model proxy: $BACKEND_URL"
+
+      - name: Prove the online mind answers before building the APK
+        id: protected_acceptance
+        shell: bash
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          EXPECTED_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
+          SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
+          SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
+          EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+          EXPECTED_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
+          EXPECTED_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
+          PROTECTED_SEARCH_CONFIGURED: ${{ steps.deploy.outputs.protected_search_configured }}
+          SARAH_VOICE_FIRST_BYTE_MAX_MS: '10000'
+          SARAH_VOICE_RESPONSE_COMPLETE_MAX_MS: '30000'
+        run: |
+          set -euo pipefail
+          deployment_ready=0
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+              -H 'Cache-Control: no-cache' \
+              "$BACKEND_URL/health?deployment=$EXPECTED_DEPLOYMENT_ID&attempt=$attempt" \
+              > /tmp/sarah-health.json; then
+              if python - <<'PY'
+          import json, os
+          health = json.load(open('/tmp/sarah-health.json', encoding='utf-8'))
+          expected = {
+              'service': 'sarah-model-proxy',
+              'contract_version': 'sarah-model-proxy-v2-workers-ai-voice',
+              'deployment_id': os.environ['EXPECTED_DEPLOYMENT_ID'].lower(),
+              'source_sha256': os.environ['EXPECTED_SOURCE_SHA256'].lower(),
+              'config_sha256': os.environ['EXPECTED_CONFIG_SHA256'].lower(),
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model_override': os.environ['SARAH_MODEL_ID'],
+          }
+          matches = health.get('ok') is True and health.get('voice_ready') is True
+          matches = matches and health.get('deployment_ready') is True
+          matches = matches and health.get('route_rate_limits_ready') is True
+          matches = matches and health.get('event_access_state') == 'active'
+          matches = matches and health.get('event_access_expires_utc') == os.environ['EXPECTED_EVENT_AUTH_EXPIRES_UTC']
+          matches = matches and all(health.get(key) == value for key, value in expected.items())
+          if os.environ.get('PROTECTED_SEARCH_CONFIGURED') == 'true':
+              matches = matches and health.get('current_source_ready') is True
+          if not matches:
+              raise SystemExit(1)
+          print('Exact Sarah Worker deployment is active:', expected['deployment_id'])
+          PY
+              then
+                deployment_ready=1
+                break
+              fi
+            fi
+            sleep 3
+          done
+          if [ "$deployment_ready" -ne 1 ]; then
+            echo '::error::The exact deployed Sarah Worker source/config did not become active before the bounded deadline.'
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('/tmp/sarah-health.json')
+          observed = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'health_response': 'unavailable'}
+          print('Last non-secret health response:', observed)
+          PY
+            exit 1
+          fi
+
+          # A freshly named workers.dev route can briefly return a deployment
+          # propagation 404 even after one health request reaches the exact
+          # Worker.  Do not misclassify that fail-closed response as token
+          # acceptance, and do not accept it as proof of our auth handler.
+          # Require the exact Worker's 401 JSON contract within a bounded
+          # cache-busted retry window.  Any 2xx/3xx response fails immediately.
+          require_worker_unauthorized_capability() {
+            local label="$1"
+            local output_path="$2"
+            shift 2
+            local attempt status
+            for attempt in $(seq 1 8); do
+              if ! status="$(curl --silent --show-error --connect-timeout 5 --max-time 10 \
+                -H 'Cache-Control: no-cache' \
+                "$@" \
+                -o "$output_path" -w '%{http_code}' \
+                "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID&auth_probe=$label&attempt=$attempt")"; then
+                status="${status:-000}"
+              fi
+              if [ "$status" = '401' ] && python - "$output_path" <<'PY'
+          import json
+          import sys
+          with open(sys.argv[1], encoding='utf-8') as handle:
+              response = json.load(handle)
+          if response != {'error': 'unauthorized'}:
+              raise SystemExit(1)
+          PY
+              then
+                echo "Exact Sarah Worker rejected the $label bearer-token probe."
+                return 0
+              fi
+              if [[ "$status" =~ ^[23] ]]; then
+                echo "::error::Protected capabilities accepted or redirected the $label bearer-token probe (HTTP $status)."
+                return 1
+              fi
+              if [ "$attempt" -lt 8 ]; then
+                sleep 2
+              fi
+            done
+            echo "::error::The exact Sarah Worker unauthorized contract was not observed for the $label bearer-token probe (last HTTP $status)."
+            return 1
+          }
+
+          require_worker_unauthorized_capability \
+            absent /tmp/sarah-capabilities-absent.json
+          # This literal is shorter than the enforced 32-character production
+          # token minimum, so it cannot accidentally equal the configured key.
+          require_worker_unauthorized_capability \
+            wrong /tmp/sarah-capabilities-wrong.json \
+            -H 'Authorization: Bearer deliberately-wrong-sarah-token'
+          # The exact unauthorized contract above may become reachable a few
+          # seconds before the authenticated cache key on a newly named
+          # workers.dev route. A curl retry of one identical URL can remain on
+          # an edge-cached propagation 404, so cache-bust every bounded exact-
+          # token attempt. The Python check below still requires this run's
+          # exact deployment, source, config, provider, model, voice,
+          # rate-limit, and search truth.
+          authenticated_status=000
+          authenticated_deadline=$(( $(date +%s) + 60 ))
+          for attempt in $(seq 1 20); do
+            authenticated_remaining=$(( authenticated_deadline - $(date +%s) ))
+            if [ "$authenticated_remaining" -le 0 ]; then
+              break
+            fi
+            authenticated_request_timeout="$authenticated_remaining"
+            if [ "$authenticated_request_timeout" -gt 5 ]; then
+              authenticated_request_timeout=5
+            fi
+            if ! authenticated_status="$(curl --silent --show-error \
+              --connect-timeout "$authenticated_request_timeout" --max-time "$authenticated_request_timeout" \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -o /tmp/sarah-capabilities-exact.json -w '%{http_code}' \
+              "$BACKEND_URL/capabilities?deployment=$EXPECTED_DEPLOYMENT_ID&auth_probe=exact&attempt=$attempt")"; then
+              authenticated_status=000
+            fi
+            case "$authenticated_status" in
+              200)
+                break
+                ;;
+              000|404|408|429|5??)
+                ;;
+              *)
+                echo "::error::Exact-token capability probe returned non-propagation HTTP $authenticated_status."
+                exit 1
+                ;;
+            esac
+            authenticated_remaining=$(( authenticated_deadline - $(date +%s) ))
+            if [ "$attempt" -lt 20 ] && [ "$authenticated_remaining" -gt 0 ]; then
+              authenticated_sleep=3
+              if [ "$authenticated_sleep" -gt "$authenticated_remaining" ]; then
+                authenticated_sleep="$authenticated_remaining"
+              fi
+              sleep "$authenticated_sleep"
+            fi
+          done
+          if [ "$authenticated_status" != '200' ]; then
+            echo "::error::The exact-token capability contract did not reach HTTP 200 within the bounded cache-busted window (last HTTP $authenticated_status)."
+            exit 1
+          fi
+          python - <<'PY'
+          import json, os
+          capabilities = json.load(open('/tmp/sarah-capabilities-exact.json', encoding='utf-8'))
+          expected = {
+              'service': 'sarah-model-proxy',
+              'contract_version': 'sarah-model-proxy-v2-workers-ai-voice',
+              'deployment_id': os.environ['EXPECTED_DEPLOYMENT_ID'].lower(),
+              'source_sha256': os.environ['EXPECTED_SOURCE_SHA256'].lower(),
+              'config_sha256': os.environ['EXPECTED_CONFIG_SHA256'].lower(),
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model_override': os.environ['SARAH_MODEL_ID'],
+          }
+          matches = capabilities.get('ok') is True and capabilities.get('voice_ready') is True
+          matches = matches and capabilities.get('deployment_ready') is True
+          matches = matches and capabilities.get('route_rate_limits_ready') is True
+          matches = matches and capabilities.get('event_access_state') == 'active'
+          matches = matches and capabilities.get('event_access_expires_utc') == os.environ['EXPECTED_EVENT_AUTH_EXPIRES_UTC']
+          matches = matches and all(capabilities.get(key) == value for key, value in expected.items())
+          if os.environ.get('PROTECTED_SEARCH_CONFIGURED') == 'true':
+              matches = matches and capabilities.get('current_source_ready') is True
+          if not matches:
+              raise SystemExit('Authenticated capability response did not match the exact candidate contract.')
+          print('Authenticated Sarah capability contract passed for the exact candidate deployment.')
+          PY
+
+          # A newly named workers.dev route can be active for one cache key
+          # while a different POST URL is still pinned to an edge-cached
+          # propagation 404.  Exercise every protected JSON route with a
+          # distinct query string per bounded attempt.  Only propagation-like
+          # statuses are retryable; authentication, redirects, and any other
+          # unexpected response fail closed.  The exact response-contract
+          # validators below remain authoritative after transport succeeds.
+          post_json_cache_busted() {
+            local label="$1"
+            local route="$2"
+            local request_path="$3"
+            local response_path="$4"
+            local max_attempts="$5"
+            local deadline_seconds="$6"
+            local per_request_max_seconds="$7"
+            local deadline attempt remaining request_timeout connect_timeout status separator url sleep_seconds
+
+            deadline=$(( $(date +%s) + deadline_seconds ))
+            status=000
+            if [[ "$route" == *'?'* ]]; then
+              separator='&'
+            else
+              separator='?'
+            fi
+            for attempt in $(seq 1 "$max_attempts"); do
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "$remaining" -le 0 ]; then
+                break
+              fi
+              request_timeout="$per_request_max_seconds"
+              if [ "$request_timeout" -gt "$remaining" ]; then
+                request_timeout="$remaining"
+              fi
+              connect_timeout=5
+              if [ "$connect_timeout" -gt "$request_timeout" ]; then
+                connect_timeout="$request_timeout"
+              fi
+              url="${BACKEND_URL%/}${route}${separator}deployment=${EXPECTED_DEPLOYMENT_ID}&acceptance_probe=${label}&attempt=${attempt}"
+              if ! status="$(curl --silent --show-error \
+                --connect-timeout "$connect_timeout" --max-time "$request_timeout" \
+                -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+                -H 'Cache-Control: no-cache' \
+                -H 'Pragma: no-cache' \
+                -H 'Content-Type: application/json' \
+                --data-binary "@$request_path" \
+                --output "$response_path" --write-out '%{http_code}' \
+                "$url")"; then
+                status=000
+              fi
+              case "$status" in
+                200)
+                  echo "Protected $label JSON route reached the exact Worker on attempt $attempt."
+                  return 0
+                  ;;
+                000|404|408|429|5??)
+                  ;;
+                *)
+                  echo "::error::Protected $label JSON route returned non-propagation HTTP $status."
+                  return 1
+                  ;;
+              esac
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "$attempt" -lt "$max_attempts" ] && [ "$remaining" -gt 0 ]; then
+                sleep_seconds=2
+                if [ "$sleep_seconds" -gt "$remaining" ]; then
+                  sleep_seconds="$remaining"
+                fi
+                sleep "$sleep_seconds"
+              fi
+            done
+            echo "::error::Protected $label JSON route did not reach HTTP 200 inside its bounded cache-busted window (last HTTP $status)."
+            return 1
+          }
+
+          python - <<'PY'
+          import json, os
+          request = {
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model': os.environ['SARAH_MODEL_ID'],
+              'system_prompt': 'This is a deployment test. Reply with exactly ONLINE_READY and nothing else.',
+              'history': [],
+              'message': 'Reply with exactly ONLINE_READY.',
+              'web_search': False,
+          }
+          json.dump(request, open('/tmp/sarah-smoke-request.json', 'w', encoding='utf-8'))
+          PY
+          post_json_cache_busted \
+            model '/' \
+            /tmp/sarah-smoke-request.json /tmp/sarah-smoke-response.json \
+            5 120 30
+          python - <<'PY'
+          import json, os
+          response = json.load(open('/tmp/sarah-smoke-response.json', encoding='utf-8'))
+          reply = str(response.get('reply') or '').strip()
+          if reply != 'ONLINE_READY':
+              raise SystemExit(f"Unexpected model smoke-test reply: {reply!r}")
+          if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
+              raise SystemExit(f"Provider mismatch: {response.get('provider')!r}")
+          if response.get('model') != os.environ['SARAH_MODEL_ID']:
+              raise SystemExit(f"Model mismatch: {response.get('model')!r}")
+          if response.get('online') is not True:
+              raise SystemExit('Model smoke omitted the required online route receipt.')
+          print('Live Sarah online-mind smoke test passed:', response.get('provider'), response.get('model'))
+          PY
+
+          if [ "$PROTECTED_SEARCH_CONFIGURED" = 'true' ]; then
+            printf '%s' '{"query":"New Zealand official tourism visitor information","max_results":3}' \
+              > /tmp/sarah-search-request.json
+            post_json_cache_busted \
+              search '/search' \
+              /tmp/sarah-search-request.json /tmp/sarah-search-response.json \
+              4 80 20
+            python - <<'PY'
+          import json
+          response = json.load(open('/tmp/sarah-search-response.json', encoding='utf-8'))
+          results = response.get('results') or []
+          if response.get('provider') != 'tavily' or response.get('web_search_applied') is not True:
+              raise SystemExit('Protected current-source route did not return a verified receipt.')
+          if not 1 <= len(results) <= 3:
+              raise SystemExit(f'Protected current-source route returned an invalid result count: {len(results)}.')
+          if any(not str(item.get('url') or '').startswith('https://') for item in results):
+              raise SystemExit('Protected current-source route did not return bounded HTTPS sources.')
+          print('Protected current-source smoke test passed; results:', len(results))
+          PY
+
+            python - <<'PY'
+          import json, os
+          request = {
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model': os.environ['SARAH_MODEL_ID'],
+              'system_prompt': 'Answer briefly using only the supplied current-source context.',
+              'history': [
+                  {'role': 'user', 'content': 'I am considering New Zealand.'},
+                  {'role': 'assistant', 'content': 'Which part interests you most?'},
+              ],
+              'message': 'What should I know right now?',
+              'web_search': True,
+              'search_query': 'New Zealand official tourism visitor information current requirements',
+          }
+          json.dump(request, open('/tmp/sarah-contextual-chat-request.json', 'w', encoding='utf-8'))
+          PY
+            post_json_cache_busted \
+              contextual_chat '/' \
+              /tmp/sarah-contextual-chat-request.json /tmp/sarah-contextual-chat-response.json \
+              4 120 30
+            python - <<'PY'
+          import json, os
+          response = json.load(open('/tmp/sarah-contextual-chat-response.json', encoding='utf-8'))
+          urls = response.get('source_urls') or []
+          if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
+              raise SystemExit('Contextual chat returned the wrong provider receipt.')
+          if response.get('model') != os.environ['SARAH_MODEL_ID']:
+              raise SystemExit('Contextual chat returned the wrong model receipt.')
+          if response.get('online') is not True:
+              raise SystemExit('Contextual chat omitted the required online route receipt.')
+          if not str(response.get('reply') or '').strip():
+              raise SystemExit('Contextual chat returned an empty reply.')
+          if response.get('web_search_requested') is not True or response.get('web_search_applied') is not True:
+              raise SystemExit('Contextual chat did not apply its requested current-source lookup.')
+          if not urls or any(not str(url).startswith('https://') for url in urls):
+              raise SystemExit('Contextual chat did not return bounded HTTPS source receipts.')
+          print('Contextual chat + current-source coupling passed; sources:', len(urls))
+          PY
+          else
+            echo '::error::CURRENT_SOURCE_ACCEPTANCE_BLOCKED: SARAH_TAVILY_API_KEY is absent; no candidate APK will be uploaded. The APK remains fail-closed and contains no provider search key.'
+            exit 1
+          fi
+
+          cat > /tmp/MakeRed.java <<'JAVA'
+          import java.awt.Color;
+          import java.awt.Graphics2D;
+          import java.awt.image.BufferedImage;
+          import java.io.File;
+          import javax.imageio.ImageIO;
+          public final class MakeRed {
+              public static void main(String[] args) throws Exception {
+                  BufferedImage image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_RGB);
+                  Graphics2D graphics = image.createGraphics();
+                  graphics.setColor(new Color(255, 0, 0));
+                  graphics.fillRect(0, 0, 64, 64);
+                  graphics.dispose();
+                  if (!ImageIO.write(image, "jpeg", new File("/tmp/sarah-solid-red.jpg"))) {
+                      throw new IllegalStateException("JPEG encoder unavailable");
+                  }
+              }
+          }
+          JAVA
+          java /tmp/MakeRed.java
+          python - <<'PY'
+          import base64, json, os
+          image = base64.b64encode(open('/tmp/sarah-solid-red.jpg', 'rb').read()).decode('ascii')
+          json.dump({
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model': os.environ['SARAH_MODEL_ID'],
+              'system_prompt': 'Inspect the attached image. Reply with exactly RED and no punctuation if its solid dominant color is red; otherwise reply exactly NOT_RED.',
+              'history': [],
+              'message': 'What is the solid dominant color?',
+              'web_search': False,
+              'image_jpeg_base64': image,
+          }, open('/tmp/sarah-red-vision-request.json', 'w', encoding='utf-8'))
+          PY
+          # This generated-image inference has no external side effect. Keep
+          # the exact RED/model/provider/online gates below, while bounding
+          # both transient Workers AI 5xx responses and route propagation.
+          post_json_cache_busted \
+            vision '/' \
+            /tmp/sarah-red-vision-request.json /tmp/sarah-red-vision-response.json \
+            4 120 30
+          python - <<'PY'
+          import json, os
+          response = json.load(open('/tmp/sarah-red-vision-response.json', encoding='utf-8'))
+          if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
+              raise SystemExit('Vision smoke returned the wrong actual provider receipt.')
+          if response.get('model') != os.environ['SARAH_MODEL_ID']:
+              raise SystemExit('Vision smoke returned the wrong actual model receipt.')
+          if response.get('online') is not True:
+              raise SystemExit('Vision smoke omitted the required online route receipt.')
+          if str(response.get('reply') or '').strip().upper() != 'RED':
+              raise SystemExit('VISION_ACCEPTANCE_BLOCKED: the deployed model did not identify the generated solid-red JPEG exactly.')
+          print('Exact deployed-model solid-red JPEG vision smoke passed.')
+          PY
+
+          python - <<'PY'
+          import json
+          json.dump({
+              'text': 'Sarah voice is ready.',
+              'voice_id': None,
+          }, open('/tmp/sarah-voice-request.json', 'w', encoding='utf-8'))
+          PY
+          voice_status=000
+          voice_deadline=$(( $(date +%s) + 100 ))
+          for attempt in $(seq 1 4); do
+            voice_remaining=$(( voice_deadline - $(date +%s) ))
+            if [ "$voice_remaining" -le 0 ]; then
+              break
+            fi
+            voice_request_timeout=35
+            if [ "$voice_request_timeout" -gt "$voice_remaining" ]; then
+              voice_request_timeout="$voice_remaining"
+            fi
+            voice_connect_timeout=10
+            if [ "$voice_connect_timeout" -gt "$voice_request_timeout" ]; then
+              voice_connect_timeout="$voice_request_timeout"
+            fi
+            voice_url="${BACKEND_URL%/}/voice?deployment=${EXPECTED_DEPLOYMENT_ID}&acceptance_probe=voice&attempt=${attempt}"
+            if ! curl --silent --show-error \
+              --connect-timeout "$voice_connect_timeout" --max-time "$voice_request_timeout" \
+              -D /tmp/sarah-voice-headers.txt \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -H 'Pragma: no-cache' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/sarah-voice-request.json \
+              --output /tmp/sarah-voice-smoke.mp3 \
+              --write-out '%{http_code} %{time_starttransfer} %{time_total}\n' \
+              "$voice_url" > /tmp/sarah-voice-timing.txt; then
+              voice_status=000
+            else
+              read -r voice_status _ < /tmp/sarah-voice-timing.txt
+            fi
+            case "$voice_status" in
+              200)
+                echo "Protected voice route reached the exact Worker on attempt $attempt."
+                break
+                ;;
+              000|404|408|429|5??)
+                ;;
+              *)
+                python -c "import json,re; from pathlib import Path; payload=json.loads(Path('/tmp/sarah-voice-smoke.mp3').read_text(encoding='utf-8', errors='strict')); candidate_error=str(payload.get('error') or ''); safe_error=candidate_error if re.fullmatch(r'[a-z0-9_]{1,80}', candidate_error) else 'unknown'; candidate_status=payload.get('upstream_status'); safe_status=candidate_status if isinstance(candidate_status, int) and 100 <= candidate_status <= 599 else None; print(f'VOICE_FAILURE_CONTRACT error={safe_error} upstream_status={safe_status}')"
+                echo "::error::Protected voice route returned non-propagation HTTP $voice_status."
+                exit 1
+                ;;
+            esac
+            voice_remaining=$(( voice_deadline - $(date +%s) ))
+            if [ "$attempt" -lt 4 ] && [ "$voice_remaining" -gt 0 ]; then
+              voice_sleep=2
+              if [ "$voice_sleep" -gt "$voice_remaining" ]; then
+                voice_sleep="$voice_remaining"
+              fi
+              sleep "$voice_sleep"
+            fi
+          done
+          if [ "$voice_status" != '200' ]; then
+            echo "::error::Protected voice route did not reach HTTP 200 inside its bounded cache-busted window (last HTTP $voice_status)."
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          audio = Path('/tmp/sarah-voice-smoke.mp3')
+          headers = Path('/tmp/sarah-voice-headers.txt').read_text(encoding='utf-8', errors='replace').lower()
+          status, first_byte_seconds, total_seconds = Path('/tmp/sarah-voice-timing.txt').read_text().split()
+          if status != '200':
+              raise SystemExit(f'Protected ElevenLabs smoke response returned HTTP {status}.')
+          first_byte_seconds, total_seconds = float(first_byte_seconds), float(total_seconds)
+          first_byte_ms = round(first_byte_seconds * 1000)
+          response_complete_ms = round(total_seconds * 1000)
+          first_byte_limit = int(os.environ['SARAH_VOICE_FIRST_BYTE_MAX_MS'])
+          response_complete_limit = int(os.environ['SARAH_VOICE_RESPONSE_COMPLETE_MAX_MS'])
+          if first_byte_ms < 0 or response_complete_ms < first_byte_ms:
+              raise SystemExit('Protected ElevenLabs timing output was invalid.')
+          if first_byte_ms > first_byte_limit:
+              raise SystemExit(
+                  f'VOICE_TRANSPORT_LATENCY_BLOCKED: first byte {first_byte_ms} ms exceeded {first_byte_limit} ms.'
+              )
+          if response_complete_ms > response_complete_limit:
+              raise SystemExit(
+                  f'VOICE_TRANSPORT_LATENCY_BLOCKED: response completion {response_complete_ms} ms exceeded {response_complete_limit} ms.'
+              )
+          if audio.stat().st_size < 128:
+              raise SystemExit('Protected ElevenLabs smoke response was too small to be audio.')
+          if 'content-type: audio/' not in headers:
+              raise SystemExit('Protected ElevenLabs smoke response did not identify audio content.')
+          if 'x-sarah-voice-route: elevenlabs-protected' not in headers:
+              raise SystemExit('Protected ElevenLabs smoke response omitted the approved route receipt.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'voice_first_byte_ms={first_byte_ms}\n')
+              output.write(f'voice_response_complete_ms={response_complete_ms}\n')
+              output.write(f'voice_first_byte_limit_ms={first_byte_limit}\n')
+              output.write(f'voice_response_complete_limit_ms={response_complete_limit}\n')
+          print(
+              'Protected ElevenLabs transport-latency gate passed; bytes:', audio.stat().st_size,
+              'first_byte_ms:', first_byte_ms,
+              'response_complete_ms:', response_complete_ms,
+          )
+          PY
+
+      - name: Run bounded live Sarah conversation through the production ModelClient
+        id: live_conversation
+        shell: bash
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
+          SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
+        run: |
+          set -euo pipefail
+          runtime_root="$(mktemp -d)"
+          evidence_root="$(mktemp -d)"
+          cleanup() {
+            rm -rf "$runtime_root" "$evidence_root"
+          }
+          trap cleanup EXIT
+          modelclient_backend_url="${BACKEND_URL%/}/?acceptance_probe=production_modelclient&run_id=${GITHUB_RUN_ID}&run_attempt=${GITHUB_RUN_ATTEMPT}"
+          export MODELCLIENT_BACKEND_URL="$modelclient_backend_url"
+          python - <<'PY'
+          import json
+          import os
+          json.dump({
+              'provider': os.environ['SARAH_MODEL_PROVIDER'],
+              'model': os.environ['SARAH_MODEL_ID'],
+              'system_prompt': 'Reply with exactly ONLINE_READY and no punctuation.',
+              'history': [],
+              'message': 'Reply ONLINE_READY.',
+              'web_search': False,
+          }, open('/tmp/sarah-modelclient-warm-request.json', 'w', encoding='utf-8'))
+          PY
+          modelclient_warm_status=000
+          for attempt in $(seq 1 4); do
+            modelclient_warm_nonce="$(python -c 'import secrets; print(secrets.token_urlsafe(12))')"
+            modelclient_warm_url="${MODELCLIENT_BACKEND_URL}&warm_attempt=${attempt}&warm_nonce=${modelclient_warm_nonce}"
+            if modelclient_warm_status="$(curl --silent --show-error \
+              --connect-timeout 5 --max-time 35 \
+              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
+              -H 'Cache-Control: no-cache' \
+              -H 'Pragma: no-cache' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/sarah-modelclient-warm-request.json \
+              --output /tmp/sarah-modelclient-warm-response.json \
+              --write-out '%{http_code}' \
+              "$modelclient_warm_url")"; then
+              :
+            else
+              modelclient_warm_status=000
+            fi
+            case "$modelclient_warm_status" in
+              200) break ;;
+              000|404|408|429|5??) ;;
+              *)
+                echo "::error::Production ModelClient warmup returned non-propagation HTTP $modelclient_warm_status."
+                exit 1
+                ;;
+            esac
+            if [ "$attempt" -lt 4 ]; then sleep 2; fi
+          done
+          if [ "$modelclient_warm_status" != '200' ]; then
+            echo "::error::The exact production ModelClient URL did not warm inside the bounded window (last HTTP $modelclient_warm_status)."
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          response = json.load(open('/tmp/sarah-modelclient-warm-response.json', encoding='utf-8'))
+          if str(response.get('reply') or '').strip() != 'ONLINE_READY':
+              raise SystemExit('Production ModelClient warmup returned the wrong reply.')
+          if response.get('provider') != os.environ['SARAH_MODEL_PROVIDER']:
+              raise SystemExit('Production ModelClient warmup returned the wrong provider.')
+          if response.get('model') != os.environ['SARAH_MODEL_ID'] or response.get('online') is not True:
+              raise SystemExit('Production ModelClient warmup omitted the exact model/online receipt.')
+          print('Exact production ModelClient URL is warm and identity-bound.')
+          PY
+          python -m pip install --disable-pip-version-check --no-input \
+            'cryptography>=43,<47' 'Pillow>=10,<13' 'requests>=2.32,<3'
+          SARAH_RUNTIME_ROOT="$runtime_root" python - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, str(Path('windows-companion').resolve()))
+          from sarah_core import save_runtime_config
+
+          save_runtime_config({
+              'SARAH_MODEL_BACKEND_URL': os.environ['MODELCLIENT_BACKEND_URL'],
+              'SARAH_MODEL_BACKEND_TOKEN': os.environ['SARAH_BACKEND_TOKEN'],
+              'SARAH_MODEL_PROVIDER': os.environ['SARAH_MODEL_PROVIDER'],
+              'SARAH_MODEL_ID': os.environ['SARAH_MODEL_ID'],
+          }, Path(os.environ['SARAH_RUNTIME_ROOT']))
+          PY
+          python -B windows-companion/sarah_r3_acceptance.py \
+            --working-root "$runtime_root/work" \
+            --evidence-root "$evidence_root" \
+            --live \
+            --live-config-root "$runtime_root" \
+            --confirm-live I_AUTHORIZE_BOUNDED_SARAH_LIVE_ACCEPTANCE \
+            --max-turns 10
+          SARAH_EVIDENCE_ROOT="$evidence_root" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          roots = sorted(Path(os.environ['SARAH_EVIDENCE_ROOT']).glob('attempt_*'))
+          if len(roots) != 1:
+              raise SystemExit(f'Expected exactly one ephemeral live attempt, found {len(roots)}.')
+          payload = json.loads((roots[0] / 'turns.json').read_text(encoding='utf-8'))
+          if payload.get('mode') != 'LIVE_CLOUDFLARE_OWNER_AUTHORIZED':
+              raise SystemExit('Conversation battery did not use the explicit live route.')
+          turns = payload.get('turns') or []
+          if payload.get('objective_pass') is not True:
+              print(
+                  '::group::Redacted bounded-live objective failures '
+                  f"({payload.get('objective_passed_checks')}/{payload.get('objective_total_checks')} checks passed)"
+              )
+              for turn in turns:
+                  failed = [
+                      check for check in (turn.get('objective_checks') or [])
+                      if check.get('passed') is not True
+                  ]
+                  if not failed:
+                      continue
+                  print(
+                      'turn=', turn.get('turn_id'),
+                      'route=', turn.get('route'),
+                      'wall_latency_ms=', turn.get('wall_latency_ms'),
+                      'raw_reply_sha256=', turn.get('raw_model_reply_sha256'),
+                      'final_spoken_sha256=', turn.get('final_spoken_sha256'),
+                  )
+                  transport_facts = [
+                      {
+                          'http_status': attempt.get('http_status'),
+                          'transport_error_class': attempt.get('transport_error_class'),
+                          'backend_error_code': attempt.get('backend_error_code'),
+                      }
+                      for attempt in (turn.get('connected_attempts') or [])
+                  ]
+                  print('  transport_attempts=', json.dumps(transport_facts, sort_keys=True))
+                  for check in failed:
+                      # Check details contain only static gate descriptions,
+                      # routes, counts, or timings. Never print prompts, replies,
+                      # tokens, endpoint URLs, or owner data into public CI logs.
+                      detail = str(check.get('detail') or '').replace('\n', ' ')[:500]
+                      print('  failed_check=', check.get('name'), 'detail=', detail)
+              print('::endgroup::')
+          if payload.get('objective_pass') is not True or payload.get('turn_count') != 10:
+              raise SystemExit(
+                  'Bounded live conversation battery failed an objective gate; '
+                  'see the redacted per-turn gate summary above.'
+              )
+          by_id = {turn.get('turn_id'): turn for turn in turns}
+          expected_transition = {
+              'natural_conversation': 'ONLINE_WORKERS_AI',
+              'flight_calm': 'LOCAL_TOOL_RESULT',
+              'offline_conversation': 'OFFLINE_LOCAL',
+              'connected_failure_fallback': 'ONLINE_FAILED_FELL_BACK_OFFLINE',
+              'automatic_online_return': 'ONLINE_WORKERS_AI',
+          }
+          actual_transition = {
+              name: (by_id.get(name) or {}).get('route')
+              for name in expected_transition
+          }
+          if actual_transition != expected_transition:
+              raise SystemExit(
+                  f'Live online/offline/restored transition mismatch: {actual_transition}'
+              )
+          online_turns = [turn for turn in turns if turn.get('route') == 'ONLINE_WORKERS_AI']
+          if len(online_turns) < 5:
+              raise SystemExit('Live battery did not complete enough exact Workers AI turns.')
+          latencies = sorted(int(turn.get('wall_latency_ms') or 0) for turn in online_turns)
+          if any(value <= 0 or value > 30_000 for value in latencies):
+              raise SystemExit(f'Live text latency escaped the bounded acceptance window: {latencies}')
+          max_turn = max(online_turns, key=lambda turn: int(turn.get('wall_latency_ms') or 0))
+          max_turn_id = str(max_turn.get('turn_id') or '')
+          if not max_turn_id or any(not (char.islower() or char.isdigit() or char == '_') for char in max_turn_id):
+              raise SystemExit('Maximum-latency turn ID is missing or not safe for artifact metadata.')
+          max_turn_route = str(max_turn.get('route') or '')
+          if max_turn_route != 'ONLINE_WORKERS_AI':
+              raise SystemExit('Maximum-latency turn escaped the exact Workers AI route.')
+          max_turn_receipt = max_turn.get('receipt') or {}
+          max_turn_web_requested = (
+              str(max_turn_receipt.get('web_search_requested') or '').lower() == 'true'
+          )
+          middle = len(latencies) // 2
+          median = latencies[middle] if len(latencies) % 2 else (latencies[middle - 1] + latencies[middle]) // 2
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('objective=passed_10_of_10_with_online_offline_restore\n')
+              output.write(f'text_median_ms={median}\n')
+              output.write(f'text_max_ms={max(latencies)}\n')
+              output.write(f'text_max_turn_id={max_turn_id}\n')
+              output.write(f'text_max_route={max_turn_route}\n')
+              output.write(f'text_max_web_search_requested={str(max_turn_web_requested).lower()}\n')
+          print(
+              'Production ModelClient live 10-turn battery passed; transition:',
+              actual_transition,
+              'online text latencies ms:', latencies,
+          )
+          PY
+
+      - name: Preserve Sarah private-test Android signing continuity
+        id: signing_cache
+        if: env.SARAH_ANDROID_DISTRIBUTION != 'event_side_by_side'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-debug-signing-v1
+
+      - name: Fail closed unless the preserved R1 signing key was restored
+        if: env.SARAH_ANDROID_DISTRIBUTION != 'event_side_by_side' && steps.signing_cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          echo '::error::R1 signing cache was not an exact hit. R3 is migration-blocked; do not uninstall R1 or upload this APK.'
+          exit 1
+
+      - name: Preserve the distinct side-by-side event signing identity
+        id: event_signing_cache
+        if: env.SARAH_ANDROID_DISTRIBUTION == 'event_side_by_side'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sarah-morgan-event-signing-v1
+
+      - name: Create the event signer only on first use
+        if: env.SARAH_ANDROID_DISTRIBUTION == 'event_side_by_side' && steps.event_signing_cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          test ! -e "$HOME/.android/debug.keystore"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 3072 -validity 10000 \
+            -dname 'CN=Sarah Morgan Event Candidate,O=Kira Labs Event Build,C=US'
+          test -s "$HOME/.android/debug.keystore"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build the side-by-side online/offline event candidate APK
+        env:
+          SARAH_OPENAI_API_KEY: ''
+          SARAH_ELEVENLABS_API_KEY: ''
+          SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
+          SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
+          SARAH_LIVE_CONVERSATION_OBJECTIVE: ${{ steps.live_conversation.outputs.objective }}
+          SARAH_LIVE_TEXT_MEDIAN_MS: ${{ steps.live_conversation.outputs.text_median_ms }}
+          SARAH_LIVE_TEXT_MAX_MS: ${{ steps.live_conversation.outputs.text_max_ms }}
+          SARAH_LIVE_TEXT_MAX_TURN_ID: ${{ steps.live_conversation.outputs.text_max_turn_id }}
+          SARAH_LIVE_TEXT_MAX_ROUTE: ${{ steps.live_conversation.outputs.text_max_route }}
+          SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED: ${{ steps.live_conversation.outputs.text_max_web_search_requested }}
+          SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
+          SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
+          EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
+          EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}
+          EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}
+          SARAH_MODEL_BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          SARAH_EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+          SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
+          SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
+          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
+          SARAH_ELEVENLABS_BACKEND_TOKEN: ''
+          SARAH_TAVILY_API_KEY: ''
+          SARAH_STAY22_BACKEND_URL: ''
+          SARAH_STAY22_BACKEND_TOKEN: ''
+          SARAH_TRAVEL_COMMERCE_URL: ''
+          SARAH_TRAVEL_COMMERCE_TOKEN: ''
+          SARAH_VOICE_CONCIERGE_URL: ''
+          SARAH_VOICE_CONCIERGE_TOKEN: ''
+        run: |
+          set -euo pipefail
+          export SARAH_EVENT_BACKEND_TOKEN="$SARAH_EVENT_DERIVED_TOKEN"
+          export SARAH_ELEVENLABS_BACKEND_URL="${SARAH_MODEL_BACKEND_URL%/}/voice"
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleEventCandidate --stacktrace
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          metadata_path = Path(
+              'Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/eventCandidate/output-metadata.json'
+          )
+          metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+          elements = metadata.get('elements') or []
+          if len(elements) != 1:
+              raise SystemExit(f'Expected exactly one debug APK metadata element, found {len(elements)}.')
+          built = elements[0]
+          actual_code = int(built.get('versionCode', -1))
+          actual_name = str(built.get('versionName') or '')
+          expected_code = int(os.environ['SARAH_R3_ANDROID_VERSION_CODE'])
+          expected_name = os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate'
+          if actual_code != expected_code or actual_name != expected_name:
+              raise SystemExit(
+                  'Built APK version identity mismatch: '
+                  f'expected {expected_code}/{expected_name}, found {actual_code}/{actual_name}.'
+              )
+          if actual_code != 27 or actual_name != '2.5-r3-owner-repair-event-candidate':
+              raise SystemExit(f'Built APK is not the required R3 owner-repair version: {actual_code}/{actual_name}.')
+          print('Built R3 APK version identity:', actual_code, actual_name)
+          PY
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/eventCandidate/app-eventCandidate.apk \
+            Sarah-Morgan-Event-Candidate-72H.apk
+          test -s Sarah-Morgan-Event-Candidate-72H.apk
+          unzip -t Sarah-Morgan-Event-Candidate-72H.apk >/dev/null
+
+          expected_signer=$(printf '%s' "${SARAH_R1_SIGNING_CERT_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
+          r1_apk_sha=$(printf '%s' "${SARAH_R1_APK_SHA256:-}" | tr -d ':[:space:]' | tr 'A-F' 'a-f')
+          if ! [[ "$expected_signer" =~ ^[a-f0-9]{64}$ ]]; then
+            echo '::error::SARAH_R1_SIGNING_CERT_SHA256 must contain the exact installed R1 signer SHA-256.'
+            exit 1
+          fi
+          if ! [[ "$r1_apk_sha" =~ ^[a-f0-9]{64}$ ]]; then
+            echo '::error::SARAH_R1_APK_SHA256 must preserve the exact owner-installed R1 APK checkpoint.'
+            exit 1
+          fi
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          if [ -z "$apksigner" ]; then
+            echo '::error::Android apksigner was not found.'
+            exit 1
+          fi
+          signer_output=$($apksigner verify --print-certs Sarah-Morgan-Event-Candidate-72H.apk 2>&1)
+          actual_signer=$(printf '%s\n' "$signer_output" | python -c 'import re,sys; s=sys.stdin.read(); m=re.search(r"SHA-?256\s+digest:\s*([0-9A-Fa-f:]{64,95})",s,re.I); print(m.group(1).replace(":","").lower() if m else "")')
+          if ! [[ "$actual_signer" =~ ^[a-f0-9]{64}$ ]]; then
+            printf '%s\n' "$signer_output"
+            echo '::error::Could not extract the built R3 signer SHA-256.'
+            exit 1
+          fi
+          if [ "$actual_signer" = "$expected_signer" ]; then
+            echo '::error::The side-by-side event APK unexpectedly reused the installed R1 signer.'
+            exit 1
+          fi
+          echo "SARAH_EVENT_SIGNER_SHA256=$actual_signer" >> "$GITHUB_ENV"
+          echo "SARAH_R1_APK_CHECKPOINT_SHA256=$r1_apk_sha" >> "$GITHUB_ENV"
+
+          build_config=$(find Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/generated \
+            -type f -path '*/eventCandidate/*' -name BuildConfig.java -print | head -n 1)
+          if [ -z "$build_config" ]; then
+            echo '::error::Generated Android BuildConfig.java was not found for credential inspection.'
+            exit 1
+          fi
+          python - "$build_config" <<'PY'
+          import re, sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text(encoding='utf-8')
+          for field in (
+              'SARAH_OPENAI_API_KEY',
+              'SARAH_TRAVEL_COMMERCE_TOKEN',
+              'SARAH_VOICE_CONCIERGE_TOKEN',
+              'SARAH_ELEVENLABS_API_KEY',
+              'SARAH_ELEVENLABS_BACKEND_TOKEN',
+              'SARAH_TAVILY_API_KEY',
+              'SARAH_STAY22_BACKEND_TOKEN',
+          ):
+              match = re.search(rf'public static final String {field} = "([^"]*)";', text)
+              if match is None or match.group(1):
+                  raise SystemExit(f'Provider credential field {field} is not explicitly empty in generated BuildConfig.')
+          token = re.search(r'public static final String SARAH_MODEL_BACKEND_TOKEN = "([^"]*)";', text)
+          if token is None or not re.fullmatch(r'[A-Za-z0-9_-]{32,256}', token.group(1)):
+              raise SystemExit('Event app-to-Worker bearer is absent or malformed.')
+          gmail = re.search(r'public static final boolean SARAH_GMAIL_AVAILABLE = (true|false);', text)
+          if gmail is None or gmail.group(1) != 'false':
+              raise SystemExit('Event Gmail capability must be false.')
+          print('Provider credential fields are empty; one revocable app bearer is present; Gmail is off.')
+          PY
+          rm -rf build/r3-apk-secret-scan
+          mkdir -p build/r3-apk-secret-scan
+          unzip -q Sarah-Morgan-Event-Candidate-72H.apk -d build/r3-apk-secret-scan
+          if grep -aERq '(sk[_-][A-Za-z0-9_-]{20,}|xi-[A-Za-z0-9_-]{20,}|tvly-[A-Za-z0-9_-]{20,}|CLOUDFLARE_API_TOKEN=[A-Za-z0-9_-]+)' \
+              "$build_config" build/r3-apk-secret-scan; then
+            echo '::error::A provider credential-like value was found in generated BuildConfig or decompressed APK/dex contents.'
+            exit 1
+          fi
+          sha256sum Sarah-Morgan-Event-Candidate-72H.apk \
+            | tee Sarah-Morgan-Event-Candidate-72H.sha256
+
+      - name: Record exactly what the owner-acceptance candidate contains
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.backend_url }}
+          WORKER_NAME: ${{ env.SARAH_CANDIDATE_WORKER_NAME }}
+          DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
+          WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
+          WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
+          SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
+          SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
+          SARAH_LIVE_CONVERSATION_OBJECTIVE: ${{ steps.live_conversation.outputs.objective }}
+          SARAH_LIVE_TEXT_MEDIAN_MS: ${{ steps.live_conversation.outputs.text_median_ms }}
+          SARAH_LIVE_TEXT_MAX_MS: ${{ steps.live_conversation.outputs.text_max_ms }}
+          SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
+          SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
+          EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
+          EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}
+          EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          manifest = {
+              'product': 'Sarah Morgan Travel OS',
+              'repair_revision': 'R3_OWNER_REPAIR',
+              'distribution_label': '72-HOUR EVENT CANDIDATE',
+              'distribution_window_hours': 72,
+              'artifact_status': '72_HOUR_EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE',
+              'artifact_filename': 'Sarah-Morgan-Event-Candidate-72H.apk',
+              'version': os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate',
+              'version_code': int(os.environ['SARAH_R3_ANDROID_VERSION_CODE']),
+              'source_version_name': os.environ['SARAH_R3_ANDROID_VERSION_NAME'],
+              'built_variant_version_name': os.environ['SARAH_R3_ANDROID_VERSION_NAME'] + '-event-candidate',
+              'source_version_target': os.environ['SARAH_R3_SOURCE_TARGET'],
+              'source_commit': os.environ['GITHUB_SHA'],
+              'provider_requested_by_apk': os.environ['SARAH_MODEL_PROVIDER'],
+              'model_requested_by_apk': os.environ['SARAH_MODEL_ID'],
+              'backend_url': os.environ['BACKEND_URL'],
+              'candidate_worker_deployments': [{
+                  'worker_name': os.environ['WORKER_NAME'],
+                  'worker_url': os.environ['BACKEND_URL'],
+                  'deployment_id': os.environ['DEPLOYMENT_ID'],
+                  'source_sha256': os.environ['WORKER_SOURCE_SHA256'],
+                  'config_sha256': os.environ['WORKER_CONFIG_SHA256'],
+                  'status': 'active_until_server_enforced_expiry_or_owner_retirement',
+                  'event_auth_expires_utc': os.environ['EVENT_AUTH_EXPIRES_UTC'],
+                  'retirement_command': (
+                      'cd services/sarah-model-proxy && npx wrangler delete '
+                      '--config wrangler.jsonc --name '
+                      + os.environ['WORKER_NAME'] + ' --force'
+                  ),
+              }],
+              'worker_retirement_policy': (
+                  'The Worker denies protected routes at event_auth_expires_utc. Retire the exact '
+                  'worker_name sooner if its artifact is rejected, shared unexpectedly, or superseded. '
+                  'Deleting the exact Worker removes the endpoint; changing the repository derivation key alone does not.'
+              ),
+              'provider_key_embedded': False,
+              'elevenlabs_key_embedded': False,
+              'protected_backend_access_bundled': True,
+              'event_app_token_kind': 'hmac_sha256_artifact_scoped_bootstrap_v1',
+              'event_app_token_sha256': os.environ['EVENT_AUTH_TOKEN_SHA256'],
+              'event_auth_context_sha256': os.environ['EVENT_AUTH_CONTEXT_SHA256'],
+              'event_auth_expires_utc': os.environ['EVENT_AUTH_EXPIRES_UTC'],
+              'event_auth_expiry_enforced_by_worker': True,
+              'repository_derivation_key_embedded': False,
+              'apk_and_exe_share_exact_artifact_scoped_token': True,
+              'extractable_token_blast_radius': 'this exact unique Worker until enforced expiry or earlier Worker retirement',
+              'owner_runtime_activation_required': False,
+              'live_online_smoke_test': 'passed',
+              'live_production_modelclient_conversation': os.environ['SARAH_LIVE_CONVERSATION_OBJECTIVE'],
+              'live_text_median_ms': int(os.environ['SARAH_LIVE_TEXT_MEDIAN_MS']),
+              'live_text_max_ms': int(os.environ['SARAH_LIVE_TEXT_MAX_MS']),
+              'live_text_max_turn_id': os.environ['SARAH_LIVE_TEXT_MAX_TURN_ID'],
+              'live_text_max_route': os.environ['SARAH_LIVE_TEXT_MAX_ROUTE'],
+              'live_text_max_web_search_requested': (
+                  os.environ['SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED'].lower() == 'true'
+              ),
+              'live_vision_solid_red_jpeg_smoke_test': 'passed_exact_red',
+              'live_protected_elevenlabs_smoke_test': 'passed_transport_latency_gate',
+              'live_protected_elevenlabs_first_byte_ms': int(os.environ['SARAH_LIVE_VOICE_FIRST_BYTE_MS']),
+              'live_protected_elevenlabs_response_complete_ms': int(os.environ['SARAH_LIVE_VOICE_COMPLETE_MS']),
+              'live_protected_elevenlabs_first_byte_limit_ms': 10000,
+              'live_protected_elevenlabs_response_complete_limit_ms': 30000,
+              'contextual_chat_current_source_coupling': 'passed',
+              'offline_fallback': 'included',
+              'physical_galaxy_a17_acceptance': 'pending',
+              'full_16_gate_owner_acceptance': 'pending',
+              'populated_profile_migration_device_acceptance': 'pending',
+              'android_application_id': 'com.kiraworld.sarahtravel.eventcandidate',
+              'android_upgrade_mode': 'side_by_side_event_candidate',
+              'uninstall_r1_permitted': False,
+              'r1_apk_checkpoint_sha256': os.environ['SARAH_R1_APK_CHECKPOINT_SHA256'],
+              'event_signer_sha256': os.environ['SARAH_EVENT_SIGNER_SHA256'],
+              'signing_continuity': 'intentionally_distinct_event_identity',
+              'r1_private_data_migration_gate': 'not_applicable_side_by_side_r1_untouched',
+              'gmail_available': False,
+              'android_voice_transport': 'media3_progressive_one_shot_post',
+              'protected_voice_route_receipt_required': True,
+              'voice_timing_fields': [
+                  'requested_at',
+                  'synthesis_start',
+                  'first_network_byte',
+                  'player_ready',
+                  'response_complete',
+                  'playback_start',
+                  'playback_end',
+              ],
+              'first_audio_streaming_latency_acceptance': 'pending_physical_galaxy_a17_measurement',
+              'built_at_utc': datetime.now(timezone.utc).isoformat(),
+              'note': 'This is a source/build/smoke-tested candidate, not a judge-ready or owner-accepted APK. Its extractable bootstrap capability is shared by the APK and EXE, limited to this unique Worker, and rejected after the recorded expiry.',
+          }
+          with open('Sarah-Morgan-Event-Candidate-72H-manifest.json', 'w', encoding='utf-8') as handle:
+              json.dump(manifest, handle, indent=2)
+          PY
+
+      - name: Upload the candidate APK with explicit pending physical acceptance
+        id: upload_candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-Event-Candidate-72H-Android-APK
+          path: |
+            Sarah-Morgan-Event-Candidate-72H.apk
+            Sarah-Morgan-Event-Candidate-72H.sha256
+            Sarah-Morgan-Event-Candidate-72H-manifest.json
+            README_EVENT_CANDIDATE.md
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Retire only this failed run's unpreserved candidate Worker
+        if: ${{ always() && steps.deploy.outcome == 'success' && steps.upload_candidate.outcome != 'success' }}
+        working-directory: services/sarah-model-proxy
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          echo "No candidate artifact was preserved; retiring only $SARAH_CANDIDATE_WORKER_NAME from this failed run."
+          npx wrangler delete \
+            --config wrangler.jsonc \
+            --name "$SARAH_CANDIDATE_WORKER_NAME" \
+            --force
+
+  build-tested-windows-event-installer:
+    needs: deploy-smoke-test-and-build
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out the exact Sarah source
+        uses: actions/checkout@v5
+
+      - name: Require and record the R3 Windows source identity
+        id: version_truth
+        shell: pwsh
+        run: |
+          $sourceTarget = (Get-Content -LiteralPath 'BUILD_VERSION.txt' -Raw).Trim()
+          if ($sourceTarget -notlike '*2.5-r3-owner-repair*') {
+            throw "BUILD_VERSION.txt does not identify the R3 owner-repair source: $sourceTarget"
+          }
+          $installerSource = Get-Content -LiteralPath 'windows-companion/sarah_installer.py' -Raw
+          $versionMatch = [regex]::Match($installerSource, '(?m)^APP_VERSION\s*=\s*"([^"]+)"\s*$')
+          if (!$versionMatch.Success) {
+            throw 'Could not determine APP_VERSION from sarah_installer.py.'
+          }
+          $installerVersion = $versionMatch.Groups[1].Value
+          "source_target=$sourceTarget" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+          "installer_version=$installerVersion" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+          Write-Host "R3 Windows source target: $sourceTarget"
+          Write-Host "R3 candidate installer version: $installerVersion"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: windows-companion/requirements.txt
+
+      - name: Test Windows source without event credentials
+        shell: pwsh
+        working-directory: windows-companion
+        env:
+          SARAH_MODEL_BACKEND_URL: ''
+          SARAH_MODEL_BACKEND_TOKEN: ''
+          SARAH_ELEVENLABS_API_KEY: ''
+          SARAH_ELEVENLABS_BACKEND_URL: ''
+          SARAH_ELEVENLABS_BACKEND_TOKEN: ''
+          SARAH_TAVILY_API_KEY: ''
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows dependencies failed to install.' }
+          python -m pytest -q tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source tests failed.' }
+          python -m compileall -q .
+          if ($LASTEXITCODE -ne 0) { throw 'Windows source compilation failed.' }
+          python sarah_event_ready.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Source self-test failed.' }
+
+      - name: Derive and mask the same artifact-scoped Windows capability
+        shell: pwsh
+        env:
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
+          SARAH_EVENT_EXPECTED_TOKEN_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_token_sha256 }}
+          SARAH_EVENT_EXPECTED_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
+          SARAH_CANDIDATE_WORKER_NAME: ${{ needs.deploy-smoke-test-and-build.outputs.candidate_worker_name }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64
+          import hashlib
+          import hmac
+          import os
+          import re
+
+          key = os.environ['SARAH_EVENT_DERIVATION_KEY'].encode('utf-8')
+          if not re.fullmatch(rb'[A-Za-z0-9_-]{32,256}', key):
+              raise SystemExit('The repository app token cannot be used as the event derivation key.')
+          worker = os.environ['SARAH_CANDIDATE_WORKER_NAME']
+          expected_worker = f"sarah-r3-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
+          if worker != expected_worker:
+              raise SystemExit('Windows candidate Worker does not match the exact run context.')
+          expires_utc = os.environ['SARAH_EVENT_AUTH_EXPIRES_UTC']
+          context = '\n'.join((
+              'domain=sarah-event-artifact-worker-auth-v1',
+              f"repository={os.environ['GITHUB_REPOSITORY']}",
+              f"run_id={os.environ['GITHUB_RUN_ID']}",
+              f"run_attempt={os.environ['GITHUB_RUN_ATTEMPT']}",
+              f"sha={os.environ['GITHUB_SHA']}",
+              f'worker={worker}',
+              f'expires_utc={expires_utc}',
+          ))
+          digest = hmac.new(key, context.encode('utf-8'), hashlib.sha256).digest()
+          token = 'sevt1_' + base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+          token_sha256 = hashlib.sha256(token.encode('ascii')).hexdigest()
+          context_sha256 = hashlib.sha256(context.encode('utf-8')).hexdigest()
+          if not hmac.compare_digest(token_sha256, os.environ['SARAH_EVENT_EXPECTED_TOKEN_SHA256']):
+              raise SystemExit('Windows derivation did not reproduce the exact Android/Worker token fingerprint.')
+          if not hmac.compare_digest(context_sha256, os.environ['SARAH_EVENT_EXPECTED_CONTEXT_SHA256']):
+              raise SystemExit('Windows derivation context did not reproduce the exact Android/Worker context fingerprint.')
+          print(f'::add-mask::{token}')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'SARAH_EVENT_DERIVED_TOKEN={token}\n')
+              handle.write(f'SARAH_MODEL_BACKEND_TOKEN={token}\n')
+          print('Re-derived the masked event capability for the exact shared APK/EXE Worker scope.')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows event capability derivation failed.' }
+
+      - name: Generate the event-only config and build the Windows installer
+        shell: pwsh
+        working-directory: windows-companion
+        env:
+          SARAH_MODEL_BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
+          SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
+          SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
+          SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
+          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_EVENT_AUTH_EXPIRES_UTC', 'SARAH_ELEVENLABS_VOICE_ID')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required event build setting is absent: $name"
+            }
+          }
+          if ($env:SARAH_MODEL_BACKEND_TOKEN -notmatch '^[A-Za-z0-9_-]{32,256}$') {
+            throw 'The revocable event app-to-Worker bearer is malformed.'
+          }
+          $eventConfig = [ordered]@{
+            SARAH_MODEL_BACKEND_URL = $env:SARAH_MODEL_BACKEND_URL
+            SARAH_MODEL_BACKEND_TOKEN = $env:SARAH_MODEL_BACKEND_TOKEN
+            SARAH_MODEL_PROVIDER = $env:SARAH_MODEL_PROVIDER
+            SARAH_MODEL_ID = $env:SARAH_MODEL_ID
+            SARAH_EVENT_AUTH_EXPIRES_UTC = $env:SARAH_EVENT_AUTH_EXPIRES_UTC
+            SARAH_ELEVENLABS_VOICE_ID = $env:SARAH_ELEVENLABS_VOICE_ID
+            SARAH_ELEVENLABS_MODEL_ID = $env:SARAH_ELEVENLABS_MODEL_ID
+            SARAH_EVENT_GMAIL_AVAILABLE = 'false'
+          }
+          $secretKeys = @($eventConfig.Keys | Where-Object { $_ -match '(TOKEN|API_KEY|PASSWORD|SECRET)' })
+          if ($secretKeys.Count -ne 1 -or $secretKeys[0] -ne 'SARAH_MODEL_BACKEND_TOKEN') {
+            throw 'The Windows event config may contain only the revocable app-to-Worker bearer.'
+          }
+          New-Item -ItemType Directory -Force -Path 'build' | Out-Null
+          $eventConfigPath = (Resolve-Path 'build').Path + '\sarah-event-config.json'
+          $eventConfig | ConvertTo-Json | Set-Content -LiteralPath $eventConfigPath -Encoding utf8NoBOM
+          try {
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
+            if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
+          }
+          finally {
+            Remove-Item -LiteralPath $eventConfigPath -Force -ErrorAction SilentlyContinue
+          }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorgan-Event-Candidate-72H-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
+          if (!(Test-Path 'dist\SarahMorgan-Event-Candidate-72H-Setup.exe')) { throw 'Installer was not created.' }
+
+      - name: Self-test the exact event installer
+        shell: pwsh
+        working-directory: windows-companion
+        run: |
+          $process = Start-Process -FilePath '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer self-test returned $($process.ExitCode)." }
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe'
+          if ($file.Length -lt 1000000) { throw 'Installer is unexpectedly small.' }
+          $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'Not a PE executable.' }
+
+      - name: Record the Windows event artifact without credentials
+        shell: pwsh
+        working-directory: windows-companion
+        env:
+          BACKEND_URL: ${{ needs.deploy-smoke-test-and-build.outputs.backend_url }}
+          SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
+          SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
+          EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
+          EVENT_AUTH_TOKEN_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_token_sha256 }}
+          EVENT_AUTH_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
+          CANDIDATE_WORKER_NAME: ${{ needs.deploy-smoke-test-and-build.outputs.candidate_worker_name }}
+        run: |
+          $file = Get-Item '.\dist\SarahMorgan-Event-Candidate-72H-Setup.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-72H-Setup.sha256' -Encoding ascii
+          $manifest = [ordered]@{
+            product = 'Sarah Morgan Travel OS'
+            repair_revision = 'R3_OWNER_REPAIR'
+            distribution_label = '72-HOUR EVENT CANDIDATE'
+            distribution_window_hours = 72
+            artifact_status = '72_HOUR_EVENT_CANDIDATE_PENDING_PHYSICAL_ACCEPTANCE'
+            version = '${{ steps.version_truth.outputs.installer_version }}'
+            source_version_target = '${{ steps.version_truth.outputs.source_target }}'
+            compatibility_installer_version = '${{ steps.version_truth.outputs.installer_version }}'
+            installer_filename = $file.Name
+            source_commit = $env:GITHUB_SHA
+            provider_requested = $env:SARAH_MODEL_PROVIDER
+            model_requested = $env:SARAH_MODEL_ID
+            backend_url = $env:BACKEND_URL
+            provider_key_embedded = $false
+            elevenlabs_key_embedded = $false
+            event_app_token_bundled = $true
+            event_app_token_kind = 'hmac_sha256_artifact_scoped_bootstrap_v1'
+            event_app_token_sha256 = $env:EVENT_AUTH_TOKEN_SHA256
+            event_auth_context_sha256 = $env:EVENT_AUTH_CONTEXT_SHA256
+            event_auth_expires_utc = $env:EVENT_AUTH_EXPIRES_UTC
+            event_auth_expiry_enforced_by_worker = $true
+            repository_derivation_key_embedded = $false
+            apk_and_exe_share_exact_artifact_scoped_token = $true
+            extractable_token_blast_radius = 'this exact unique Worker until enforced expiry or earlier Worker retirement'
+            candidate_worker_name = $env:CANDIDATE_WORKER_NAME
+            worker_retirement_command = "cd services/sarah-model-proxy && npx wrangler delete --config wrangler.jsonc --name $($env:CANDIDATE_WORKER_NAME) --force"
+            gmail_desktop_oauth_public_client_bundled = $false
+            gmail_available = $false
+            gmail_account_connected = $false
+            gmail_owner_consent_required = $true
+            owner_runtime_activation_required = $false
+            live_online_smoke_test = 'passed-before-windows-build'
+            exact_installer_self_test = 'passed'
+            physical_8gb_laptop_acceptance = 'pending'
+            full_owner_workflow_acceptance = 'pending'
+            repository_derivation_key_rotation_required_after_event = $false
+            exact_worker_retirement_required_if_artifact_is_exposed = $true
+          }
+          $manifest | ConvertTo-Json | Set-Content -LiteralPath '.\dist\SarahMorgan-Event-Candidate-72H-Setup-manifest.json' -Encoding utf8NoBOM
+
+      - name: Upload the Windows owner-acceptance candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-Event-Candidate-72H-Windows-Installer
+          path: |
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup.exe
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup.sha256
+            windows-companion/dist/SarahMorgan-Event-Candidate-72H-Setup-manifest.json
+            README_EVENT_CANDIDATE.md
+            docs/SARAH_WINDOWS_ARTIFACT_LINEAGE_20260808.md
+          if-no-files-found: error
+          retention-days: 14

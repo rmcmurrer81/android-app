@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -36,7 +37,9 @@ public final class JourneyIntentParser {
             this.origin = clean(origin);
             this.destination = clean(destination);
             this.eventName = clean(eventName);
-            this.modes = modes == null ? List.of() : List.copyOf(modes);
+            this.modes = modes == null
+                    ? Collections.emptyList()
+                    : Collections.unmodifiableList(new ArrayList<>(modes));
             this.monitorRequested = monitorRequested;
             this.crossCountry = crossCountry;
         }
@@ -66,7 +69,7 @@ public final class JourneyIntentParser {
         List<String> modes = detectModes(lower);
         boolean monitor = containsAny(lower,
                 "monitor", "notify me", "alert me", "watch", "track", "deal",
-                "cheapest", "price", "fare", "service change", "delay");
+                "cheapest", "price", "fare", "ticket", "service change", "delay");
         boolean crossCountry = containsAny(lower, "cross country", "cross-country", "coast to coast");
 
         EventTripIntentParser.EventIntent event = EventTripIntentParser.parse(safe);
