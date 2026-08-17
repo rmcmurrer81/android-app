@@ -54,8 +54,9 @@ public final class ExploreButton extends Button {
         setGravity(Gravity.CENTER);
         setCompoundDrawablePadding(dp(8));
         setPadding(dp(12), dp(10), dp(12), dp(10));
-        setMinHeight(dp(76));
+        setMinHeight(dp(52));
         setText("Explore map • photos • videos • route");
+        setVisibility(GONE);
         setOnClickListener(v -> openExplorer());
         setOnLongClickListener(v -> {
             loadedQuery = "";
@@ -85,6 +86,7 @@ public final class ExploreButton extends Button {
         if (!preferences.getBoolean("inline_media_previews", true)) {
             setCompoundDrawables(null, null, null, null);
             setText("Explore map • photos • videos • route");
+            setVisibility(GONE);
             return;
         }
 
@@ -121,9 +123,11 @@ public final class ExploreButton extends Button {
             query = tools.query.trim();
             destination = tools.destination;
         } else {
+            setVisibility(GONE);
             return;
         }
 
+        setVisibility(VISIBLE);
         currentMessage = query;
         currentProfile = profile;
         if (query.equalsIgnoreCase(loadedQuery)) return;
