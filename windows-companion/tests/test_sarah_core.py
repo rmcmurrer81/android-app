@@ -912,6 +912,7 @@ def test_windows_local_ollama_is_preferred_over_paid_or_remote_model(monkeypatch
         }, root)
         monkeypatch.setenv("SARAH_OLLAMA_URL", "http://127.0.0.1:11434")
         calls = []
+        requests_seen = []
 
         class OllamaReply:
             @staticmethod
@@ -920,10 +921,16 @@ def test_windows_local_ollama_is_preferred_over_paid_or_remote_model(monkeypatch
 
             @staticmethod
             def json():
-                return {"message": {"content": "<SPOKEN>Local answer.</SPOKEN><FACTUAL_TRUTH>Saved knowledge only.</FACTUAL_TRUTH>"}}
+                return {
+                    "model": "qwen3.5:9b",
+                    "message": {
+                        "content": "<SPOKEN>Local answer.</SPOKEN><FACTUAL_TRUTH>Saved knowledge only.</FACTUAL_TRUTH>"
+                    },
+                }
 
         def fake_post(url, **kwargs):
             calls.append(url)
+            requests_seen.append(kwargs.get("json", {}))
             if url.startswith("https://"):
                 raise AssertionError("ordinary conversation must not call the remote model when local Ollama is selected")
             return OllamaReply()
@@ -931,9 +938,44 @@ def test_windows_local_ollama_is_preferred_over_paid_or_remote_model(monkeypatch
         monkeypatch.setattr("sarah_core.requests.post", fake_post)
         response = ModelClient(database).respond("Continue")
         assert calls == ["http://127.0.0.1:11434/api/chat"]
+        assert len(requests_seen) == 1
+        request = requests_seen[0]
+        assert request["model"] == "qwen3.5:9b"
+        assert request["think"] is False
+        assert request["keep_alive"] == "15m"
+        assert request["options"]["num_ctx"] == 16384
+        assert request["options"]["num_predict"] == 700
+        assert request["options"]["temperature"] == 0.60
         assert response.route == "OFFLINE_LOCAL"
         assert "actual_provider=ollama-local" in response.factual_truth
         assert "actual_model=qwen3.5:9b" in response.factual_truth
+
+
+def test_windows_local_ollama_rejects_unexpected_model_identity(monkeypatch):
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
+        root = make_sarah_home(Path(temp) / "local-model-identity")
+        database = SarahDatabase(root)
+        database.ensure_profile("Traveler", 30, "Newark", "travel", True)
+        monkeypatch.setenv("SARAH_OLLAMA_URL", "http://127.0.0.1:11434")
+
+        class WrongModelReply:
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            @staticmethod
+            def json():
+                return {
+                    "model": "another-model",
+                    "message": {"content": "<SPOKEN>Wrong route.</SPOKEN>"},
+                }
+
+        monkeypatch.setattr("sarah_core.requests.post", lambda *_args, **_kwargs: WrongModelReply())
+        response = ModelClient(database).respond("Tell me something about my trip.")
+        assert response.route == "OFFLINE_LOCAL"
+        assert "actual_provider=on-device" in response.factual_truth
+        assert "actual_model=bounded-offline-reply" in response.factual_truth
+        assert "unexpected model" not in response.spoken.lower()
 
 def test_windows_voice_can_use_local_unbundled_configuration(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
