@@ -41,6 +41,23 @@ public final class LocalExperienceActivity extends Activity {
                 "Parks, public spaces, neighborhood walks, free museum periods, libraries, markets, viewpoints and official city programs.",
                 TravelUi.MINT,
                 ExternalTravelLinks.freeThings(trip)));
+
+        String partnerActivityUrl = TravelAffiliateLinks.activities(
+                BuildConfig.SARAH_STAY22_AID,
+                trip.destination,
+                "sarah_local_experiences");
+        if (!partnerActivityUrl.isEmpty()) {
+            LinearLayout partner = TravelUi.card(this, TravelUi.CREAM);
+            partner.addView(TravelUi.cardTitle(this, "🎫", "Optional tours and ticketed activities"));
+            partner.addView(TravelUi.body(this,
+                    "Browse bookable tours and activities only if they fit the trip. "
+                            + TravelAffiliateLinks.DISCLOSURE));
+            partner.addView(TravelUi.outlineButton(
+                    this,
+                    "Browse partner activities",
+                    v -> TravelUi.open(this, partnerActivityUrl)));
+            root.addView(partner);
+        }
         root.addView(experience(
                 "🍽️", "Restaurants and food",
                 "Compare nearby food by price, distance, dietary needs, noise, opening hours and whether reservations are required.",
