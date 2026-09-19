@@ -3,7 +3,7 @@ name: ENGINEERING EVIDENCE - Sarah 2.5 R3 - DO NOT INSTALL
 on:
   workflow_dispatch:
   push:
-    branches: [agent/sarah-2.5-event-ready]
+    branches: [main]
     paths:
       - '.github/workflows/sarah-2.5-final-release.yml'
       - 'public-release/2.5/FINAL_RELEASE_KICKOFF.json'
@@ -21,9 +21,6 @@ env:
   SARAH_MODEL_BACKEND_URL: ${{ secrets.SARAH_MODEL_BACKEND_URL }}
   SARAH_TRAVEL_COMMERCE_URL: ${{ secrets.SARAH_TRAVEL_COMMERCE_URL }}
   SARAH_VOICE_CONCIERGE_URL: ${{ secrets.SARAH_VOICE_CONCIERGE_URL }}
-  SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
-  SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
-  SARAH_ELEVENLABS_BACKEND_URL: ${{ secrets.SARAH_ELEVENLABS_BACKEND_URL }}
   SARAH_STAY22_AID: ${{ secrets.SARAH_STAY22_AID }}
   SARAH_STAY22_BACKEND_URL: ${{ secrets.SARAH_STAY22_BACKEND_URL }}
 
