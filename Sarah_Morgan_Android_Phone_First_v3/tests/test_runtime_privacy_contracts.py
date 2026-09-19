@@ -586,12 +586,12 @@ class RuntimePrivacyContractsTest(unittest.TestCase):
     def test_voice_supersession_and_tts_init_failure_are_observable(self):
         router = source("SarahVoiceRouter.java")
         tts = source("SarahTts.java")
-        self.assertIn("requestSequence.incrementAndGet()", router)
-        self.assertIn("CloudVoiceClient.cancel()", router)
+        self.assertGreaterEqual(router.count("requestSequence.incrementAndGet()"), 2)
         self.assertIn("local.stop()", router)
-        self.assertGreaterEqual(
-            router.count("request != requestSequence.get()"), 2
-        )
+        self.assertIn("stopped = true", router)
+        self.assertIn("no paid voice service", router)
+        self.assertNotIn("CloudVoiceClient.speak", router)
+        self.assertNotIn("ElevenLabsVoiceConfig", router)
         self.assertIn('"android_tts_initialization_failed"', tts)
         self.assertIn("pendingSpeechListener = null", tts)
 
