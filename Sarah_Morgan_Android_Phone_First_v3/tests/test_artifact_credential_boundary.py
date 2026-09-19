@@ -163,11 +163,13 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
         workflow = read(WORKFLOWS / "sarah-2.5-online-judge-build.yml")
         apk = step(workflow, "Build the side-by-side online/offline event candidate APK")
         self.assertIn('export SARAH_EVENT_BACKEND_TOKEN="$SARAH_EVENT_DERIVED_TOKEN"', apk)
-        self.assertIn("SARAH_ELEVENLABS_BACKEND_TOKEN: ''", apk)
+        self.assertNotIn("SARAH_ELEVENLABS_BACKEND_URL", apk)
+        self.assertNotIn("SARAH_ELEVENLABS_VOICE_ID", apk)
         self.assertNotIn("secrets.SARAH_MODEL_BACKEND_TOKEN", apk)
         self.assertNotIn("secrets.SARAH_ELEVENLABS_BACKEND_TOKEN", apk)
         self.assertNotIn("secrets.SARAH_TAVILY_API_KEY", apk)
-        self.assertNotIn("secrets.SARAH_ELEVENLABS_API_KEY", apk)
+        self.assertNotIn("secrets.SARAH_ELEVENLABS_API_KEY", workflow)
+        self.assertNotIn("api.elevenlabs.io", workflow)
 
         derivation = step(
             workflow,
@@ -185,6 +187,9 @@ class ArtifactCredentialBoundaryTest(unittest.TestCase):
         self.assertIn("$env:SARAH_MODEL_BACKEND_TOKEN", windows)
         self.assertNotIn("secrets.SARAH_MODEL_BACKEND_TOKEN", windows)
         self.assertIn("SARAH_EVENT_GMAIL_AVAILABLE = 'false'", windows)
+        self.assertIn("sarah_local_voice_worker.py", windows)
+        self.assertIn("SETUP_FREE_LOCAL_VOICE.ps1", windows)
+        self.assertNotIn("SARAH_ELEVENLABS_VOICE_ID", windows)
         self.assertNotIn("SARAH_GMAIL_DESKTOP_CLIENT_ID", windows)
         self.assertNotIn("sarah-gmail-oauth-client.json", windows)
         self.assertIn("event_app_token_bundled = $true", workflow)
