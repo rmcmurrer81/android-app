@@ -35,6 +35,7 @@ class SarahLocalVoice:
 
     MAX_TEXT_CHARACTERS = 4000
     MAX_SYNTHESIS_SECONDS = 240.0
+    DOCUMENTED_CACHE_MAX_BYTES = 256 * 1024 * 1024
 
     def __init__(self, root: Path | None = None):
         self.root = root or app_home()
@@ -176,6 +177,41 @@ class SarahLocalVoice:
                 partial.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+    def cache_size_bytes(self) -> int:
+        cache = self.root / "voice_cache"
+        return sum(path.stat().st_size for path in cache.glob("*.wav") if path.is_file())
+
+    def cache_status(self) -> dict[str, int | bool]:
+        size = self.cache_size_bytes()
+        return {
+            "size_bytes": size,
+            "documented_max_bytes": self.DOCUMENTED_CACHE_MAX_BYTES,
+            "over_documented_max": size > self.DOCUMENTED_CACHE_MAX_BYTES,
+        }
+
+    def clear_cache_by_owner_request(self) -> dict[str, int]:
+        """Remove only regenerable local Sarah WAV derivatives."""
+        cache = (self.root / "voice_cache").resolve()
+        removed_files = 0
+        removed_bytes = 0
+        if not cache.exists():
+            return {"removed_files": 0, "removed_bytes": 0}
+        for path in cache.glob("*.wav"):
+            exact = path.resolve()
+            try:
+                exact.relative_to(cache)
+            except ValueError as error:
+                raise RuntimeError(
+                    "Voice cache cleanup target escaped its exact cache root"
+                ) from error
+            if not exact.is_file():
+                continue
+            removed_bytes += exact.stat().st_size
+            exact.unlink()
+            removed_files += 1
+        return {"removed_files": removed_files, "removed_bytes": removed_bytes}
 
 
 def _sha256_file(path: Path) -> str:
