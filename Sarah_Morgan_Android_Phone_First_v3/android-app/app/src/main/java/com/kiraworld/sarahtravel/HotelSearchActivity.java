@@ -89,6 +89,27 @@ public final class HotelSearchActivity extends Activity {
             root.addView(stay22OfferCard(offer));
         }
 
+        String partnerHotelUrl = TravelAffiliateLinks.hotels(
+                BuildConfig.SARAH_STAY22_AID,
+                trip.destination,
+                state.checkIn,
+                state.checkOut,
+                state.adults,
+                "sarah_hotel_search");
+        if (!partnerHotelUrl.isEmpty()) {
+            LinearLayout partner = TravelUi.card(this, TravelUi.MINT);
+            partner.addView(TravelUi.cardTitle(this, "🤝", "Optional partner booking"));
+            partner.addView(TravelUi.body(this,
+                    TravelAffiliateLinks.DISCLOSURE
+                            + "\n\nSarah still compares price, fees, cancellation rules, loyalty, "
+                            + "accessibility and traveler needs independently of commission."));
+            partner.addView(TravelUi.primaryButton(
+                    this,
+                    "Compare bookable hotel options",
+                    v -> open(partnerHotelUrl)));
+            root.addView(partner);
+        }
+
         LinearLayout compare = TravelUi.card(this, TravelUi.PEACH);
         compare.addView(TravelUi.cardTitle(this, "💵", "Compare the complete price"));
         compare.addView(TravelUi.body(this,
