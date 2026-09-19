@@ -223,7 +223,7 @@ jobs:
         shell: pwsh
         working-directory: windows-companion
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow --hidden-import google.oauth2.credentials --hidden-import google.auth.transport.requests --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --add-data 'sarah_local_voice_worker.py;.' --add-data 'SETUP_FREE_LOCAL_VOICE.ps1;.' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import googleapiclient.discovery --hidden-import google_auth_oauthlib.flow --hidden-import google.oauth2.credentials --hidden-import google.auth.transport.requests --hidden-import sarah_wallet --hidden-import sarah_calendar --hidden-import sarah_local_voice sarah_event_ready.py
           if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahMorganTravelOS-R3-Candidate-Setup --add-binary 'dist\SarahTravelOS-R3-Candidate.exe;payload' sarah_installer.py
           if ($LASTEXITCODE -ne 0) { throw 'Sarah installer build failed.' }
