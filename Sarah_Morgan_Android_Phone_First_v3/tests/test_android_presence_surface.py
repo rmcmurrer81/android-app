@@ -107,12 +107,13 @@ class AndroidPresenceSurfaceTest(unittest.TestCase):
 
     def test_mouth_motion_uses_real_playback_boundaries(self):
         main = (JAVA / "MainActivity.java").read_text(encoding="utf-8")
-        cloud = (JAVA / "CloudVoiceClient.java").read_text(encoding="utf-8")
-        self.assertIn("default void onPlaybackStarted(long playbackStartedAt)", cloud)
-        self.assertIn("listener.onPlaybackStarted(startedAt)", cloud)
-        self.assertIn("onPlaybackStarted(long playbackStartedAt)", main)
-        self.assertIn("beginSpeechEnvelope(text, playbackStartedAt)", main)
+        tts = (JAVA / "SarahTts.java").read_text(encoding="utf-8")
+        self.assertIn("void onStart(long startedAt)", tts)
+        self.assertIn("progress.onStart(System.currentTimeMillis())", tts)
+        self.assertIn("@Override public void onStart(long startedAt)", main)
         self.assertIn("beginSpeechEnvelope(text, startedAt)", main)
+        self.assertNotIn("CloudVoiceClient.speak", main)
+        self.assertNotIn("ElevenLabsVoiceConfig.", main)
         self.assertGreaterEqual(main.count("endSpeechEnvelope()"), 4)
 
 
