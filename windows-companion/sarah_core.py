@@ -1996,6 +1996,21 @@ class ModelClient:
         if ollama and not web_requested:
             try:
                 ollama_model = safe_text(os.environ.get("SARAH_OLLAMA_MODEL")) or "qwen3.5:9b"
+                # The local Qwen route is the normal no-per-use-cost mind. These
+                # defaults match the already-tested KiraWorld Qwen route while
+                # leaving bounded environment overrides for different hardware.
+                try:
+                    local_num_ctx = int(safe_text(os.environ.get("SARAH_OLLAMA_NUM_CTX")) or "16384")
+                except ValueError:
+                    local_num_ctx = 16384
+                local_num_ctx = max(4096, min(local_num_ctx, 32768))
+                try:
+                    local_num_predict = int(
+                        safe_text(os.environ.get("SARAH_OLLAMA_NUM_PREDICT")) or "700"
+                    )
+                except ValueError:
+                    local_num_predict = 700
+                local_num_predict = max(128, min(local_num_predict, 1200))
                 request_started = now_ms()
                 messages = [
                     {"role": "system", "content": self._prompt(message, "OFFLINE_LOCAL", profile)},
@@ -2007,12 +2022,25 @@ class ModelClient:
                     json={
                         "model": ollama_model,
                         "stream": False,
+                        "think": False,
+                        "keep_alive": "15m",
+                        "options": {
+                            "temperature": 0.60,
+                            "top_p": 0.90,
+                            "repeat_penalty": 1.05,
+                            "num_ctx": local_num_ctx,
+                            "num_predict": local_num_predict,
+                        },
                         "messages": messages,
                     },
                     timeout=180,
                 )
                 response.raise_for_status()
-                raw = safe_text(response.json().get("message", {}).get("content", ""))
+                local_payload = response.json()
+                observed_local_model = safe_text(local_payload.get("model"))
+                if observed_local_model and observed_local_model != ollama_model:
+                    raise ValueError("Local Ollama answered with an unexpected model")
+                raw = safe_text(local_payload.get("message", {}).get("content", ""))
                 if not raw:
                     raise ValueError("Local Ollama returned no reply")
                 completed_at = now_ms()
