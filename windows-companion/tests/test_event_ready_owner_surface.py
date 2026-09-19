@@ -137,19 +137,22 @@ def test_status_chips_distinguish_setup_from_observed_routes():
     assert mind_status_text("ONLINE_FAILED_FELL_BACK_OFFLINE", True) == "Mind: offline used"
     assert mind_status_text("OFFLINE_LOCAL", False) == "Mind: offline used"
 
-    assert voice_status_text({}, True) == "Voice: ElevenLabs set up"
-    assert voice_status_text({"actual_route": "ELEVENLABS"}, False) == "Voice: ElevenLabs used"
-    assert voice_status_text({"actual_route": "WINDOWS_SYSTEM_SPEECH"}, True) == "Voice: offline used"
+    assert voice_status_text({}, True) == "Voice: local Sarah ready"
+    assert voice_status_text({"actual_route": "LOCAL_GENERATED_VOICE"}, False) == "Voice: local Sarah used"
+    assert voice_status_text({"actual_route": "WINDOWS_SYSTEM_SPEECH"}, True) == "Voice: Windows offline used"
     assert voice_status_text({"actual_route": "TEXT_ONLY"}, True) == "Voice: text only"
 
 
-def test_elevenlabs_owner_test_has_no_substitute_voice_path():
-    source = inspect.getsource(SarahEventReadyApp._elevenlabs_test_worker)
+def test_local_generated_owner_test_has_no_paid_voice_path():
+    source = inspect.getsource(SarahEventReadyApp._local_voice_test_worker)
+    setup = inspect.getsource(SarahEventReadyApp.setup_sarah_local_voice)
 
     assert "self.voice.synthesize" in source
-    assert 'actual = "ELEVENLABS"' in source
+    assert 'actual = "LOCAL_GENERATED_VOICE"' in source
     assert "_speak_windows_fallback" not in source
-    assert "WINDOWS_SYSTEM_SPEECH" not in source
+    assert "ELEVENLABS" not in source
+    assert "SETUP" not in source
+    assert "powershell" in setup.lower()
 
 
 def test_first_run_is_one_in_shell_card_and_does_not_assume_owner_identity():
