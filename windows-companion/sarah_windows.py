@@ -667,7 +667,7 @@ class SarahApp:
                     audio_path = self.voice.synthesize(
                         text,
                         should_cancel=lambda: not self._voice_request_is_current(person_id, generation),
-                        total_budget_seconds=15.0,
+                        total_budget_seconds=120.0,
                     )
                     cache_hit = bool(getattr(self.voice, "last_cache_hit", False))
                     cache_key = str(getattr(self.voice, "last_cache_key", ""))
@@ -711,24 +711,6 @@ class SarahApp:
                     outcome = ("Sarah's generated local voice failed; the Windows offline voice fallback completed."
                                if fallback_ok else
                                "Sarah's generated local voice failed and Windows offline voice was unavailable; text remained available.")
-            elif self.voice.configured and sys.platform.startswith("win"):
-                attempted = "ELEVENLABS_NOT_ATTEMPTED_NO_MP3_PLAYER"
-                failure_reason = "mp3_player_unavailable"
-                if not self._voice_request_is_current(person_id, generation):
-                    failure_reason = self._voice_request_failure_reason(person_id, generation)
-                    outcome = "Voice stayed silent because its person or owner turn was superseded before fallback playback."
-                    return
-                playback_start = int(time.time() * 1000)
-                fallback_ok, fallback_reason = self._speak_windows_fallback(text, generation)
-                playback_end = int(time.time() * 1000)
-                if fallback_reason:
-                    failure_reason = fallback_reason
-                    outcome = "Voice stopped because a newer owner turn or Stop voice superseded it."
-                    return
-                actual = "WINDOWS_SYSTEM_SPEECH" if fallback_ok else "TEXT_ONLY"
-                outcome = ("Generated local voice playback was unavailable; the Windows offline voice fallback completed."
-                           if fallback_ok else
-                           "Generated local voice playback and Windows offline voice were unavailable; text remained available.")
             elif sys.platform.startswith("win"):
                 attempted = "WINDOWS_SYSTEM_SPEECH"
                 if not self._voice_request_is_current(person_id, generation):
