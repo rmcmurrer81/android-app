@@ -301,8 +301,10 @@ for removed_full_buffer_path in [
     assert removed_full_buffer_path not in cloud_voice, removed_full_buffer_path
 assert 'â€¢' not in cloud_voice and 'â†’' not in cloud_voice
 voice_router=(APP/'app/src/main/java/com/kiraworld/sarahtravel/SarahVoiceRouter.java').read_text(encoding='utf-8')
-assert 'VoiceFallbackPolicy.shouldStartAndroidFallback' in voice_router
-assert 'full phone replay suppressed' in voice_router
+assert 'no paid voice service' in voice_router
+assert 'local.stop()' in voice_router
+assert 'CloudVoiceClient.speak' not in voice_router
+assert 'ElevenLabsVoiceConfig' not in voice_router
 for phrase in ['"first_network_byte"', '"player_ready"', '"response_complete"']:
     assert phrase in main, phrase
 for phrase in ['conversationExecutor','backgroundResearchExecutor','mediaExecutor','networkAttemptExecutor',
