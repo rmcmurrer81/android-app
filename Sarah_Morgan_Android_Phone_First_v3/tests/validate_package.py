@@ -104,11 +104,13 @@ for phrase in ['talk about anything','pre-request route plan','not proof of the 
     assert phrase.lower() in prompt.lower(), phrase
 
 main=(APP/'app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java').read_text(encoding='utf-8')
-for phrase in ['RecognizerIntent','ACTION_PICK_IMAGES','MemoryExtractor.extract','CloudVoiceClient.speak','showCalmMenu','startTriviaGame','connectedReplyWithRetry','ensureApproximateAreaForTurn','finalTurnRoute','ReplyTruthGuard.enforce','VoiceRoutePolicy.shouldAttemptPremium','connected.hasVerifiedWebReceipt()','TextTurnReceipt.build','findViewById(R.id.bottomNavigation)','findViewById(R.id.bottomControls)','actualProvider = connected.provider','actualModel = connected.model','BOUNDED_LOCAL_PLANNING_DRAFT','lower.contains("cheapest")','TravelSearchQueryPolicy.build','ownerSourceDetails','tap for source details','turnId','OfflineTuringPolicy.answer','PublicOnlineFallback.answerResult','sourceBackedEvent.turnRoute()','connectedRouteProven = true','if (changed) connectedRouteProven = false','Last reply:','Next:','ProtectedBackendCapabilities.voiceReady(this)','Generating Sarah’s online voice']:
+for phrase in ['RecognizerIntent','ACTION_PICK_IMAGES','MemoryExtractor.extract','Using on-device voice · no paid voice service','showCalmMenu','startTriviaGame','connectedReplyWithRetry','ensureApproximateAreaForTurn','finalTurnRoute','ReplyTruthGuard.enforce','connected.hasVerifiedWebReceipt()','TextTurnReceipt.build','findViewById(R.id.bottomNavigation)','findViewById(R.id.bottomControls)','actualProvider = connected.provider','actualModel = connected.model','BOUNDED_LOCAL_PLANNING_DRAFT','lower.contains("cheapest")','TravelSearchQueryPolicy.build','ownerSourceDetails','tap for source details','turnId','OfflineTuringPolicy.answer','PublicOnlineFallback.answerResult','sourceBackedEvent.turnRoute()','connectedRouteProven = true','if (changed) connectedRouteProven = false','Last reply:','Next:']:
     if phrase == 'findViewById(R.id.bottomNavigation)':
         continue  # Deliberately removed from the conversation-first owner surface.
     assert phrase in main, phrase
 assert 'if (connected) lastSmartCallFailed = false' not in main
+assert 'CloudVoiceClient.speak' not in main
+assert 'ElevenLabsVoiceConfig.' not in main
 
 onboarding=(APP/'app/src/main/java/com/kiraworld/sarahtravel/OnboardingActivity.java').read_text(encoding='utf-8')
 assert 'Age, birth year, or skip' in onboarding
