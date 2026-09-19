@@ -28,7 +28,6 @@ from sarah_live_avatar import (
     PortraitFrameRenderer,
 )
 from sarah_core import (
-    ElevenLabsVoice,
     SarahDatabase,
     bundled_event_capability_status,
     bundled_event_config_path,
@@ -45,6 +44,7 @@ from sarah_core import (
     sync_signature,
 )
 from sarah_sync_server import SarahSyncServer
+from sarah_local_voice import SarahLocalVoice
 from sarah_windows import (
     SARAH_PORTRAIT_DISPLAY_SIZE,
     SarahApp,
@@ -212,13 +212,13 @@ def mind_status_text(route: str, configured: bool) -> str:
 
 def voice_status_text(receipt: dict[str, object] | None, configured: bool) -> str:
     actual = safe_text((receipt or {}).get("actual_route"))
-    if actual == "ELEVENLABS":
-        return "Voice: ElevenLabs used"
+    if actual == "LOCAL_GENERATED_VOICE":
+        return "Voice: local Sarah used"
     if actual == "WINDOWS_SYSTEM_SPEECH":
-        return "Voice: offline used"
+        return "Voice: Windows offline used"
     if actual == "TEXT_ONLY":
         return "Voice: text only"
-    return "Voice: ElevenLabs set up" if configured else "Voice: setup needed"
+    return "Voice: local Sarah ready" if configured else "Voice: local setup needed"
 
 
 def owner_surface_contract() -> dict[str, object]:
@@ -1340,7 +1340,7 @@ class SarahEventReadyApp(SarahApp):
         lines = [
             "Current-source search: " + ("set up" if research_configured else "not connected"),
             "Places-to-stay service: " + ("set up" if stay_configured else "not connected"),
-            "ElevenLabs voice: " + ("set up" if self.voice.configured else "not connected"),
+            "Free local Sarah voice: " + ("ready" if self.voice.configured else "setup needed"),
         ]
         if event_gmail_available():
             lines.append("Gmail travel updates: " + ("connected read-only" if self._gmail_connected else "not connected"))
@@ -1741,7 +1741,7 @@ class SarahEventReadyApp(SarahApp):
             self.owner_notice.set("The photo folder is available from Sarah's app-data folder.")
 
     # ------------------------------------------------------------------
-    # Connections: private route, ElevenLabs, Gmail, secure devices
+    # Connections: private route, free local voice, Gmail, secure devices
     # ------------------------------------------------------------------
     def _build_devices(self):
         body = tk.Frame(self.device_tab, bg=PALETTE["window"])
@@ -1760,11 +1760,12 @@ class SarahEventReadyApp(SarahApp):
         voice = self._connection_card(
             grid,
             "Sarah's voice",
-            "Hear the approved ElevenLabs route. A test never silently counts Windows speech as ElevenLabs.",
+            "Sarah's original synthetic voice runs locally after one-time setup. There is no ElevenLabs subscription or per-sentence voice charge.",
             0,
             0,
         )
-        self._owner_button(voice, "Hear Sarah (ElevenLabs)", self.hear_sarah_elevenlabs).pack(anchor="w")
+        self._owner_button(voice, "Hear Sarah (free local voice)", self.hear_sarah_local).pack(anchor="w")
+        self._owner_button(voice, "Set up free local voice", self.setup_sarah_local_voice).pack(anchor="w", pady=(8, 0))
         self._owner_button(voice, "Connection status", self.show_connection_status).pack(anchor="w", pady=(8, 0))
         self._owner_button(
             voice,
@@ -1906,7 +1907,7 @@ class SarahEventReadyApp(SarahApp):
             return
         code = simpledialog.askstring(
             "Advanced developer recovery",
-            "Enter the revocable Sarah recovery code supplied for this exact service. It is encrypted for this Windows account. Do not enter an ElevenLabs or other provider key here.",
+            "Enter the revocable Sarah recovery code supplied for this exact model/search service. It is encrypted for this Windows account. Do not enter a voice-provider key here.",
             show="*",
             parent=self.root,
         )
@@ -1916,9 +1917,6 @@ class SarahEventReadyApp(SarahApp):
         for name in (
             "SARAH_MODEL_PROVIDER",
             "SARAH_MODEL_ID",
-            "SARAH_ELEVENLABS_BACKEND_URL",
-            "SARAH_ELEVENLABS_VOICE_ID",
-            "SARAH_ELEVENLABS_MODEL_ID",
             "SARAH_TAVILY_BACKEND_URL",
             "SARAH_STAY22_BACKEND_URL",
         ):
@@ -1927,41 +1925,74 @@ class SarahEventReadyApp(SarahApp):
                 settings[name] = value
         settings["SARAH_MODEL_BACKEND_URL"] = endpoint
         settings["SARAH_MODEL_BACKEND_TOKEN"] = safe_text(code)
-        settings["SARAH_ELEVENLABS_BACKEND_TOKEN"] = safe_text(code)
         try:
             save_runtime_config(settings, self.db.root)
-            self.voice = ElevenLabsVoice(self.db.root)
+            self.voice = SarahLocalVoice(self.db.root)
         except Exception as error:
             messagebox.showerror("Advanced developer recovery", str(error), parent=self.root)
             return
         self.owner_notice.set("The revocable developer recovery connection was saved for this Windows account.")
         self._refresh_status_chips()
 
-    def hear_sarah_elevenlabs(self) -> None:
-        if not self.voice.configured:
-            messagebox.showinfo(
-                "Hear Sarah",
-                "The approved voice route is unavailable in this build or its event access has expired. Install a current authorized event build; no substitute voice was played.",
+    def setup_sarah_local_voice(self) -> None:
+        script = getattr(self.voice, "setup_script", None)
+        if script is None or not Path(script).is_file():
+            messagebox.showerror(
+                "Free local voice setup",
+                "The local voice setup script is missing from this build.",
                 parent=self.root,
             )
             return
-        generation = self._begin_voice_generation("owner_started_elevenlabs_test")
+        try:
+            subprocess.Popen(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(Path(script).resolve()),
+                ],
+                creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+            )
+        except Exception as error:
+            messagebox.showerror(
+                "Free local voice setup",
+                str(error),
+                parent=self.root,
+            )
+            return
+        messagebox.showinfo(
+            "Free local voice setup",
+            "A setup window opened. It installs the free local voice model and verifies Sarah's original synthetic reference. Restart Sarah after it reports that setup is complete.",
+            parent=self.root,
+        )
+
+    def hear_sarah_local(self) -> None:
+        if not self.voice.configured:
+            messagebox.showinfo(
+                "Hear Sarah",
+                "Sarah's generated local voice is not set up on this computer yet. Use Set up free local voice, then restart Sarah. Windows offline speech remains available in the meantime.",
+                parent=self.root,
+            )
+            return
+        generation = self._begin_voice_generation("owner_started_local_voice_test")
         profile = self.db.active_profile()
         person_id = profile.get("person_id") or self.db.get_setting("active_person_id")
-        self.owner_notice.set("Sarah is preparing the ElevenLabs voice test…")
+        self.owner_notice.set("Sarah is preparing her generated local voice test…")
         threading.Thread(
-            target=self._elevenlabs_test_worker,
+            target=self._local_voice_test_worker,
             args=(generation, person_id),
             daemon=True,
         ).start()
 
-    def _elevenlabs_test_worker(self, generation: int, person_id: str | None) -> None:
-        text = "Hi. I'm Sarah. If you can hear me, my ElevenLabs voice is connected."
+    def _local_voice_test_worker(self, generation: int, person_id: str | None) -> None:
+        text = "Hi. I'm Sarah. If you can hear me, my free local voice is working."
         requested = int(time.time() * 1000)
         synthesis_start = int(time.time() * 1000)
         synthesis_end = playback_start = playback_end = 0
         actual = "TEXT_ONLY"
-        outcome = "The ElevenLabs test did not complete. No substitute voice was played."
+        outcome = "The generated local voice test did not complete."
         failure = ""
         self.speaking = True
         try:
@@ -1980,8 +2011,8 @@ class SarahEventReadyApp(SarahApp):
             if reason:
                 failure = reason
             elif played:
-                actual = "ELEVENLABS"
-                outcome = "Sarah's ElevenLabs voice test completed."
+                actual = "LOCAL_GENERATED_VOICE"
+                outcome = "Sarah's generated local voice test completed."
             else:
                 failure = "windows_audio_player_failed"
         except Exception as error:
@@ -1991,7 +2022,7 @@ class SarahEventReadyApp(SarahApp):
         finally:
             self.speaking = False
             self._record_voice_receipt(
-                "ELEVENLABS",
+                "LOCAL_GENERATED_VOICE",
                 actual,
                 outcome,
                 requested,
@@ -2008,7 +2039,7 @@ class SarahEventReadyApp(SarahApp):
                 str(getattr(self.voice, "last_route_identity", "")),
                 str(getattr(self.voice, "last_content_type", "")),
                 person_id,
-                "owner-elevenlabs-test",
+                "owner-local-voice-test",
                 str(getattr(self.voice, "last_route_receipt", "")),
             )
 
@@ -2477,9 +2508,9 @@ class SarahEventReadyApp(SarahApp):
                     self._load_latest_voice_receipt()
                     actual = safe_text(self._latest_voice_receipt.get("actual_route"))
                     self.owner_notice.set(
-                        "Sarah's ElevenLabs voice finished playing."
-                        if actual == "ELEVENLABS"
-                        else "Sarah's voice was not ElevenLabs; Connections shows the current route."
+                        "Sarah's generated local voice finished playing."
+                        if actual == "LOCAL_GENERATED_VOICE"
+                        else "Sarah used the Windows offline voice fallback; Connections shows the current route."
                     )
                 elif kind == "gmail_connected":
                     item = dict(payload)
