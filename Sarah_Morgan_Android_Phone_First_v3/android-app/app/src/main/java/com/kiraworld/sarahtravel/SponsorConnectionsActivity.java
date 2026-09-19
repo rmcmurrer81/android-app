@@ -36,16 +36,8 @@ public final class SponsorConnectionsActivity extends Activity {
 
         add(root, "Travel Hack NYC connections", 26, true);
         add(root, "Sarah uses each connection honestly. A handoff or search result is never labeled as a completed booking.", 15, false);
-        add(root, "ElevenLabs", 20, true);
-        boolean protectedVoiceReady = ElevenLabsVoiceConfig.backendConfigured()
-                && ProtectedBackendCapabilities.voiceReady(this);
-        boolean directVoiceReady = !ElevenLabsVoiceConfig.backendConfigured()
-                && ElevenLabsVoiceConfig.directConfigured();
-        add(root, protectedVoiceReady || directVoiceReady
-                ? "Sarah Morgan’s ElevenLabs voice is verified for this route; Android speech remains the offline fallback."
-                : ElevenLabsVoiceConfig.backendConfigured()
-                    ? "The protected voice route is configured but not verified right now; Android speech remains ready."
-                    : "The protected ElevenLabs voice route is not connected in this build; Android speech remains ready.", 15, false);
+        add(root, "Voice", 20, true);
+        add(root, "Android uses the device's on-device text-to-speech with no paid voice service. Sarah's original generated local voice is available in the Windows companion after one-time local setup.", 15, false);
         add(root, "Tavily", 20, true);
         add(root, TavilyClient.configured()
                 ? "Connected source-backed proactive travel and event discovery is configured."
