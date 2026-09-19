@@ -1892,6 +1892,26 @@ class ElevenLabsVoice:
         return {"removed_files": removed_files, "removed_bytes": removed_bytes}
 
 
+def discover_local_ollama() -> str:
+    """Return a reachable local Ollama endpoint without contacting the internet."""
+
+    explicit = safe_text(os.environ.get("SARAH_OLLAMA_URL"))
+    candidates = [explicit] if explicit else ["http://127.0.0.1:11434"]
+    for candidate in candidates:
+        base = safe_text(candidate).rstrip("/")
+        if not base.startswith(("http://127.0.0.1:", "http://localhost:")):
+            # A non-loopback Ollama service must be explicitly selected by the owner.
+            if not explicit:
+                continue
+        try:
+            response = requests.get(base + "/api/tags", timeout=(0.15, 0.35))
+            if response.status_code == 200:
+                return base
+        except requests.RequestException:
+            continue
+    return ""
+
+
 class ModelClient:
     def __init__(self, database: SarahDatabase):
         self.db = database
@@ -1950,31 +1970,106 @@ class ModelClient:
                 ),
                 "LOCAL_TOOL_RESULT",
             )
+        requested_provider = runtime_setting("SARAH_MODEL_PROVIDER", "workers-ai", self.db.root)
+        requested_model = runtime_setting("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it", self.db.root)
+        web_requested = needs_current_sources(message)
+
+        history_rows = self.db.recent_messages(24, person_id=bound_person_id)
+        if (history_rows
+                and safe_text(history_rows[-1].get("role")) == "user"
+                and safe_text(history_rows[-1].get("content")) == safe_text(message)):
+            history_rows = history_rows[:-1]
+        history = [
+            {"role": safe_text(row.get("role")) or "user", "content": safe_text(row.get("content"))}
+            for row in history_rows
+            if safe_text(row.get("content"))
+        ]
+
+        # Free/local is the normal conversational route when Ollama is running.
+        # Current-source questions stay on the source-verification path below
+        # rather than letting a local model invent live prices/events.
+        ollama = discover_local_ollama()
+        if ollama and not web_requested:
+            try:
+                ollama_model = safe_text(os.environ.get("SARAH_OLLAMA_MODEL")) or "qwen3.5:9b"
+                request_started = now_ms()
+                messages = [
+                    {"role": "system", "content": self._prompt(message, "OFFLINE_LOCAL", profile)},
+                    *history,
+                    {"role": "user", "content": message},
+                ]
+                response = requests.post(
+                    ollama + "/api/chat",
+                    json={
+                        "model": ollama_model,
+                        "stream": False,
+                        "messages": messages,
+                    },
+                    timeout=180,
+                )
+                response.raise_for_status()
+                raw = safe_text(response.json().get("message", {}).get("content", ""))
+                if not raw:
+                    raise ValueError("Local Ollama returned no reply")
+                completed_at = now_ms()
+                parsed = enforce_no_false_work_promise(ChannelResponse.parse(raw))
+                return with_text_turn_receipt(
+                    parsed,
+                    text_turn_receipt(
+                        route="OFFLINE_LOCAL",
+                        attempted_provider="ollama-local",
+                        actual_provider="ollama-local",
+                        actual_model=ollama_model,
+                        web_requested=False,
+                        web_applied=False,
+                        source_urls=[],
+                        turn_submitted_at=submitted_at,
+                        request_started_at=request_started,
+                        text_completed_at=completed_at,
+                    ),
+                    "OFFLINE_LOCAL",
+                )
+            except (requests.RequestException, ValueError, TypeError):
+                # Stay free/offline if the owner's local model is unhealthy.
+                # Do not silently turn a failed local chat into a billable cloud turn.
+                completed_at = now_ms()
+                offline = ChannelResponse(
+                    offline_useful_reply(message, profile, True),
+                    "Sarah's local Ollama route was detected but did not complete this turn.",
+                    "The local Ollama route failed. No cloud model was called for this ordinary conversation.",
+                    "RUNTIME_STATE_ERROR",
+                    True,
+                    "OFFLINE_LOCAL",
+                )
+                return with_text_turn_receipt(
+                    offline,
+                    text_turn_receipt(
+                        route="OFFLINE_LOCAL",
+                        attempted_provider="ollama-local",
+                        actual_provider="on-device",
+                        actual_model="bounded-offline-reply",
+                        web_requested=False,
+                        web_applied=False,
+                        source_urls=[],
+                        turn_submitted_at=submitted_at,
+                        request_started_at=submitted_at,
+                        text_completed_at=completed_at,
+                    ),
+                    "OFFLINE_LOCAL",
+                )
+
         access = resolve_backend_access(self.db.root)
         endpoint = safe_text(access.get("endpoint"))
         token = safe_text(access.get("token"))
         activation_required = bool(
             not access["active"] and access["candidate_endpoint_present"]
         )
-        requested_provider = runtime_setting("SARAH_MODEL_PROVIDER", "workers-ai", self.db.root)
-        requested_model = runtime_setting("SARAH_MODEL_ID", "@cf/google/gemma-4-26b-a4b-it", self.db.root)
-        web_requested = needs_current_sources(message)
         attempted_route = connected_route(requested_provider)
         connected_failed = False
         last_request_started_at = submitted_at
         if endpoint and token:
             try:
                 prompt = self._prompt(message, attempted_route, profile)
-                history_rows = self.db.recent_messages(24, person_id=bound_person_id)
-                if (history_rows
-                        and safe_text(history_rows[-1].get("role")) == "user"
-                        and safe_text(history_rows[-1].get("content")) == safe_text(message)):
-                    history_rows = history_rows[:-1]
-                history = [
-                    {"role": safe_text(row.get("role")) or "user", "content": safe_text(row.get("content"))}
-                    for row in history_rows
-                    if safe_text(row.get("content"))
-                ]
                 search_query = current_search_query(
                     message,
                     profile,
@@ -2047,7 +2142,6 @@ class ModelClient:
                 return with_text_turn_receipt(parsed, receipt, actual_route)
             except (requests.RequestException, ValueError, TypeError):
                 connected_failed = True
-        ollama = safe_text(os.environ.get("SARAH_OLLAMA_URL"))
         if web_requested:
             completed_at = now_ms()
             route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "TOOL_UNAVAILABLE"
@@ -2082,52 +2176,6 @@ class ModelClient:
                 ),
                 route,
             )
-        if ollama:
-            try:
-                actual_route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "OFFLINE_LOCAL"
-                ollama_model = safe_text(os.environ.get("SARAH_OLLAMA_MODEL")) or "qwen3.5:9b"
-                last_request_started_at = now_ms()
-                response = requests.post(
-                    ollama.rstrip("/") + "/api/chat",
-                    json={
-                        "model": ollama_model,
-                        "stream": False,
-                        "messages": [
-                            {"role": "system", "content": self._prompt(message, actual_route, profile)},
-                            {"role": "user", "content": message},
-                        ],
-                    },
-                    timeout=180,
-                )
-                response.raise_for_status()
-                completed_at = now_ms()
-                parsed = enforce_no_false_work_promise(
-                    ChannelResponse.parse(response.json().get("message", {}).get("content", ""))
-                )
-                receipt = text_turn_receipt(
-                    route=actual_route,
-                    attempted_provider=requested_provider if endpoint else "none",
-                    actual_provider="ollama-local",
-                    actual_model=ollama_model,
-                    web_requested=False,
-                    web_applied=False,
-                    source_urls=[],
-                    turn_submitted_at=submitted_at,
-                    request_started_at=last_request_started_at,
-                    text_completed_at=completed_at,
-                )
-                if connected_failed:
-                    factual = (
-                        safe_text(parsed.factual_truth)
-                        + f" Attempted route: {attempted_route}. Actual route: local Ollama after the protected backend failed."
-                    ).strip()
-                    parsed = dataclasses.replace(
-                        parsed,
-                        factual_truth=factual,
-                    )
-                return with_text_turn_receipt(parsed, receipt, actual_route)
-            except (requests.RequestException, ValueError, TypeError):
-                connected_failed = connected_failed or bool(endpoint)
         completed_at = now_ms()
         route = "ONLINE_FAILED_FELL_BACK_OFFLINE" if connected_failed else "OFFLINE_LOCAL"
         offline_spoken = ("I can keep talking offline, but this installation has no active "
