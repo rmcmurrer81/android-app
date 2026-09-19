@@ -36,6 +36,7 @@ ACTIVE_WORKFLOW_NAMES = (
     "apply-sarah-2-2.yml",
     "build-apk.yml",
     "materialize-sarah-public-source-baseline.yml",
+    "nyfw-event-monitor.yml",
     "offline-trip-map-kit.yml",
     "sarah-2-2-authoritative-gate.yml",
     "sarah-2-2-ci.yml",
