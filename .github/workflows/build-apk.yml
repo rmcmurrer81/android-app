@@ -166,6 +166,15 @@ jobs:
           java -cp build/agentic-test GenericEventReferenceTest
           java -cp build/agentic-test TripWindowParserTest
 
+      - name: Test affiliate attribution and disclosure boundaries
+        run: |
+          rm -rf build/affiliate-test
+          mkdir -p build/affiliate-test
+          javac -encoding UTF-8 -d build/affiliate-test \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelAffiliateLinks.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelAffiliateLinksTest.java
+          java -cp build/affiliate-test TravelAffiliateLinksTest
+
       - name: Check that app users are not asked for provider credentials
         run: |
           if grep -RniE 'apiKeyInput|modelInput|Personal connected-model API key|Enter your (OpenAI|Claude|Anthropic|ElevenLabs) API key' \
