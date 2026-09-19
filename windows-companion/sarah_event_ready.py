@@ -2000,7 +2000,7 @@ class SarahEventReadyApp(SarahApp):
             audio_path = self.voice.synthesize(
                 text,
                 should_cancel=lambda: not self._voice_request_is_current(person_id, generation),
-                total_budget_seconds=15.0,
+                total_budget_seconds=120.0,
             )
             synthesis_end = int(time.time() * 1000)
             if not self._voice_request_is_current(person_id, generation):
