@@ -1670,7 +1670,7 @@ def test_windows_voice_failure_uses_system_speech_fallback(monkeypatch):
     assert receipt["failure_reason"] == "ConnectionError"
     assert receipt["person_id"] == "test-person"
     assert receipt["turn_id"] == "turn-voice-1"
-    assert "explicit Windows offline voice fallback completed" in receipt["outcome"]
+    assert "Windows offline voice fallback completed" in receipt["outcome"]
     assert app.tasks.get_nowait()[0] == "voice_route"
 
 
