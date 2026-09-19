@@ -1682,88 +1682,34 @@ public final class MainActivity extends Activity {
 
     private void speak(String text, String turnId) {
         final long voiceRequest = voiceRequestSequence.incrementAndGet();
-        // Every new voice request owns both possible playback engines. This
-        // closes cloud-to-local and local-to-cloud overlap, while the sequence
-        // lease suppresses obsolete fallback callbacks.
         recordActiveVoiceCancellation("superseded_by_new_voice_request");
-        CloudVoiceClient.cancel();
         if (tts != null) tts.stop();
         if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
+
         final long voiceGeneration = lifecycleGeneration.get();
         Map<String, String> voiceProfile = currentProfile();
         final String expectedSpeaker = speakerContext.activeName();
         final String personId = voiceProfile.getOrDefault(
                 "person_id", speakerContext.activePersonId());
         if (!requestMayApplyToSpeaker(voiceGeneration, personId, expectedSpeaker)) return;
+
         SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS, MODE_PRIVATE);
         if (!prefs.getBoolean("auto_speak", true)) return;
         tts.setRate(currentSpeechRate());
-        boolean verifiedProtectedVoice = ElevenLabsVoiceConfig.backendConfigured()
-                && ProtectedBackendCapabilities.voiceReady(this);
-        boolean verifiedDirectVoice = !ElevenLabsVoiceConfig.backendConfigured()
-                && ElevenLabsVoiceConfig.directConfigured();
-        int voiceMode = prefs.getInt(
-                "voice_mode", verifiedProtectedVoice || verifiedDirectVoice ? 1 : 0);
-        boolean validatedInternet = connectivityMonitor != null
-                ? connectivityMonitor.currentValidatedInternet() : internetAvailable;
-        boolean protectedBackend = verifiedProtectedVoice;
-        boolean directCredential = verifiedDirectVoice;
-        boolean attemptPremium = VoiceRoutePolicy.shouldAttemptPremium(
-                voiceMode, validatedInternet, protectedBackend, directCredential);
-        String attemptedVoiceRoute = attemptPremium
-                ? (protectedBackend ? "elevenlabs_protected_backend" : "elevenlabs_direct")
-                : (voiceMode == 1 ? "elevenlabs_approved_route" : "android_tts");
-        markActiveVoice(personId, turnId, text.length(), attemptedVoiceRoute);
-        if (attemptPremium) {
-            updateSpeakerStatus("Generating Sarah’s online voice…");
-            CloudVoiceClient.speak(this, "", text, new CloudVoiceClient.ReceiptListener() {
-                @Override public void onPlaybackStarted(long playbackStartedAt) {
-                    if (voiceRequest != voiceRequestSequence.get()) return;
-                    if (!requestMayApplyToSpeaker(
-                            voiceGeneration, personId, expectedSpeaker)) return;
-                    runOnUiThreadIfActive(voiceGeneration, () -> {
-                        if (portraitPresence != null) {
-                            portraitPresence.beginSpeechEnvelope(text, playbackStartedAt);
-                        }
-                    });
-                }
 
-                @Override public void onFinished(CloudVoiceClient.Receipt receipt) {
-                    if (voiceRequest != voiceRequestSequence.get()) return;
-                    if (!requestMayApplyToSpeaker(
-                            voiceGeneration, personId, expectedSpeaker)) return;
-                    runOnUiThreadIfActive(voiceGeneration, () -> {
-                        updateSpeakerStatus(null);
-                        if (portraitPresence != null) portraitPresence.endSpeechEnvelope();
-                    });
-                    if (receipt.completed) {
-                        recordVoiceReceipt(personId, turnId, text.length(), receipt, "");
-                        clearActiveVoice(personId, turnId);
-                    } else if (!VoiceFallbackPolicy.shouldStartAndroidFallback(
-                            receipt.playbackStart, receipt.failureReason)) {
-                        String detail = receipt.playbackStart > 0
-                                ? "approved progressive playback began; partial route failure recorded; full Android replay suppressed"
-                                : "newer voice request owns playback; obsolete Android fallback suppressed";
-                        recordVoiceReceipt(personId, turnId, text.length(), receipt, detail);
-                        clearActiveVoice(personId, turnId);
-                    } else {
-                        runOnUiThreadIfActive(voiceGeneration, () -> speakLocallyWithReceipt(
-                                personId, expectedSpeaker, turnId, text,
-                                receipt.attemptedRoute, receipt.failureReason, receipt,
-                                voiceGeneration, voiceRequest));
-                    }
-                }
-            });
-            return;
-        }
+        // Paid cloud speech is intentionally not part of Sarah's active Android
+        // route. Android uses its on-device TTS; the Windows companion can use
+        // Sarah's generated local voice after its one-time local setup.
+        final String attemptedVoiceRoute = "android_tts";
+        markActiveVoice(personId, turnId, text.length(), attemptedVoiceRoute);
+        updateSpeakerStatus("Using on-device voice · no paid voice service");
         speakLocallyWithReceipt(
                 personId,
                 expectedSpeaker,
                 turnId,
                 text,
-                voiceMode == 1 ? "elevenlabs_approved_route" : "android_tts",
-                VoiceRoutePolicy.fallbackReason(
-                        voiceMode, validatedInternet, protectedBackend, directCredential),
+                attemptedVoiceRoute,
+                "paid_cloud_voice_disabled",
                 null,
                 voiceGeneration,
                 voiceRequest);
@@ -1884,8 +1830,8 @@ public final class MainActivity extends Activity {
             json.put("playback_end", receipt.playbackEnd);
             json.put("completed", receipt.completed);
             json.put("character_count", characterCount);
-            json.put("voice_id", ElevenLabsVoiceConfig.voiceId());
-            json.put("voice_model", ElevenLabsVoiceConfig.modelId());
+            json.put("voice_id", "android_on_device_tts");
+            json.put("voice_model", "android_system_tts");
             json.put("detail", additionalDetail == null ? "" : additionalDetail);
             VoiceReceiptStore.append(this, personId, turnId, json);
         } catch (Exception ignored) { }
