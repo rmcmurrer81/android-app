@@ -98,6 +98,7 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ConversationModePolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/OwnerOnlineActivationPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/Stay22SearchPolicy.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TravelAffiliateLinks.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ProfileMigrationPolicy.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TurnRoute.java \
             Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/CurrentLocationPolicy.java \
@@ -147,6 +148,7 @@ jobs:
             Sarah_Morgan_Android_Phone_First_v3/tests/Sarah25ConversationContextTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/ConversationModePolicyTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/Stay22SearchPolicyTest.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/TravelAffiliateLinksTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/SarahR2PolicyTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/GmailReadOnlyPolicyTest.java \
             Sarah_Morgan_Android_Phone_First_v3/tests/EmailCalendarPolicyTest.java \
@@ -162,6 +164,7 @@ jobs:
           java -cp build/sarah25-core Sarah25ConversationContextTest
           java -cp build/sarah25-core ConversationModePolicyTest
           java -cp build/sarah25-core Stay22SearchPolicyTest
+          java -cp build/sarah25-core TravelAffiliateLinksTest
           java -cp build/sarah25-core com.kiraworld.sarahtravel.SarahR2PolicyTest
           java -cp build/sarah25-core com.kiraworld.sarahtravel.GmailReadOnlyPolicyTest
           java -cp build/sarah25-core com.kiraworld.sarahtravel.EmailCalendarPolicyTest
