@@ -48,7 +48,7 @@ public final class ProfileButton extends ImageButton {
         List<Map<String, String>> profiles;
         try {
             people.ensureOwner(owner);
-            profiles = people.listProfiles();
+            profiles = ProfileCorrectionStore.visible(context, people.listProfiles());
         } finally {
             people.close();
         }
@@ -76,6 +76,10 @@ public final class ProfileButton extends ImageButton {
                         return;
                     }
                     String name = profiles.get(which).get("name");
+                    if (!(context instanceof MainActivity)
+                            || !((MainActivity) context).prepareForProfileSwitch()) {
+                        return;
+                    }
                     PersonProfileStore store = new PersonProfileStore(context.getApplicationContext());
                     try {
                         store.setActiveByName(name);

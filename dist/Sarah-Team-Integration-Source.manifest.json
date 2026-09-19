@@ -1,0 +1,99 @@
+{
+  "archive": "Sarah-Team-Integration-Source.zip",
+  "archive_sha256": "11aa5faad7fad2df34ad393f8d5c26de3c2f423e9a3689ec12a329c8d4ee360b",
+  "deterministic_zip_time": "2020-01-01T00:00:00Z",
+  "file_count": 18,
+  "files": [
+    {
+      "path": "Sarah-Team-Integration-Source/LICENSE.md",
+      "sha256": "5c9077b6b17d95daa8cb92f2feb82e4e3359fe5b049f125b9b6bd1e06d6bb484",
+      "size": 533
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/MIGRATION.md",
+      "sha256": "c92569971f9175b10ae52e048f3b4aa4ddaad12c8eed322eb63c23babcfe2f77",
+      "size": 1580
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/PACKAGE_INVENTORY.json",
+      "sha256": "38916eb7a547586529725b7018a8050262b3b5b19c043a20bbd03663531e709e",
+      "size": 1738
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/README.md",
+      "sha256": "a361c7bed930ff29a4fa189e5d9b0d6f956b51572980aea8a8e8d9103d237869",
+      "size": 4857
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/SECURITY.md",
+      "sha256": "33ce279ea17b6a33c15dae2718b6b8f4ccacb6d4b2bdc9cbb7e84ca66a10f011",
+      "size": 1703
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/SETUP.md",
+      "sha256": "be68878f4c0031e564a9acd115519d49ab09a6e949aa3be51743b0143d509a8f",
+      "size": 1822
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/android/CURRENT_NATIVE_MAPPING.md",
+      "sha256": "bc4a109e72511581309d9529d7fb05f0e723cce90f425db4ba2e54f148ff547d",
+      "size": 3204
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/contracts/examples/conversation-current-source.json",
+      "sha256": "9180d6411f06ffe5c5afa15d0dd9a868ebabe690b57734357f09440ea9ba8a26",
+      "size": 1239
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/contracts/examples/voice-failure.json",
+      "sha256": "e7be46af41628ad4579498e6996ed7f546b1f753225d417eeee8a28b18106bdb",
+      "size": 633
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/contracts/sarah-team-contract-v1.json",
+      "sha256": "f09ed7f44257c18b25a52eba300944d4a7854a3bb5acdb084959984cd9302ace",
+      "size": 7174
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/src/main/java/org/sarahteam/integration/android/CurrentSarahAndroidAdapter.java",
+      "sha256": "fe10b3848f00fcad5f37c021a8689b0230ca81791c03c9c808f231bf9fbd2c13",
+      "size": 9171
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/src/main/java/org/sarahteam/integration/api/HostServices.java",
+      "sha256": "8b4e3f0df3f4b5e4cf170dea1e157af08b270dff5e0ad309ad6dfbca63ef8c38",
+      "size": 2995
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/src/main/java/org/sarahteam/integration/api/SarahIntegration.java",
+      "sha256": "5f865af86b8ae31f4e67ce27caed9def6e9076c9b38c6d395d74c841e140c4a4",
+      "size": 3164
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/src/main/java/org/sarahteam/integration/api/SarahTypes.java",
+      "sha256": "e7f67b00b72e58eb4667ca29faa53fd80ccaee08fafe89499c2010cd5c98b2d3",
+      "size": 14683
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/src/main/java/org/sarahteam/integration/examples/NativeAndroidExample.java",
+      "sha256": "03b50afadf6ef9ab0e7116213038c1071d27d3da3439160707d43f9c0b496d68",
+      "size": 1035
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/tests/test_integration_package.py",
+      "sha256": "9013390eafa7cec581867776a8164e48f99122f3419a911eb2c1e95b686ce40d",
+      "size": 8956
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/tools/build_package.py",
+      "sha256": "5e3c824afb2af999c4d9b3dc7d09d241704199becdd7d272950600c55d6e4043",
+      "size": 4603
+    },
+    {
+      "path": "Sarah-Team-Integration-Source/tools/secret_scan.py",
+      "sha256": "025de37fe022985dfaf66c4a56b3cac4b97556a0fcad4f717e355810f6bf7c69",
+      "size": 3604
+    }
+  ],
+  "schema": "sarah-team-integration-source-manifest-v1"
+}

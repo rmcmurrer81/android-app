@@ -1,0 +1,8 @@
+{
+  "run_id": "31138617143",
+  "source_sha": "6b67487077e8c99f7ab4ded8159d778aeba0e561",
+  "android": "failure",
+  "windows": "failure",
+  "publish": "skipped",
+  "release_tag": "sarah-travel-os-v2.5-event-ready"
+}

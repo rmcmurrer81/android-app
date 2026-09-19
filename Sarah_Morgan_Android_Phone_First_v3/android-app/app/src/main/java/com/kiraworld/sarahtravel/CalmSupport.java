@@ -1,6 +1,8 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -85,7 +87,8 @@ public final class CalmSupport {
     }
 
     public static String triviaIntroduction(Map<String, String> profile) {
-        String destination = bestDestination(List.of(), List.of(), profile);
+        String destination = bestDestination(
+                Collections.emptyList(), Collections.emptyList(), profile);
         return "Let’s move your attention for a minute. I can give you multiple-choice trivia based on your age, interests, " + destination + ", or where you are from. The flight game works without internet.";
     }
 
@@ -96,7 +99,7 @@ public final class CalmSupport {
         int age = parseAge(profile.get("age"));
         String destination = bestDestination(trips, wishes, profile);
         String d = destination.toLowerCase(Locale.US);
-        String interests = profile.getOrDefault("interests", "").toLowerCase(Locale.US);
+        String interests = ProfileLearningContext.interests(profile).toLowerCase(Locale.US);
         List<Question> q = new ArrayList<>();
 
         if (age > 0 && age < 8) {
@@ -135,18 +138,26 @@ public final class CalmSupport {
         if (interests.contains("miraculous")) {
             q.add(new Question("Which hero is associated with magical ladybug earrings?", new String[]{"Ladybug", "Elsa", "Wonder Woman"}, 0, "Ladybug uses the earrings in Miraculous."));
         }
+        if (interests.contains("power rangers") && d.contains("new zealand")) {
+            q.add(new Question(
+                    "Which country is this saved Power Rangers travel game planning around?",
+                    new String[]{"New Zealand", "Canada", "Iceland"},
+                    0,
+                    "Your saved trip context for this offline game is New Zealand."));
+        }
         if (interests.contains("history")) {
             q.add(new Question("Which ancient civilization built the Colosseum?", new String[]{"Romans", "Vikings", "Aztecs"}, 0, "The Romans built the Colosseum."));
         }
 
         q.add(new Question("What should you generally do during turbulence?", new String[]{"Keep the seat belt fastened and follow crew instructions", "Stand in the aisle", "Open the overhead bin"}, 0, "Remain seated, keep the belt fastened, and follow the crew."));
         q.add(new Question("Which item is useful to keep easy to reach during a flight?", new String[]{"A small comfort item or headphones", "A checked suitcase", "A hotel television"}, 0, "A familiar comfort item or approved headphones can help with distraction."));
+        q.add(new Question("Who should you ask if you need help while you are on the airplane?", new String[]{"A member of the flight crew", "A movie character", "A hotel clerk"}, 0, "The flight crew can help with needs and questions on board."));
         return q;
     }
 
     public static List<String> noticingPrompts(int age) {
         if (age > 0 && age < 8) {
-            return List.of(
+            return Arrays.asList(
                     "Find something blue.",
                     "Find something shaped like a circle.",
                     "Find something soft.",
@@ -154,7 +165,7 @@ public final class CalmSupport {
                     "Find something smaller than your hand.",
                     "Find something that makes you smile.");
         }
-        return List.of(
+        return Arrays.asList(
                 "Find three different shades of one color.",
                 "Notice one steady sound underneath the other sounds.",
                 "Find five letters from the alphabet around you.",

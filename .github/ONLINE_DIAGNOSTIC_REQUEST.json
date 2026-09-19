@@ -1,0 +1,4 @@
+{
+  "requested_at": "2026-08-08T02:42:00Z",
+  "reason": "Retest no-credit Cloudflare Workers AI with Wrangler dotenv token transport and same-shell verification"
+}

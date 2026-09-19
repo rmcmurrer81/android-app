@@ -1,5 +1,7 @@
 package com.kiraworld.sarahtravel;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /** Pure-Java catalog used by documentation, tests, and hackathon track coverage checks. */
@@ -21,7 +23,7 @@ public final class TravelOsFeatureCatalog {
         }
     }
 
-    private static final List<Feature> FEATURES = List.of(
+    private static final List<Feature> FEATURES = Collections.unmodifiableList(Arrays.asList(
             new Feature(AI_TRIP_PLANNING, "conversation_planning", "Conversational trip planning"),
             new Feature(AI_TRIP_PLANNING, "itinerary", "Editable itinerary"),
             new Feature(AI_TRIP_PLANNING, "budget", "Trip budget"),
@@ -48,7 +50,7 @@ public final class TravelOsFeatureCatalog {
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "walking_biking", "Walking and biking options"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "sensory", "Sensory-aware planning"),
             new Feature(SUSTAINABILITY_ACCESSIBILITY, "complete_trip", "Door-to-door tradeoff comparison")
-    );
+    ));
 
     private TravelOsFeatureCatalog() { }
 

@@ -25,16 +25,21 @@ public final class TravelSearchHelper {
                 "metro to", "subway to", "transit to", "bus to", "drive to", "ferry to",
                 "going to", "planning to go", "thinking about going", "want to visit",
                 "always wanted to visit", "comic con", "comic-con", "ces", "nycc",
+                "buy tickets", "ticket link", "tickets for", "official website",
+                "official site", "official page", "registration link", "where can i register",
                 "where did they film", "where was it filmed", "filming location", "filming locations");
     }
 
     public static void show(Activity activity, String message, Map<String, String> profile) {
         EventTripIntentParser.EventIntent event = EventTripIntentParser.parse(message);
-        JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(message, profile, List.of());
+        JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(
+                message, profile, Collections.emptyList());
         List<String> places = DestinationParser.extractDestinations(message);
         KnownEventCatalog.Entry knownEvent = KnownEventCatalog.find(message);
         Map<String, String> storedEvent = event.recognized()
-                ? findStoredEvent(activity, event.eventName) : Collections.emptyMap();
+                ? findStoredEvent(
+                        activity, event.eventName, profile.getOrDefault("person_id", ""))
+                : Collections.emptyMap();
 
         String destination = event.found() ? event.destination
                 : !storedEvent.getOrDefault("destination", "").isEmpty() ? storedEvent.get("destination")
@@ -46,14 +51,15 @@ public final class TravelSearchHelper {
         String origin = journey.found() ? journey.origin : profile.getOrDefault("hometown", "");
         String mode = journey.found() && !journey.modes.isEmpty() ? journey.modes.get(0) : "";
         String storedOfficial = storedEvent.getOrDefault("official_url", "");
-        String officialUrl = knownEvent != null ? knownEvent.officialUrl : storedOfficial;
+        String officialUrl = TicketPassPolicy.exactHttpsUrl(
+                knownEvent != null ? knownEvent.officialUrl : storedOfficial);
 
         String[] choices = {
                 "Map",
                 "Photos",
                 "Videos",
                 "Route and local transit",
-                officialUrl.isEmpty() ? "Find the official or public event page" : "Open official event page",
+                officialUrl.isEmpty() ? "Find the official or public event page" : "Open verified official website / tickets",
                 "Live travel options"
         };
 
@@ -85,8 +91,11 @@ public final class TravelSearchHelper {
                 .show();
     }
 
-    private static Map<String, String> findStoredEvent(Activity activity, String eventName) {
-        EventTripStore store = new EventTripStore(activity.getApplicationContext());
+    private static Map<String, String> findStoredEvent(
+            Activity activity,
+            String eventName,
+            String personId) {
+        EventTripStore store = new EventTripStore(activity.getApplicationContext(), personId);
         try {
             for (Map<String, String> event : store.listActiveEventTrips(50)) {
                 if (eventName.equalsIgnoreCase(event.getOrDefault("event_name", ""))) return event;

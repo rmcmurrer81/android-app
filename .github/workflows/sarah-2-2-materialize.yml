@@ -1,0 +1,164 @@
+name: Materialize and verify complete Sarah 2.2
+
+on:
+  push:
+    branches:
+      - agent/sarah-2-2-phone-windows-complete-v13
+    paths:
+      - tools/post_finalize_sarah_22_quality.py
+      - .github/workflows/sarah-2-2-materialize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sarah-2-2-materialize-final
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out final development branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/sarah-2-2-phone-windows-complete-v13
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate every Android and Windows file
+        run: |
+          python tools/apply_sarah_22_upgrade.py
+          python tools/generate_sarah_windows_companion.py
+          python tools/finalize_sarah_22_generated_sources.py
+          python tools/post_finalize_sarah_22_quality.py
+          python -m py_compile \
+            tools/apply_sarah_22_upgrade.py \
+            tools/generate_sarah_windows_companion.py \
+            tools/finalize_sarah_22_generated_sources.py \
+            tools/post_finalize_sarah_22_quality.py \
+            windows-companion/sarah_core.py \
+            windows-companion/sarah_sync_server.py \
+            windows-companion/google_drive_backup.py \
+            windows-companion/sarah_windows.py
+          git diff --check
+
+      - name: Commit all generated files so Robert can recover them from GitHub
+        run: |
+          git config user.name "Sarah Travel OS Builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Materialize complete Sarah 2.2 phone and Windows source"
+            git push origin HEAD:agent/sarah-2-2-phone-windows-complete-v13
+          fi
+
+      - name: Test identity correction universal calm three channels and encryption
+        run: |
+          rm -rf build/sarah22-core
+          mkdir -p build/sarah22-core
+          javac -encoding UTF-8 -d build/sarah22-core \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/IdentityIntent.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+            Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+            Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java
+          java -cp build/sarah22-core Sarah22CoreTest
+
+      - name: Test Windows memory photos sync backup and wrong-password protection
+        run: |
+          python -m pip install --upgrade pip
+          pip install cryptography Pillow requests pytest
+          python -m pytest -q windows-companion/tests
+
+      - name: Live-validate required Sarah Morgan ElevenLabs voice
+        env:
+          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, re, sys, urllib.request, urllib.parse
+          key=os.environ.get('SARAH_ELEVENLABS_API_KEY','').strip()
+          if not key:
+              raise SystemExit('SARAH_ELEVENLABS_API_KEY is required for the event build')
+          voice=os.environ.get('SARAH_ELEVENLABS_VOICE_ID','').strip()
+          if not voice:
+              source=pathlib.Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ElevenLabsVoiceConfig.java').read_text(encoding='utf-8')
+              match=re.search(r'DEFAULT_VOICE_ID\s*=\s*"([^"]+)"',source)
+              if not match:
+                  raise SystemExit('Sarah Morgan ElevenLabs voice ID was not found')
+              voice=match.group(1)
+          model=os.environ.get('SARAH_ELEVENLABS_MODEL_ID','').strip() or 'eleven_multilingual_v2'
+          endpoint='https://api.elevenlabs.io/v1/text-to-speech/'+urllib.parse.quote(voice)
+          body=json.dumps({'text':'Sarah Travel OS voice validation.','model_id':model,'voice_settings':{'stability':0.55,'similarity_boost':0.78}}).encode()
+          request=urllib.request.Request(endpoint,data=body,method='POST',headers={'xi-api-key':key,'Content-Type':'application/json','Accept':'audio/mpeg'})
+          with urllib.request.urlopen(request,timeout=90) as response:
+              audio=response.read(500000)
+              if response.status < 200 or response.status >= 300 or len(audio) < 128:
+                  raise SystemExit('ElevenLabs returned no usable validation audio')
+          print('Sarah Morgan ElevenLabs live voice validation passed without printing credentials.')
+          PY
+
+      - name: Smoke-test Tavily when the event key is available
+        env:
+          SARAH_TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          key=os.environ.get('SARAH_TAVILY_API_KEY','').strip()
+          if not key:
+              print('Tavily key is not configured yet; source route and tests remain present.')
+              raise SystemExit(0)
+          body=json.dumps({'api_key':key,'query':'Travel Hack NYC official event','search_depth':'basic','max_results':1,'include_answer':False}).encode()
+          request=urllib.request.Request('https://api.tavily.com/search',data=body,method='POST',headers={'Content-Type':'application/json'})
+          with urllib.request.urlopen(request,timeout=60) as response:
+              data=json.loads(response.read().decode())
+          if not data.get('results'):
+              raise SystemExit('Tavily returned no source-backed result')
+          print('Tavily connected research smoke test passed without printing credentials.')
+          PY
+
+      - name: Build Sarah Android 2.2 APK
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Compile Android and package both platforms
+        run: |
+          gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+          cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.2-phone-windows-continuity.apk
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          with zipfile.ZipFile('Sarah-Morgan-Windows-2.2-source.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path in Path('windows-companion').rglob('*'):
+                  if path.is_file() and '__pycache__' not in path.parts and '.pytest_cache' not in path.parts:
+                      archive.write(path,path)
+          PY
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-2.2-Android-APK
+          path: Sarah-Morgan-2.2-phone-windows-continuity.apk
+          if-no-files-found: error
+
+      - name: Upload complete Windows source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-Windows-2.2-source
+          path: Sarah-Morgan-Windows-2.2-source.zip
+          if-no-files-found: error

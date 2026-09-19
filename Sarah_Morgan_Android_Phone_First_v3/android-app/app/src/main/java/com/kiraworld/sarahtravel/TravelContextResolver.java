@@ -1,6 +1,7 @@
 package com.kiraworld.sarahtravel;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,7 +19,7 @@ public final class TravelContextResolver {
         String safe = message == null ? "" : message.trim();
         String lower = safe.toLowerCase(Locale.US);
 
-        if (clearsTravelContext(lower)) return List.of();
+        if (clearsTravelContext(lower)) return Collections.emptyList();
 
         List<String> current = DestinationParser.extractDestinations(safe);
         if (!current.isEmpty()) return unique(current);
@@ -35,7 +36,7 @@ public final class TravelContextResolver {
             List<String> found = DestinationParser.extractDestinations(content);
             if (!found.isEmpty()) return unique(found);
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
     public static String primaryDestination(
@@ -47,7 +48,14 @@ public final class TravelContextResolver {
 
     public static boolean clearsTravelContext(String lower) {
         if (lower == null) return false;
-        return lower.matches("^(i don'?t know( yet)?|not sure( yet)?|nothing yet|no destination yet|undecided|i have no idea)[.! ]*$");
+        String safe = lower.toLowerCase(Locale.US).trim();
+        if (safe.matches("^(i don'?t know( yet)?|not sure( yet)?|nothing yet|no destination yet|undecided|i have no idea)[.! ]*$")) {
+            return true;
+        }
+        if (safe.contains(" but ") || safe.contains(" instead ")) return false;
+        return safe.matches("^(?:i am|i'm|im|we are|we're) not (?:going|traveling|travelling|flying|driving)(?: to)? .+[.! ]*$")
+                || safe.matches("^not (?:going|traveling|travelling|flying|driving)(?: to)? (?:there|.+)[.! ]*$")
+                || safe.matches("^(?:cancel|forget|drop|clear) (?:(?:that|this|the) )?(?:trip|destination|travel plan|travel context)[.! ]*$");
     }
 
     private static boolean startsNewTopic(String lower) {

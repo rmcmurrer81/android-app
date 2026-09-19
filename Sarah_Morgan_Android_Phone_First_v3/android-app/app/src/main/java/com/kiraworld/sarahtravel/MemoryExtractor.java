@@ -44,7 +44,6 @@ public final class MemoryExtractor {
         String lower = safe.toLowerCase(Locale.US);
         List<Candidate> out = new ArrayList<>();
 
-        addDestinationWishes(out, safe, lower);
         add(out, PAST_TRIP, safe, "past_trip", "Has traveled to ");
         addFavorite(out, safe);
         add(out, EXPLICIT_DISLIKE, safe, "preference", "Dislikes or avoids ");
@@ -85,17 +84,6 @@ public final class MemoryExtractor {
             out.add(new Candidate("travel_experience", "Flying is new or this may be a first flight"));
         }
         return deduplicate(out);
-    }
-
-    private static void addDestinationWishes(List<Candidate> out, String text, String lower) {
-        if (!containsAny(lower,
-                "want to visit", "want to go to", "wanted to visit", "wanted to go to",
-                "would love to travel to", "would like to visit", "would like to go to",
-                "dream trip", "deciding between")) return;
-        List<String> destinations = DestinationParser.extractDestinations(text);
-        for (String destination : destinations) {
-            out.add(new Candidate("wish_list", "Wants to visit " + destination));
-        }
     }
 
     private static void add(List<Candidate> out, Pattern pattern, String text, String category, String prefix) {

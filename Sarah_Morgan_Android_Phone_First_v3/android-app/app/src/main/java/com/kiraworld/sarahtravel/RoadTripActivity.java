@@ -100,8 +100,8 @@ public final class RoadTripActivity extends Activity {
         live.addView(TravelUi.cardTitle(this, "🔌", "Automatic road-trip optimization"));
         live.addView(TravelUi.body(this,
                 TravelCommerceConfig.isConfigured()
-                        ? "The team travel backend can receive route, vehicle, stop pacing and accessibility context for live optimization."
-                        : "The route tools work now. True automatic cheapest-safe fuel stops require a lawful live fuel-price and routing provider connected through the team backend; Sarah will not scrape private apps or invent station prices."));
+                        ? "Live route optimization can use the route, vehicle, stop pacing, and accessibility choices."
+                        : "The route tools work now. Automatic cheapest-safe fuel stops require verified live fuel prices and routing; Sarah will not scrape private apps or invent station prices."));
         root.addView(live);
     }
 

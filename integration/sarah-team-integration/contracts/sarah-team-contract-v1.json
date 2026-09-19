@@ -1,0 +1,286 @@
+{
+  "schemaVersion": "sarah-team-integration-v1",
+  "encoding": "UTF-8 JSON",
+  "timeEncoding": "UTC epoch milliseconds",
+  "packageSafety": {
+    "containsRuntimeCredentials": false,
+    "containsServiceEndpoints": false,
+    "containsOwnerData": false,
+    "hostOwnsAuthenticatedTransport": true,
+    "credentialsMayAppearInRequestsOrResults": false
+  },
+  "enums": {
+    "conversationMode": [
+      "ONLINE_PREFERRED",
+      "LOCAL_ONLY"
+    ],
+    "turnRoute": [
+      "ONLINE_WORKERS_AI",
+      "ONLINE_OPENAI",
+      "ONLINE_CONNECTED_OTHER",
+      "OFFLINE_LOCAL",
+      "ONLINE_FAILED_FELL_BACK_OFFLINE",
+      "LOCAL_TOOL_RESULT",
+      "PUBLIC_SOURCE_TOOL_RESULT",
+      "TOOL_UNAVAILABLE"
+    ],
+    "classification": [
+      "TRUTHFUL_STATEMENT",
+      "DELIBERATE_LIE",
+      "JOKE_OR_SARCASM",
+      "EVASION",
+      "PRIVACY_PROTECTION",
+      "SOFTENED_TRUTH",
+      "PARTIAL_TRUTH",
+      "EXAGGERATION",
+      "UNCERTAIN_BELIEF",
+      "SINCERE_MISTAKE",
+      "HALLUCINATION_OR_GROUNDING_ERROR",
+      "IDENTITY_ATTRIBUTION_ERROR",
+      "RUNTIME_STATE_ERROR"
+    ],
+    "locationSource": [
+      "DEVICE_RESOLVED_APPROXIMATE",
+      "OWNER_ENTERED_APPROXIMATE"
+    ],
+    "accessState": [
+      "READY",
+      "RENEWING",
+      "OFFLINE",
+      "EXPIRED",
+      "UNAVAILABLE"
+    ],
+    "voiceRoute": [
+      "PROTECTED_ELEVENLABS",
+      "OFFLINE_DEVICE",
+      "NONE"
+    ],
+    "errorCode": [
+      "NONE",
+      "INVALID_REQUEST",
+      "PERSON_SCOPE_REQUIRED",
+      "LOCATION_REQUIRED",
+      "LOCATION_DENIED",
+      "AUTH_UNAVAILABLE",
+      "CURRENT_SOURCE_UNAVAILABLE",
+      "ONLINE_FAILED",
+      "VOICE_UNAVAILABLE",
+      "CANCELLED",
+      "TIMEOUT",
+      "HOST_FAILURE"
+    ]
+  },
+  "objects": {
+    "turnRequest": {
+      "required": [
+        "requestId",
+        "personScopeId",
+        "submittedAtEpochMs",
+        "message",
+        "conversationMode",
+        "currentSourcesRequested"
+      ],
+      "optional": [
+        "approximateArea",
+        "conversationCursor"
+      ]
+    },
+    "turnResult": {
+      "required": [
+        "requestId",
+        "personScopeId",
+        "completedAtEpochMs",
+        "spoken",
+        "privateMind",
+        "factualTruth",
+        "classification",
+        "route",
+        "sourceReceipt",
+        "error"
+      ]
+    },
+    "approximateArea": {
+      "required": [
+        "label",
+        "source",
+        "capturedAtEpochMs",
+        "expiresAtEpochMs"
+      ],
+      "forbidden": [
+        "preciseLatitude",
+        "preciseLongitude"
+      ]
+    },
+    "sourceReceipt": {
+      "required": [
+        "applied",
+        "observedAtEpochMs",
+        "scope",
+        "sourceIds"
+      ],
+      "rule": "Current claims require applied=true and at least one source ID."
+    },
+    "operationError": {
+      "required": [
+        "code",
+        "retryable",
+        "factualTruth"
+      ],
+      "rule": "A failure result never uses a success route or fabricated external action."
+    },
+    "voiceRequest": {
+      "required": [
+        "requestId",
+        "personScopeId",
+        "spokenText",
+        "approvedVoiceProfileId"
+      ],
+      "forbidden": [
+        "providerCredential",
+        "serviceEndpoint",
+        "ownerEmail"
+      ]
+    },
+    "voiceReceipt": {
+      "required": [
+        "requestId",
+        "actualRoute",
+        "completed",
+        "startedAtEpochMs",
+        "completedAtEpochMs",
+        "error"
+      ]
+    },
+    "profileSummary": {
+      "required": [
+        "personScopeId",
+        "displayName",
+        "memoryConsent"
+      ]
+    },
+    "tripSummary": {
+      "required": [
+        "recordId",
+        "personScopeId",
+        "destination",
+        "status"
+      ]
+    },
+    "calendarItem": {
+      "required": [
+        "recordId",
+        "personScopeId",
+        "title",
+        "startEpochMs",
+        "status"
+      ]
+    },
+    "walletItem": {
+      "required": [
+        "recordId",
+        "personScopeId",
+        "kind",
+        "displayLabel"
+      ],
+      "forbidden": [
+        "password",
+        "paymentCardSecret"
+      ]
+    },
+    "workbenchDestination": {
+      "required": [
+        "destinationId",
+        "displayLabel",
+        "available"
+      ],
+      "rule": "Opening a destination is navigation, not proof an external action occurred."
+    },
+    "accessSnapshot": {
+      "required": [
+        "state",
+        "renewable",
+        "expiresAtEpochMs",
+        "factualTruth"
+      ],
+      "forbidden": [
+        "replayableSecret",
+        "serviceEndpoint"
+      ]
+    }
+  },
+  "operations": {
+    "conversation.send": {
+      "request": "turnRequest",
+      "result": "turnResult",
+      "cancellable": true,
+      "fallback": "ONLINE_PREFERRED may return ONLINE_FAILED_FELL_BACK_OFFLINE with explicit factual truth."
+    },
+    "location.resolveApproximate": {
+      "request": "requestId + personScopeId + ownerPermissionState",
+      "result": "approximateArea or operationError",
+      "cancellable": true,
+      "fallback": "Ask for owner-entered city/region; never guess."
+    },
+    "currentSources.search": {
+      "request": "requestId + personScopeId + query + approximateArea?",
+      "result": "sourceReceipt + bounded result summaries or operationError",
+      "cancellable": true,
+      "fallback": "Return CURRENT_SOURCE_UNAVAILABLE without a current claim."
+    },
+    "profiles.list": {
+      "request": "requestId",
+      "result": "profileSummary[]"
+    },
+    "profiles.select": {
+      "request": "requestId + personScopeId",
+      "result": "profileSummary or operationError"
+    },
+    "trips.list": {
+      "request": "requestId + personScopeId",
+      "result": "tripSummary[]"
+    },
+    "trips.upsert": {
+      "request": "requestId + personScopeId + tripSummary",
+      "result": "tripSummary or operationError"
+    },
+    "calendar.list": {
+      "request": "requestId + personScopeId + bounded time window",
+      "result": "calendarItem[]"
+    },
+    "calendar.upsert": {
+      "request": "requestId + personScopeId + calendarItem",
+      "result": "calendarItem or operationError"
+    },
+    "wallet.list": {
+      "request": "requestId + personScopeId",
+      "result": "walletItem[]"
+    },
+    "wallet.upsert": {
+      "request": "requestId + personScopeId + walletItem",
+      "result": "walletItem or operationError"
+    },
+    "workbench.listDestinations": {
+      "request": "requestId + personScopeId",
+      "result": "workbenchDestination[]"
+    },
+    "workbench.openDestination": {
+      "request": "requestId + personScopeId + destinationId",
+      "result": "navigation acknowledgement or operationError"
+    },
+    "voice.synthesize": {
+      "request": "voiceRequest",
+      "result": "voiceReceipt",
+      "cancellable": true,
+      "fallback": "Host may return OFFLINE_DEVICE only when that exact route was used; text remains complete independently."
+    },
+    "access.status": {
+      "request": "none",
+      "result": "accessSnapshot"
+    },
+    "access.renew": {
+      "request": "requestId",
+      "result": "accessSnapshot or operationError",
+      "rule": "Renewal stays inside the host and returns no credential material."
+    }
+  }
+}

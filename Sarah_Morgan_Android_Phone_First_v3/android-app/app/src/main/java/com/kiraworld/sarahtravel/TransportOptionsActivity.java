@@ -64,11 +64,11 @@ public final class TransportOptionsActivity extends Activity {
         root.addView(needs);
 
         LinearLayout backend = TravelUi.card(this, TravelUi.CREAM);
-        backend.addView(TravelUi.cardTitle(this, "🔌", "Live multimodal backend"));
+        backend.addView(TravelUi.cardTitle(this, "🔌", "Live transportation status"));
         backend.addView(TravelUi.body(this,
                 TravelCommerceConfig.isConfigured()
-                        ? "The team commerce endpoint is configured and can normalize current transport offers for Sarah."
-                        : "The external sources work now. In-app current schedules and normalized prices require the team travel backend or approved sponsor/provider APIs."));
+                        ? "Current transportation offers can be compared in one consistent view."
+                        : "External route links work now. In-app current schedules and normalized prices require a verified live connection."));
         root.addView(backend);
     }
 

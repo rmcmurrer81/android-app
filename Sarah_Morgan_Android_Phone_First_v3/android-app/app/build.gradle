@@ -5,43 +5,69 @@ plugins {
 def javaString = { String value ->
     '"' + (value ?: '').replace('\\', '\\\\').replace('"', '\\"') + '"'
 }
-def sarahOpenAiKey = System.getenv('SARAH_OPENAI_API_KEY') ?: ''
+def sarahModelProvider = System.getenv('SARAH_MODEL_PROVIDER') ?: 'workers-ai'
+def sarahModelId = System.getenv('SARAH_MODEL_ID') ?: (System.getenv('SARAH_OPENAI_MODEL') ?: '@cf/google/gemma-4-26b-a4b-it')
+def sarahOpenAiModel = System.getenv('SARAH_OPENAI_MODEL') ?: sarahModelId
 def sarahModelBackendUrl = System.getenv('SARAH_MODEL_BACKEND_URL') ?: ''
-def sarahModelBackendToken = System.getenv('SARAH_MODEL_BACKEND_TOKEN') ?: ''
 def sarahTravelCommerceUrl = System.getenv('SARAH_TRAVEL_COMMERCE_URL') ?: ''
-def sarahTravelCommerceToken = System.getenv('SARAH_TRAVEL_COMMERCE_TOKEN') ?: ''
 def sarahVoiceConciergeUrl = System.getenv('SARAH_VOICE_CONCIERGE_URL') ?: ''
-def sarahVoiceConciergeToken = System.getenv('SARAH_VOICE_CONCIERGE_TOKEN') ?: ''
-def sarahElevenLabsApiKey = System.getenv('SARAH_ELEVENLABS_API_KEY') ?: ''
 def sarahElevenLabsVoiceId = System.getenv('SARAH_ELEVENLABS_VOICE_ID') ?: ''
 def sarahElevenLabsModelId = System.getenv('SARAH_ELEVENLABS_MODEL_ID') ?: 'eleven_multilingual_v2'
 def sarahElevenLabsBackendUrl = System.getenv('SARAH_ELEVENLABS_BACKEND_URL') ?: ''
-def sarahElevenLabsBackendToken = System.getenv('SARAH_ELEVENLABS_BACKEND_TOKEN') ?: ''
+def sarahStay22Aid = System.getenv('SARAH_STAY22_AID') ?: ''
+def sarahStay22BackendUrl = System.getenv('SARAH_STAY22_BACKEND_URL') ?: ''
+def sarahBuildCommit = System.getenv('GITHUB_SHA') ?: ''
+def sarahExpectedDeploymentId = System.getenv('SARAH_EXPECTED_DEPLOYMENT_ID') ?: ''
+def sarahExpectedWorkerSourceSha256 = System.getenv('SARAH_EXPECTED_WORKER_SOURCE_SHA256') ?: ''
+def sarahExpectedWorkerConfigSha256 = System.getenv('SARAH_EXPECTED_WORKER_CONFIG_SHA256') ?: ''
+def sarahEventBackendToken = System.getenv('SARAH_EVENT_BACKEND_TOKEN') ?: ''
 
 android {
     namespace 'com.kiraworld.sarahtravel'
     compileSdk 35
 
     defaultConfig {
+        // Keep the original app identity so Android performs the real R1 -> R3
+        // private-data upgrade instead of silently creating a fresh sandbox.
         applicationId 'com.kiraworld.sarahtravel'
         minSdk 26
         targetSdk 35
-        versionCode 21
-        versionName '2.1-offline-flight-companion'
+        versionCode 27
+        versionName '2.5-r3-owner-repair'
 
-        // Team-owned connections. People installing Sarah do not enter provider keys.
-        buildConfigField 'String', 'SARAH_OPENAI_API_KEY', javaString(sarahOpenAiKey)
+        // Artifacts contain public route/model identity only. All credential
+        // compatibility fields are forced empty even when a build runner has
+        // similarly named secrets in its environment. A confirmed owner
+        // activates one revocable protected-backend access code at runtime.
+        buildConfigField 'String', 'SARAH_OPENAI_API_KEY', '""'
+        buildConfigField 'String', 'SARAH_OPENAI_MODEL', javaString(sarahOpenAiModel)
+        buildConfigField 'String', 'SARAH_MODEL_PROVIDER', javaString(sarahModelProvider)
+        buildConfigField 'String', 'SARAH_MODEL_ID', javaString(sarahModelId)
         buildConfigField 'String', 'SARAH_MODEL_BACKEND_URL', javaString(sarahModelBackendUrl)
-        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahModelBackendToken)
+        buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', '""'
         buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_URL', javaString(sarahTravelCommerceUrl)
-        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', javaString(sarahTravelCommerceToken)
+        buildConfigField 'String', 'SARAH_TRAVEL_COMMERCE_TOKEN', '""'
         buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_URL', javaString(sarahVoiceConciergeUrl)
-        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', javaString(sarahVoiceConciergeToken)
-        buildConfigField 'String', 'SARAH_ELEVENLABS_API_KEY', javaString(sarahElevenLabsApiKey)
+        buildConfigField 'String', 'SARAH_VOICE_CONCIERGE_TOKEN', '""'
+        buildConfigField 'String', 'SARAH_ELEVENLABS_API_KEY', '""'
         buildConfigField 'String', 'SARAH_ELEVENLABS_VOICE_ID', javaString(sarahElevenLabsVoiceId)
         buildConfigField 'String', 'SARAH_ELEVENLABS_MODEL_ID', javaString(sarahElevenLabsModelId)
         buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_URL', javaString(sarahElevenLabsBackendUrl)
-        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', javaString(sarahElevenLabsBackendToken)
+        buildConfigField 'String', 'SARAH_ELEVENLABS_BACKEND_TOKEN', '""'
+        // Provider search credentials must remain server-side. This constant
+        // is intentionally blank even if an old build environment sets one.
+        buildConfigField 'String', 'SARAH_TAVILY_API_KEY', '""'
+        buildConfigField 'String', 'SARAH_STAY22_AID', javaString(sarahStay22Aid)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_URL', javaString(sarahStay22BackendUrl)
+        buildConfigField 'String', 'SARAH_STAY22_BACKEND_TOKEN', '""'
+        buildConfigField 'String', 'SARAH_BUILD_COMMIT', javaString(sarahBuildCommit)
+        buildConfigField 'String', 'SARAH_EXPECTED_DEPLOYMENT_ID', javaString(sarahExpectedDeploymentId)
+        buildConfigField 'String', 'SARAH_EXPECTED_WORKER_SOURCE_SHA256', javaString(sarahExpectedWorkerSourceSha256)
+        buildConfigField 'String', 'SARAH_EXPECTED_WORKER_CONFIG_SHA256', javaString(sarahExpectedWorkerConfigSha256)
+        // The normal R1-compatible lane keeps Gmail source available and never
+        // bundles a protected-backend token.  The explicitly separate event
+        // build type overrides both values below without changing this lane.
+        buildConfigField 'boolean', 'SARAH_GMAIL_AVAILABLE', 'true'
     }
 
     buildFeatures {
@@ -50,8 +76,19 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix '.debug'
             versionNameSuffix '-debug'
+        }
+        eventCandidate {
+            initWith debug
+            applicationIdSuffix '.eventcandidate'
+            versionNameSuffix '-event-candidate'
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['debug']
+            resValue 'string', 'app_name', 'Sarah Morgan 72-Hour Event Candidate'
+            // Owner-authorized, side-by-side event artifact. This value is the
+            // revocable app-to-Worker bearer only; provider keys remain empty.
+            buildConfigField 'String', 'SARAH_MODEL_BACKEND_TOKEN', javaString(sarahEventBackendToken)
+            buildConfigField 'boolean', 'SARAH_GMAIL_AVAILABLE', 'false'
         }
         release {
             minifyEnabled false
@@ -63,4 +100,17 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // 1.9.4 is the bounded stable Media3 line selected for this compileSdk 35 app.
+    // It lets the approved ElevenLabs MP3 response begin playing progressively.
+    implementation 'androidx.media3:media3-exoplayer:1.9.4'
+    // Current supported Android Google authorization broker. OAuth redirects,
+    // app/client binding and consent remain in Google Play services; Sarah
+    // never embeds a Google client secret or asks for a Gmail password.
+    implementation 'com.google.android.gms:play-services-auth:21.6.0'
+    // Bounded, owner-opted background travel-email checks. The worker is
+    // network constrained, battery aware, metadata-first and cancelable.
+    implementation 'androidx.work:work-runtime:2.11.2'
 }

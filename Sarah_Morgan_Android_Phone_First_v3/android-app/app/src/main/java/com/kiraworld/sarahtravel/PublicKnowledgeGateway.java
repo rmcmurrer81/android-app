@@ -86,7 +86,6 @@ public final class PublicKnowledgeGateway {
         String normalized = normalize(subject);
         if (subject.length() < 2 || subject.length() > 100) return "";
         if (normalized.matches("^(it|that|this|they|he|she|there)$")) return "";
-        if (!DestinationParser.extractDestinations(subject).isEmpty()) return "";
         return subject;
     }
 
@@ -199,7 +198,8 @@ public final class PublicKnowledgeGateway {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(12000);
         connection.setReadTimeout(16000);
-        connection.setRequestProperty("User-Agent", "SarahMorganTravel/1.5 (public knowledge lookup)");
+        connection.setRequestProperty("User-Agent", "SarahMorganTravel/" + BuildConfig.VERSION_NAME
+                + " (public knowledge lookup)");
         connection.setRequestProperty("Accept", "application/json");
         int status = connection.getResponseCode();
         if (status < 200 || status >= 400) throw new IllegalStateException("Public reference returned " + status);

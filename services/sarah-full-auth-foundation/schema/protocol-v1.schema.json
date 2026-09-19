@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sarah.example/device-auth-protocol-v1.schema.json",
+  "title": "Sarah durable device authentication protocol v1",
+  "description": "Wire schemas for the enrollment and renewable-session foundation. This schema is not evidence of a deployed service.",
+  "$defs": {
+    "OpaqueId": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "Base64Url256": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "P1363Signature": {
+      "type": "string",
+      "description": "64-byte P-256 IEEE-P1363 r || s, unpadded base64url",
+      "pattern": "^[A-Za-z0-9_-]{86}$"
+    },
+    "UtcInstant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "PublicP256Jwk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kty", "crv", "x", "y"],
+      "properties": {
+        "kty": { "const": "EC" },
+        "crv": { "const": "P-256" },
+        "x": { "$ref": "#/$defs/Base64Url256" },
+        "y": { "$ref": "#/$defs/Base64Url256" }
+      }
+    },
+    "DeviceMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "display_name", "app_id", "app_version"],
+      "properties": {
+        "platform": { "enum": ["android", "windows"] },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "app_id": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "app_version": { "type": "string", "minLength": 1, "maxLength": 40 }
+      }
+    },
+    "EnrollmentCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "display_name", "app_id", "app_version", "public_jwk"],
+      "properties": {
+        "platform": { "enum": ["android", "windows"] },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "app_id": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "app_version": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "public_jwk": { "$ref": "#/$defs/PublicP256Jwk" }
+      }
+    },
+    "EnrollmentCreateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enrollment_id",
+        "device_code",
+        "user_code",
+        "challenge",
+        "key_thumbprint",
+        "verification_uri",
+        "expires_at",
+        "poll_interval_seconds"
+      ],
+      "properties": {
+        "enrollment_id": { "$ref": "#/$defs/OpaqueId" },
+        "device_code": { "$ref": "#/$defs/Base64Url256" },
+        "user_code": { "type": "string", "pattern": "^[A-Z2-9]{8}$" },
+        "challenge": { "$ref": "#/$defs/Base64Url256" },
+        "key_thumbprint": { "$ref": "#/$defs/Base64Url256" },
+        "verification_uri": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "expires_at": { "$ref": "#/$defs/UtcInstant" },
+        "poll_interval_seconds": { "type": "integer", "minimum": 2, "maximum": 30 }
+      }
+    },
+    "EnrollmentCompleteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_code", "challenge", "signature"],
+      "properties": {
+        "device_code": { "$ref": "#/$defs/Base64Url256" },
+        "challenge": { "$ref": "#/$defs/Base64Url256" },
+        "signature": { "$ref": "#/$defs/P1363Signature" }
+      }
+    },
+    "EnrollmentCompleteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_id", "state"],
+      "properties": {
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "state": { "const": "consumed" }
+      }
+    },
+    "AuthChallengeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_id"],
+      "properties": {
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "purpose": {
+          "enum": ["access_token", "self_revoke", "key_rotation"],
+          "default": "access_token"
+        }
+      }
+    },
+    "AuthChallengeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["challenge_id", "device_id", "nonce", "purpose", "api_origin", "key_version", "expires_at"],
+      "properties": {
+        "challenge_id": { "$ref": "#/$defs/OpaqueId" },
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "nonce": { "$ref": "#/$defs/Base64Url256" },
+        "purpose": { "enum": ["access_token", "self_revoke", "key_rotation"] },
+        "api_origin": { "type": "string", "format": "uri", "pattern": "^https://[^/]+$" },
+        "key_version": { "type": "integer", "minimum": 1 },
+        "expires_at": { "$ref": "#/$defs/UtcInstant" }
+      }
+    },
+    "AuthTokenRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_id", "challenge_id", "nonce", "signature", "key_version"],
+      "properties": {
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "challenge_id": { "$ref": "#/$defs/OpaqueId" },
+        "nonce": { "$ref": "#/$defs/Base64Url256" },
+        "signature": { "$ref": "#/$defs/P1363Signature" },
+        "key_version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "AuthTokenResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["access_token", "token_type", "expires_in", "device_id", "key_version", "auth_epoch", "lease_expires_at"],
+      "properties": {
+        "access_token": { "type": "string", "minLength": 32 },
+        "token_type": { "const": "Bearer" },
+        "expires_in": { "const": 600 },
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "key_version": { "type": "integer", "minimum": 1 },
+        "auth_epoch": { "type": "integer", "minimum": 1 }
+        ,"lease_expires_at": { "$ref": "#/$defs/UtcInstant" }
+      }
+    },
+    "AccessClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["iss", "aud", "sub", "owner_id", "device_id", "scope", "key_version", "auth_epoch", "iat", "nbf", "exp", "jti"],
+      "properties": {
+        "iss": { "type": "string" },
+        "aud": { "type": "string" },
+        "sub": { "$ref": "#/$defs/OpaqueId" },
+        "owner_id": { "$ref": "#/$defs/OpaqueId" },
+        "device_id": { "$ref": "#/$defs/OpaqueId" },
+        "scope": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["capabilities:read", "chat:write", "search:write", "voice:write", "device:read", "device:write"] }
+        },
+        "key_version": { "type": "integer", "minimum": 1 },
+        "auth_epoch": { "type": "integer", "minimum": 1 },
+        "iat": { "type": "integer", "minimum": 0 },
+        "nbf": { "type": "integer", "minimum": 0 },
+        "exp": { "type": "integer", "minimum": 1 },
+        "jti": { "$ref": "#/$defs/OpaqueId" }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "enum": [
+            "unauthorized",
+            "owner_access_invalid",
+            "owner_access_denied",
+            "owner_access_unavailable",
+            "device_revoked",
+            "device_lease_expired",
+            "stale_auth_epoch",
+            "stale_key_version",
+            "challenge_expired",
+            "challenge_already_consumed",
+            "enrollment_expired",
+            "enrollment_denied",
+            "enrollment_already_consumed",
+            "rate_limited",
+            "auth_store_unavailable",
+            "auth_store_corrupt",
+            "auth_signing_unavailable",
+            "auth_hashing_unavailable",
+            "authorization_pending",
+            "invalid_enrollment_proof",
+            "invalid_device_proof",
+            "invalid_token",
+            "scope_denied",
+            "stale_device_state",
+            "device_state_changed"
+          ]
+        },
+        "retry_after": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "route": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    }
+  }
+}

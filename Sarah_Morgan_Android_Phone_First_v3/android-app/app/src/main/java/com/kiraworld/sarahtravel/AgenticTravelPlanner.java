@@ -16,6 +16,7 @@ public final class AgenticTravelPlanner {
     public static final String UPDATE_DESTINATION_FOCUS = "update_destination_focus";
     public static final String SET_FLEXIBLE_DATES = "set_flexible_dates";
     public static final String CREATE_EVENT_TRIP = "create_event_trip";
+    public static final String CANCEL_EVENT_MONITOR = "cancel_event_monitor";
     public static final String SAVE_BOOKING_LINK = "save_booking_link";
     public static final String SAVE_JOURNEY_PLAN = "save_journey_plan";
     public static final String CREATE_MOBILITY_WATCH = "create_mobility_watch";
@@ -25,11 +26,21 @@ public final class AgenticTravelPlanner {
         public final String type;
         public final String destination;
         public final String detail;
+        public final boolean monitoringRequested;
 
         public Action(String type, String destination, String detail) {
+            this(type, destination, detail, false);
+        }
+
+        public Action(
+                String type,
+                String destination,
+                String detail,
+                boolean monitoringRequested) {
             this.type = type;
             this.destination = destination == null ? "" : destination;
             this.detail = detail == null ? "" : detail;
+            this.monitoringRequested = monitoringRequested;
         }
     }
 
@@ -83,16 +94,43 @@ public final class AgenticTravelPlanner {
 
         EventTripIntentParser.EventIntent eventIntent = EventTripIntentParser.parse(safe);
         JourneyIntentParser.JourneyIntent journey = JourneyIntentParser.parse(safe, profile, history);
+        if (eventIntent.monitoringCancellationRequested && eventIntent.recognized()) {
+            actions.add(new Action(
+                    CANCEL_EVENT_MONITOR,
+                    eventIntent.destination,
+                    eventIntent.eventName));
+            return new Plan(
+                    "I will resolve that exact event against this active profile and turn off only one unambiguous monitor. The saved event trip will remain.",
+                    actions);
+        }
         if (eventIntent.found()) {
-            actions.add(new Action(CREATE_EVENT_TRIP, eventIntent.destination, eventIntent.eventName));
+            boolean memoryConsent = "yes".equals(
+                    profile.getOrDefault("memory_consent", "no"));
+            if (eventIntent.monitoringCancellationRequested) {
+                actions.add(new Action(
+                        CANCEL_EVENT_MONITOR,
+                        eventIntent.destination,
+                        eventIntent.eventName));
+                return new Plan(
+                        "I’ll turn off the exact " + eventIntent.eventName
+                                + " monitor for this active profile without deleting the saved event trip.",
+                        actions);
+            }
+            actions.add(new Action(
+                    CREATE_EVENT_TRIP,
+                    eventIntent.destination,
+                    eventIntent.eventName,
+                    eventIntent.monitoringRequested));
             actions.add(new Action(
                     QUEUE_KNOWLEDGE_PACK,
                     eventIntent.destination,
                     eventIntent.eventName + " event-centered trip"));
-            actions.add(new Action(
-                    SAVE_WISH,
-                    eventIntent.destination,
-                    "Trip centered on " + eventIntent.eventName));
+            if (memoryConsent) {
+                actions.add(new Action(
+                        SAVE_WISH,
+                        eventIntent.destination,
+                        "Trip centered on " + eventIntent.eventName));
+            }
             if (journey.found()) {
                 actions.add(new Action(
                         SAVE_JOURNEY_PLAN,
@@ -107,7 +145,13 @@ public final class AgenticTravelPlanner {
             }
             StringBuilder reply = new StringBuilder();
             reply.append("I’ll treat ").append(eventIntent.eventName).append(" as the center of the ")
-                    .append(eventIntent.destination).append(" trip. I’ll monitor official dates, venue and schedule changes, transportation, accessibility information, and newly announced details. I’ll also build a nearby list for food and places worth checking out around the event area.");
+                    .append(eventIntent.destination).append(" trip. ");
+            if (eventIntent.monitoringRequested) {
+                reply.append("You explicitly asked for monitoring, so I’ll enable it only if the owner opt-in and source-route gates pass. ");
+            } else {
+                reply.append("I’ll save the event details without silently turning on background monitoring. ");
+            }
+            reply.append("I’ll also build a nearby list for food and places worth checking out around the event area.");
             if (journey.found()) {
                 reply.append(" I’ll save ").append(modeLabel(journey.modes))
                         .append(" from ").append(journey.origin).append(" as the travel method instead of assuming you are flying.");
@@ -153,7 +197,7 @@ public final class AgenticTravelPlanner {
             }
             String reply = JourneyPlannerCore.answer(journey);
             if (journey.monitorRequested) {
-                reply += " I’ll save a multimodal watch for the methods you named, or air, rail, and intercity bus when you did not specify one. Real notifications require the configured team travel backend.";
+                reply += " You explicitly requested monitoring. The app will create a multimodal watch only if a real travel provider is configured; otherwise no active watch is created and the interface will say setup is required.";
             }
             return new Plan(reply, actions);
         }
@@ -181,30 +225,49 @@ public final class AgenticTravelPlanner {
         }
 
         if (isPlanningStatement(lower) && !current.isEmpty()) {
-            boolean dream = containsAny(lower, "always wanted", "dream of", "dreamed of", "bucket list");
+            boolean saveRequested = containsAny(lower, "save this", "save it", "add to my wish", "add it to my wish", "put on my wish", "remember this destination");
+            boolean memoryConsent = "yes".equals(profile.getOrDefault("memory_consent", "no"));
+            boolean durablePlan = TravelPlanningConversationPolicy.explicitlyPlansTrip(lower)
+                    && memoryConsent;
             for (String destination : current) {
-                actions.add(new Action(QUEUE_KNOWLEDGE_PACK, destination, "Automatic destination research"));
-                actions.add(new Action(SAVE_WISH, destination, dream ? "Long-term dream destination" : "Possible trip"));
-                if (dream) {
-                    JourneyIntentParser.JourneyIntent broad = JourneyIntentParser.parse(
-                            "monitor travel options to " + destination, profile, history);
-                    actions.add(new Action(
-                            CREATE_MOBILITY_WATCH,
-                            destination,
-                            journeyDetail(broad, "dream_destination")));
-                }
+                if (memoryConsent) actions.add(new Action(
+                        QUEUE_KNOWLEDGE_PACK, destination, "Automatic destination research"));
+                if (saveRequested && memoryConsent) actions.add(new Action(
+                        SAVE_WISH, destination, "Owner-requested wish-list destination"));
+                if (durablePlan) actions.add(new Action(
+                        SAVE_PLANNED_TRIP,
+                        destination,
+                        "||conversation-confirmed planned destination; dates not set"));
             }
             String destinations = DestinationParser.join(current);
             StringBuilder reply = new StringBuilder();
-            reply.append(destinations).append(" is now on my planning list. I’ll build or refresh a guide with recommended areas, places, maps, transportation, practical concerns, photos, videos, and current events when connected. ");
-            if (dream) {
-                reply.append("I’ll also keep a broad watch across air, rail, and intercity bus options instead of assuming flights only. ");
+            if (durablePlan) {
+                reply.append("I saved ").append(destinations)
+                        .append(" as a planned destination with dates not set. That is not a booking or an active watch. ");
+            } else {
+                reply.append("I’ll treat ").append(destinations)
+                        .append(" as a possible destination in this conversation, not your home area, confirmed trip, or active watch. ");
             }
-            reply.append("I’ll use sensible defaults and let you correct them later.");
+            if (memoryConsent) {
+                reply.append("A destination research request is saved separately and is runnable only after the owner opt-in, connection, source, and Android scheduling gates all pass. ");
+            } else {
+                reply.append("I did not save a destination research request because memory is not enabled for this profile. ");
+            }
+            if (saveRequested && memoryConsent) {
+                reply.append("You asked me to save it to your wish list. ");
+            } else if (saveRequested) {
+                reply.append("You asked me to save it, but I did not create a permanent wish because memory is not enabled for this profile. ");
+            } else {
+                reply.append("I have not added it to your permanent wish list. ");
+            }
+            reply.append("I’ll use reversible planning defaults and let you correct them later.");
+            if (containsAny(lower, "in my email", "in an email", "from my email", "gmail")) {
+                reply.append(" Your itinerary details may be imported only through the read-only Gmail connection or from the exact booking message you choose to share; I have not read your mailbox in this turn.");
+            }
             return new Plan(reply.toString(), actions);
         }
 
-        if ((asksForDeals(lower) || asksForNotifications(lower)) && !context.isEmpty()) {
+        if (asksForNotifications(lower) && !context.isEmpty()) {
             String destination = context.get(context.size() - 1);
             JourneyIntentParser.JourneyIntent broad = JourneyIntentParser.parse(
                     "monitor travel options to " + destination, profile, history);
@@ -213,9 +276,20 @@ public final class AgenticTravelPlanner {
                     destination,
                     journeyDetail(broad, "options")));
             return new Plan(
-                    "I’ll save a broad travel-options watch from " + home(profile) + " to " + destination
-                            + " across air, Amtrak or rail, and intercity bus where those methods make sense. I’ll compare complete trip cost, time, transfers, baggage, and local connections instead of watching airfare alone. The watch remains marked as waiting until the team travel backend is configured.",
+                    "You explicitly requested a travel-options watch from " + home(profile) + " to " + destination
+                            + ". The app will activate it only if a real provider is configured; otherwise it remains a request with setup required, not a running search.",
                     actions);
+        }
+
+        if (TravelPlanningConversationPolicy.asksForShortTripRecommendation(lower)
+                && !context.isEmpty()) {
+            String destination = context.get(context.size() - 1);
+            return new Plan(TravelPlanningConversationPolicy.shortTripReply(destination), actions);
+        }
+
+        if (TravelPlanningConversationPolicy.asksForCurrentCost(lower) && !context.isEmpty()) {
+            String destination = context.get(context.size() - 1);
+            return new Plan(TravelPlanningConversationPolicy.currentCostReply(destination), actions);
         }
 
         return new Plan(null, actions);
@@ -232,16 +306,12 @@ public final class AgenticTravelPlanner {
 
     private static boolean isPlanningStatement(String lower) {
         return containsAny(lower,
-                "thinking about going", "thinking of going", "planning on going", "planning to go",
+                "thinking about going", "thinking of going", "planning on going", "planning to go", "planning a trip to",
+                "i am traveling to", "i'm traveling to", "i am travelling to", "i'm travelling to",
+                "we are traveling to", "we're traveling to", "we are travelling to", "we're travelling to",
                 "want to go", "want to visit", "would love to travel", "would love to visit",
                 "always wanted to visit", "always wanted to go", "dream of visiting",
                 "dreamed of visiting", "bucket list");
-    }
-
-    private static boolean asksForDeals(String lower) {
-        return containsAny(lower,
-                "deal", "cheap flight", "cheap ticket", "airfare", "fare", "price drop",
-                "flight price", "train price", "rail fare", "bus fare", "travel options");
     }
 
     private static boolean asksForNotifications(String lower) {

@@ -1,0 +1,7 @@
+{
+  "workflow_run_id": "31138964065",
+  "validated_artifact_run_id": "31138711432",
+  "source_sha": "2bdf1e2e95d7c6de502e7b91e2b6a2a178e8b344",
+  "result": "success",
+  "release_tag": "sarah-travel-os-v2.5-event-ready"
+}

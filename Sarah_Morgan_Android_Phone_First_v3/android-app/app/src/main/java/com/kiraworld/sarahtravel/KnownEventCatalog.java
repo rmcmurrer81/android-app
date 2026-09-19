@@ -104,9 +104,9 @@ public final class KnownEventCatalog {
         String normalized = normalize(text);
         if (normalized.isEmpty()) return null;
         for (Entry entry : ENTRIES) {
-            if (normalized.contains(normalize(entry.eventName))) return entry;
+            if (containsNormalizedPhrase(normalized, normalize(entry.eventName))) return entry;
             for (String alias : entry.aliases) {
-                if (normalized.contains(normalize(alias))) return entry;
+                if (containsNormalizedPhrase(normalized, normalize(alias))) return entry;
             }
         }
         return null;
@@ -125,6 +125,11 @@ public final class KnownEventCatalog {
 
     public static List<Entry> all() {
         return ENTRIES;
+    }
+
+    private static boolean containsNormalizedPhrase(String text, String phrase) {
+        if (text == null || phrase == null || text.isEmpty() || phrase.isEmpty()) return false;
+        return (" " + text + " ").contains(" " + phrase + " ");
     }
 
     private static String normalize(String value) {

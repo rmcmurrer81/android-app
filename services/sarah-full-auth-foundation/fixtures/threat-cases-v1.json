@@ -1,0 +1,60 @@
+{
+  "fixture": "sarah-full-auth-threat-cases-v1",
+  "status": "foundation_only_not_deployed",
+  "cases": [
+    {
+      "id": "missing_d1",
+      "expected_http_status": 503,
+      "expected_error": "auth_store_unavailable",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "missing_access_signing_key",
+      "expected_http_status": 503,
+      "expected_error": "auth_signing_unavailable",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "forged_owner_access_assertion",
+      "expected_http_status": 401,
+      "expected_error": "owner_access_invalid",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "enrollment_double_consume",
+      "expected_http_status": 409,
+      "expected_error": "enrollment_already_consumed",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "challenge_replay",
+      "expected_http_status": 409,
+      "expected_error": "challenge_already_consumed",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "expired_challenge",
+      "expected_http_status": 410,
+      "expected_error": "challenge_expired",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "stale_auth_epoch",
+      "expected_http_status": 403,
+      "expected_error": "stale_auth_epoch",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "revoked_device",
+      "expected_http_status": 403,
+      "expected_error": "device_revoked",
+      "provider_call_allowed": false
+    },
+    {
+      "id": "expired_device_lease",
+      "expected_http_status": 403,
+      "expected_error": "device_lease_expired",
+      "provider_call_allowed": false
+    }
+  ]
+}

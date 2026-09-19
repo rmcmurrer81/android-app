@@ -1,0 +1,5 @@
+{
+  "version": "2.5-event-ready",
+  "purpose": "build, test, and publish one Android APK and one self-installing Windows EXE",
+  "requested_at": "2026-08-07T02:00:00Z"
+}

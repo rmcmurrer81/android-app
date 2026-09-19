@@ -30,7 +30,10 @@ public final class TimedTripCoordinator {
                             "planned",
                             "Planned dates: " + trip.startDate + " through " + trip.endDate);
                 }
-                db.queueKnowledgePack(trip.destination);
+                db.queueKnowledgePack(
+                        KnowledgeProfileKey.forProfile(profile),
+                        trip.destination,
+                        false);
             } finally {
                 db.close();
             }

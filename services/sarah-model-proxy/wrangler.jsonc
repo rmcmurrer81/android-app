@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarah-model-proxy",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": true,
+  "keep_vars": true,
+  "ai": {
+    "binding": "AI"
+  },
+  "ratelimits": [
+    {
+      "name": "MODEL_RATE_LIMITER",
+      "namespace_id": "260801",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      "name": "SEARCH_RATE_LIMITER",
+      "namespace_id": "260802",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "VOICE_RATE_LIMITER",
+      "namespace_id": "260803",
+      "simple": { "limit": 12, "period": 60 }
+    }
+  ],
+  "vars": {
+    "SARAH_MODEL_PROVIDER": "workers-ai",
+    "SARAH_MODEL_ID": "@cf/google/gemma-4-26b-a4b-it",
+    "SARAH_MAX_OUTPUT_TOKENS": "1200"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

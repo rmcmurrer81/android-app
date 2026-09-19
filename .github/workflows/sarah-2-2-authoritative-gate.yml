@@ -1,0 +1,227 @@
+name: Sarah 2.2 authoritative recovery and release gate
+
+on:
+  push:
+    branches: [agent/sarah-2-2-phone-windows-complete-v13]
+    paths:
+      - tools/verify_sarah_22_source_contracts.py
+      - .github/workflows/sarah-2-2-authoritative-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sarah-2-2-materialize-final
+  cancel-in-progress: false
+
+jobs:
+  source_android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/sarah-2-2-phone-windows-complete-v13
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Reproduce the complete source tree from GitHub-only inputs
+        run: |
+          mkdir -p validation-logs
+          {
+            python tools/apply_sarah_22_upgrade.py
+            python tools/generate_sarah_windows_companion.py
+            python tools/finalize_sarah_22_generated_sources.py
+            python tools/post_finalize_sarah_22_quality.py
+            python tools/post_finalize_sarah_22_sync_dedupe.py
+            python tools/verify_sarah_22_source_contracts.py
+            python -m py_compile tools/*.py windows-companion/*.py
+            git diff --check
+          } 2>&1 | tee validation-logs/source-audit.log
+
+      - name: Commit all recoverable Android Windows docs tests and workflows
+        run: |
+          git config user.name "Sarah Travel OS Builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish authoritative Sarah 2.2 recoverable source"
+            git push origin HEAD:agent/sarah-2-2-phone-windows-complete-v13
+          fi
+
+      - name: Test pure-Java contracts
+        id: java
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          rm -rf build/sarah22-core && mkdir -p build/sarah22-core
+          {
+            javac -encoding UTF-8 -d build/sarah22-core \
+              Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/IdentityIntent.java \
+              Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/UniversalCalmSupport.java \
+              Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahChannelResponse.java \
+              Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/TrustedSyncProtocol.java \
+              Sarah_Morgan_Android_Phone_First_v3/tests/Sarah22CoreTest.java
+            java -cp build/sarah22-core Sarah22CoreTest
+          } 2>&1 | tee validation-logs/java.log
+
+      - name: Test Windows core on Linux
+        id: windows_core
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            python -m pip install --upgrade pip
+            pip install cryptography Pillow requests pytest
+            python -m pytest -q windows-companion/tests
+          } 2>&1 | tee validation-logs/windows-core.log
+
+      - name: Validate required ElevenLabs voice without exposing credentials
+        id: voice
+        continue-on-error: true
+        env:
+          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
+          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID }}
+          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID }}
+        run: |
+          set -o pipefail
+          python - <<'PY' 2>&1 | tee validation-logs/elevenlabs.log
+          import json, os, pathlib, re, urllib.parse, urllib.request
+          key=os.environ.get('SARAH_ELEVENLABS_API_KEY','').strip()
+          if not key:
+              raise SystemExit('SARAH_ELEVENLABS_API_KEY is missing')
+          voice=os.environ.get('SARAH_ELEVENLABS_VOICE_ID','').strip()
+          if not voice:
+              source=pathlib.Path('Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/ElevenLabsVoiceConfig.java').read_text(encoding='utf-8')
+              patterns=[
+                  r'(?:DEFAULT|SOURCE_DEFAULT|BUILT_IN)[A-Z_]*VOICE[A-Z_]*ID\s*=\s*"([A-Za-z0-9_-]{8,})"',
+                  r'VOICE_ID\s*=\s*"([A-Za-z0-9_-]{8,})"',
+                  r'"([A-Za-z0-9_-]{18,})"',
+              ]
+              for pattern in patterns:
+                  match=re.search(pattern,source,re.I)
+                  if match:
+                      voice=match.group(1);break
+          if not voice:
+              raise SystemExit('Sarah Morgan ElevenLabs voice ID could not be resolved')
+          model=os.environ.get('SARAH_ELEVENLABS_MODEL_ID','').strip() or 'eleven_multilingual_v2'
+          body=json.dumps({'text':'Sarah Travel OS authoritative voice validation.','model_id':model,'voice_settings':{'stability':0.55,'similarity_boost':0.78}}).encode()
+          request=urllib.request.Request('https://api.elevenlabs.io/v1/text-to-speech/'+urllib.parse.quote(voice),data=body,method='POST',headers={'xi-api-key':key,'Content-Type':'application/json','Accept':'audio/mpeg'})
+          with urllib.request.urlopen(request,timeout=90) as response:
+              audio=response.read(600000)
+              if response.status < 200 or response.status >= 300 or len(audio) < 128:
+                  raise SystemExit('ElevenLabs returned no usable audio')
+          print('PASS: Sarah Morgan ElevenLabs voice produced usable audio. Credentials were not printed.')
+          PY
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build Android APK
+        id: android
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleDebug --stacktrace
+            cp Sarah_Morgan_Android_Phone_First_v3/android-app/app/build/outputs/apk/debug/app-debug.apk Sarah-Morgan-2.2-phone-windows-continuity.apk
+          } 2>&1 | tee validation-logs/android.log
+
+      - if: steps.android.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-2.2-Android-APK-authoritative
+          path: Sarah-Morgan-2.2-phone-windows-continuity.apk
+          if-no-files-found: error
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.2-authoritative-source-Android-logs
+          path: validation-logs
+          if-no-files-found: error
+
+      - name: Fail when a required source Android or voice gate failed
+        if: always()
+        run: |
+          echo "Java=${{ steps.java.outcome }} WindowsCore=${{ steps.windows_core.outcome }} Voice=${{ steps.voice.outcome }} Android=${{ steps.android.outcome }}"
+          test "${{ steps.java.outcome }}" = success
+          test "${{ steps.windows_core.outcome }}" = success
+          test "${{ steps.voice.outcome }}" = success
+          test "${{ steps.android.outcome }}" = success
+
+  windows:
+    if: always()
+    needs: source_android
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/sarah-2-2-phone-windows-complete-v13
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test and package the Windows companion
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force validation-logs | Out-Null
+          python -m pip install --upgrade pip 2>&1 | Tee-Object validation-logs\pip.log
+          pip install -r windows-companion\requirements.txt 2>&1 | Tee-Object -Append validation-logs\pip.log
+          python -m pytest -q windows-companion\tests 2>&1 | Tee-Object validation-logs\tests.log
+          python -m py_compile windows-companion\sarah_core.py windows-companion\sarah_sync_server.py windows-companion\google_drive_backup.py windows-companion\sarah_windows.py 2>&1 | Tee-Object validation-logs\compile.log
+          Push-Location windows-companion
+          pyinstaller --noconfirm --clean --onefile --windowed --name Sarah-Morgan-Windows --collect-all pystray --collect-all PIL sarah_windows.py 2>&1 | Tee-Object ..\validation-logs\pyinstaller.log
+          Copy-Item README_WINDOWS.md dist\README_WINDOWS.md
+          Compress-Archive -Path dist\* -DestinationPath Sarah-Morgan-Windows-2.2.zip -Force
+          Pop-Location
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-Morgan-Windows-2.2-authoritative
+          path: windows-companion/Sarah-Morgan-Windows-2.2.zip
+          if-no-files-found: error
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sarah-2.2-authoritative-Windows-logs
+          path: validation-logs
+          if-no-files-found: warn
+
+  record:
+    if: always()
+    needs: [source_android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/sarah-2-2-phone-windows-complete-v13
+      - name: Record authoritative status in GitHub
+        run: |
+          cat > SARAH_2_2_AUTHORITATIVE_STATUS.md <<EOF
+          # Sarah 2.2 authoritative status
+
+          - Source / Android / required voice job: **${{ needs.source_android.result }}**
+          - Windows executable job: **${{ needs.windows.result }}**
+          - Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Recorded: **$(date -u +'%Y-%m-%d %H:%M:%S UTC')**
+          - Recovery branch: **agent/sarah-2-2-phone-windows-complete-v13**
+
+          The branch is the recoverable source of truth for Android, Windows, tests, documentation and build workflows. Automated validation does not replace the physical Samsung, desktop, laptop, firewall, microphone, speaker, same-Wi-Fi, airplane-mode, backup-restore and real trip-planning checklist in `docs/SARAH_2_2_REAL_WORLD_TESTS.md`.
+          EOF
+          git config user.name "Sarah Travel OS Validation"
+          git config user.email "actions@users.noreply.github.com"
+          git add SARAH_2_2_AUTHORITATIVE_STATUS.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Record authoritative Sarah 2.2 status"
+            git pull --rebase origin agent/sarah-2-2-phone-windows-complete-v13
+            git push origin HEAD:agent/sarah-2-2-phone-windows-complete-v13
+          fi

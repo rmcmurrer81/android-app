@@ -82,6 +82,10 @@ public final class TravelerNeedsStore {
     }
 
     public static void save(Context context, String personId, Needs needs) {
+        SecureProfileVault.put(context, NAMESPACE, personId, serialize(needs));
+    }
+
+    private static String serialize(Needs needs) {
         JSONObject json = new JSONObject();
         try {
             json.put("mobility", needs.mobility);
@@ -94,11 +98,56 @@ public final class TravelerNeedsStore {
             json.put("sustainability", needs.sustainability);
             json.put("notes", needs.notes);
         } catch (Exception ignored) { }
-        SecureProfileVault.put(context, NAMESPACE, personId, json.toString());
+        return json.toString();
     }
 
     public static String summary(Context context, String personId) {
         return load(context, personId).summary();
+    }
+
+    public static boolean moveProfile(Context context, String oldPersonId, String newPersonId) {
+        String priorRaw = SecureProfileVault.get(context, NAMESPACE, oldPersonId);
+        if (priorRaw.isEmpty()) return true;
+        String confirmedRaw = SecureProfileVault.get(context, NAMESPACE, newPersonId);
+        if (confirmedRaw.isEmpty()) {
+            return SecureProfileVault.moveIfTargetEmpty(
+                    context, NAMESPACE, oldPersonId, newPersonId);
+        }
+        if (priorRaw.equals(confirmedRaw)) {
+            return SecureProfileVault.removeVerified(
+                    context, NAMESPACE, oldPersonId);
+        }
+        if (!ProfileMigrationArchiveStore.preserveCollision(
+                context,
+                NAMESPACE,
+                oldPersonId,
+                newPersonId,
+                priorRaw,
+                confirmedRaw)) return false;
+        Needs confirmed = load(context, newPersonId);
+        Needs prior = load(context, oldPersonId);
+        Needs merged = new Needs(
+                choose(confirmed.mobility, prior.mobility),
+                choose(confirmed.walking, prior.walking),
+                choose(confirmed.stairs, prior.stairs),
+                choose(confirmed.sensory, prior.sensory),
+                choose(confirmed.visionHearing, prior.visionHearing),
+                choose(confirmed.dietary, prior.dietary),
+                choose(confirmed.pace, prior.pace),
+                choose(confirmed.sustainability, prior.sustainability),
+                choose(confirmed.notes, prior.notes));
+        String mergedRaw = serialize(merged);
+        if (!SecureProfileVault.putVerified(
+                context, NAMESPACE, newPersonId, mergedRaw)) return false;
+        if (!ProfileMigrationArchiveStore.containsExact(
+                context,
+                NAMESPACE,
+                oldPersonId,
+                newPersonId,
+                priorRaw,
+                confirmedRaw)) return false;
+        return SecureProfileVault.removeVerified(
+                context, NAMESPACE, oldPersonId);
     }
 
     private static Needs empty() {
@@ -109,6 +158,10 @@ public final class TravelerNeedsStore {
         if (value == null || value.trim().isEmpty()) return;
         if (out.length() > 0) out.append("; ");
         out.append(label).append(": ").append(value.trim());
+    }
+
+    private static String choose(String confirmed, String prior) {
+        return clean(confirmed).isEmpty() ? clean(prior) : clean(confirmed);
     }
 
     private static String clean(String value) {

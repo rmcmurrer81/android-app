@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarah-full-auth-staging",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-09",
+  "workers_dev": false,
+  "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "sarah-full-auth-staging",
+      "database_id": "REPLACE_WITH_ISOLATED_FULL_AUTH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "ratelimits": [
+    {
+      "name": "ENROLLMENT_RATE_LIMITER",
+      "namespace_id": "REPLACE_WITH_ENROLLMENT_LIMIT_NAMESPACE",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      "name": "DEVICE_RATE_LIMITER",
+      "namespace_id": "REPLACE_WITH_DEVICE_LIMIT_NAMESPACE",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+  "vars": {
+    "SARAH_FULL_API_ORIGIN": "https://api-full-staging.example.invalid",
+    "SARAH_FULL_SERVICE_ID": "sarah-full-staging-v1",
+    "SARAH_FULL_MODEL_PROVIDER": "workers-ai",
+    "SARAH_FULL_MODEL_ID": "@cf/google/gemma-4-26b-a4b-it",
+    "JWT_ISSUER": "https://api-full-staging.example.invalid",
+    "JWT_AUDIENCE": "sarah-full-clients",
+    "CF_ACCESS_ISSUER": "https://REPLACE.cloudflareaccess.com",
+    "CF_ACCESS_AUDIENCE": "REPLACE_WITH_ACCESS_APPLICATION_AUD",
+    "OWNER_PORTAL_ORIGIN": "https://owner-full-staging.example.invalid",
+    "ENROLLMENT_VERIFICATION_URL": "https://owner-full-staging.example.invalid/enroll"
+  }
+}

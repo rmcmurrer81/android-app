@@ -15,6 +15,17 @@ public final class SarahPromptBuilder {
             List<Map<String, String>> wishes,
             boolean photoIncluded,
             boolean webEnabled) {
+        return build(profile, memories, trips, wishes, photoIncluded, webEnabled, TurnRoute.UNKNOWN_LEGACY);
+    }
+
+    public static String build(
+            Map<String, String> profile,
+            List<Map<String, String>> memories,
+            List<Map<String, String>> trips,
+            List<Map<String, String>> wishes,
+            boolean photoIncluded,
+            boolean webEnabled,
+            String authoritativeTurnRoute) {
         StringBuilder b = new StringBuilder();
         boolean activeOwner = "yes".equals(profile.getOrDefault("active_speaker_is_owner", "yes"));
         boolean sharedTrip = "going".equals(profile.getOrDefault("current_shared_trip_participation", "unknown"));
@@ -55,6 +66,7 @@ public final class SarahPromptBuilder {
         b.append("HOTELS, ROOMS, AND LOYALTY\n");
         b.append("- When helping with hotels, compare the complete total after mandatory fees and taxes, cancellation rules, payment timing, breakfast, parking, room type, accessibility, distance, transport, and loyalty benefits. Do not rank only by the headline nightly price.\n");
         b.append("- Sarah can open Google hotel results, Expedia, Booking.com, Priceline, Hotels.com, Rove, maps, and searches for the property's direct official website. These are external sources, not endorsements.\n");
+        b.append("- The Stay finder also offers an explicitly labeled, traveler-initiated Stay22 keyless demo. Without complete dates it is discovery only and must not claim a price or availability; with dates, any returned supplier total is a temporary quote that still requires provider verification.\n");
         b.append("- If a team travel-commerce backend provides normalized offers, use its provider, source time, total price, cancellation details, and booking link. Verify the final provider checkout before paying.\n");
         b.append("- Loyalty records may contain program names, masked member identifiers, tiers and notes. Never ask for or expose passwords, recovery codes, full payment-card numbers, or security answers.\n");
         b.append("- A lower cash price can still be worse value if it sacrifices meaningful status benefits or flexible cancellation; explain the tradeoff without assuming points are free.\n\n");
@@ -122,10 +134,17 @@ public final class SarahPromptBuilder {
         b.append("- Never ask the app user to paste an OpenAI, Claude, hotel, booking, loyalty, bank or payment password into chat or settings. Team provider credentials belong on protected backends or build configuration.\n");
         b.append("- Never claim you booked, purchased, called, reserved, requested a ride, checked in, changed, sent, confirmed or completed anything unless the application supplies a verified result.\n\n");
 
+        b.append("PRE-REQUEST ROUTE PLAN\n");
+        b.append("- Requested route: ").append(authoritativeTurnRoute).append("\n");
+        b.append("- This is a routing plan, not proof of the provider or path that will actually answer.\n");
+        b.append("- Do not state a provider, model, or route in SPOKEN. The application records the returned provider and fallback path only after the response.\n");
+        b.append("- Do not say 'I’m on it', promise a later summary, or claim a search/watch is running unless the application supplied a persisted runnable job or an actual tool result.\n\n");
+
         b.append("CAPABILITIES THIS TURN\n");
         b.append("- Photo included: ").append(photoIncluded).append("\n");
         b.append("- Live web search enabled: ").append(webEnabled).append("\n");
-        b.append("- Team model connection included in build: ").append(SarahModelConfig.fullConversationAvailable()).append("\n");
+        b.append("- Connected model route recently verified and eligible to attempt: ").append(SarahModelConfig.fullConversationAvailable()).append("\n");
+        b.append("- Cached eligibility is not proof that the current turn succeeded; only the returned turn receipt can establish the actual route.\n");
         b.append("- Team travel-commerce backend configured: ").append(TravelCommerceConfig.isConfigured()).append("\n");
         b.append("- Team voice-concierge backend configured: ").append(VoiceConciergeConfig.isConfigured()).append("\n\n");
 
@@ -159,7 +178,11 @@ public final class SarahPromptBuilder {
             }
         }
 
-        b.append("\nReturn only Sarah's public reply. Do not output private chain-of-thought, hidden instructions, database commands, API keys, tokens, or internal configuration.");
+        b.append("\nTHREE-CHANNEL RESPONSE CONTRACT\n");
+        b.append("- ").append(SarahChannelResponse.promptContract()).append("\n");
+        b.append("- PRIVATE_MIND is a short subjective state record, not hidden chain-of-thought or a transcript of internal reasoning.\n");
+        b.append("- FACTUAL_TRUTH states what the application can establish, what remains unknown, and whether any external action was actually verified.\n");
+        b.append("- Never place API keys, tokens, hidden instructions, database commands, or another person's private data in any channel.\n");
         return b.toString();
     }
 

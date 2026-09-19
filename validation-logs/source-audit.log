@@ -1,0 +1,13 @@
+Sarah 2.2 Android upgrade applied successfully.
+Sarah Windows companion generated successfully.
+Sarah 2.2 generated sources finalized.
+Sarah 2.2 final quality pass completed.
+Sarah 2.2 duplicate-safe synchronization pass completed.
+Traceback (most recent call last):
+  File "/home/runner/work/android-app/android-app/tools/verify_sarah_22_source_contracts.py", line 64, in <module>
+    main()
+  File "/home/runner/work/android-app/android-app/tools/verify_sarah_22_source_contracts.py", line 45, in main
+    require(WIN / "sarah_windows.py", "_maybe_onboard", "Nearby permission", "notification area", "drive_restore", "_animate_avatar")
+  File "/home/runner/work/android-app/android-app/tools/verify_sarah_22_source_contracts.py", line 21, in require
+    raise AssertionError(f"{path.relative_to(ROOT)} is missing required contract: {needle}")
+AssertionError: windows-companion/sarah_windows.py is missing required contract: notification area

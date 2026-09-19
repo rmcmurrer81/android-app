@@ -1,0 +1,49 @@
+{
+  "package": "Sarah-Team-Integration-Source",
+  "version": "1.0.0-draft",
+  "status": "source integration boundary; host implementation and physical acceptance required",
+  "components": [
+    {
+      "path": "contracts/sarah-team-contract-v1.json",
+      "purpose": "machine-readable operation, object, enum, and truth contract"
+    },
+    {
+      "path": "src/main/java/org/sarahteam/integration/api",
+      "purpose": "transport-neutral Java 8 API and value types"
+    },
+    {
+      "path": "src/main/java/org/sarahteam/integration/android/CurrentSarahAndroidAdapter.java",
+      "purpose": "adapter seam for the current native Android implementation"
+    },
+    {
+      "path": "src/main/java/org/sarahteam/integration/examples/NativeAndroidExample.java",
+      "purpose": "credential-free host wiring example"
+    },
+    {
+      "path": "android/CURRENT_NATIVE_MAPPING.md",
+      "purpose": "mapping to current Sarah Android classes and truth boundaries"
+    },
+    {
+      "path": "tools/build_package.py",
+      "purpose": "deterministic source ZIP and SHA-256 manifest builder"
+    },
+    {
+      "path": "tools/secret_scan.py",
+      "purpose": "source/archive owner-data and credential-shape scanner"
+    },
+    {
+      "path": "tests/test_integration_package.py",
+      "purpose": "contract, determinism, inventory, ZIP, and secret-boundary tests"
+    }
+  ],
+  "explicitlyExcluded": [
+    "owner profiles and conversations",
+    "runtime databases and preferences",
+    "photos, tickets, passes, media, and caches",
+    "email and device enrollment material",
+    "provider and service credentials",
+    "event-only access capability",
+    "service addresses",
+    "APK, EXE, and other compiled application artifacts"
+  ]
+}

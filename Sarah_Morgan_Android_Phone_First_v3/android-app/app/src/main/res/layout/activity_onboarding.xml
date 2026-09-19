@@ -4,43 +4,39 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/chat_background"
-    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/sarah_navy"
-        android:orientation="vertical"
-        android:paddingLeft="20dp"
-        android:paddingTop="18dp"
-        android:paddingRight="20dp"
-        android:paddingBottom="16dp">
+        android:background="@drawable/futuristic_header_background"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="16dp"
+        android:paddingTop="10dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="10dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Sarah Morgan"
-            android:textColor="@color/white"
-            android:textSize="27sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:text="First conversation • Sarah Travel OS 2.1"
-            android:textColor="#DCEAF2"
-            android:textSize="14sp" />
+        <ImageView
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:contentDescription="Sarah logo"
+            android:src="@drawable/ic_sarah_orbit" />
 
         <TextView
             android:id="@+id/onboardingStatus"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
-            android:text="Preparing Sarah’s voice…"
-            android:textColor="#BFD7E6"
-            android:textSize="12sp" />
+            android:layout_marginLeft="12dp"
+            android:layout_weight="1"
+            android:background="@drawable/mode_status_background"
+            android:paddingLeft="12dp"
+            android:paddingTop="8dp"
+            android:paddingRight="12dp"
+            android:paddingBottom="8dp"
+            android:text="Preparing Sarah’s voice and local mind…"
+            android:textColor="#EAFBFF"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <ScrollView
@@ -96,7 +92,7 @@
             android:layout_weight="1"
             android:background="@drawable/input_field"
             android:gravity="center_vertical|start"
-            android:hint="Tell Sarah your name"
+            android:hint="Answer Sarah"
             android:imeOptions="actionSend"
             android:inputType="textCapSentences"
             android:maxLines="3"
@@ -130,7 +126,7 @@
         android:layout_marginBottom="14dp"
         android:background="@drawable/primary_button"
         android:minHeight="58dp"
-        android:text="Start chatting with Sarah"
+        android:text="Continue with Sarah"
         android:textAllCaps="false"
         android:textColor="@color/white"
         android:textSize="17sp"
