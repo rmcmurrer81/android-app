@@ -97,6 +97,11 @@ public final class SponsorConnectionsActivity extends Activity {
         root.addView(sync);
         add(root, "Stay22", 20, true);
         add(root, "The Stay finder includes an explicitly labeled, user-initiated Stay22 Direct Travel API keyless demo. It sends only the entered destination, traveler and room counts, and complete dates, is limited to 5 requests per minute per network, keeps results temporary, and never treats a listing, quote, or provider link as a booking.", 15, false);
+        boolean stay22AffiliateReady = TravelAffiliateLinks.stay22Configured(
+                BuildConfig.SARAH_STAY22_AID);
+        add(root, stay22AffiliateReady
+                ? "Optional Stay22 affiliate booking links are enabled. The app tells the traveler that Sarah Travel OS may earn a commission, uses only non-personal campaign labels for attribution, and does not change recommendation order because of commission."
+                : "Optional Stay22 affiliate booking links are not configured in this build. The free travel features and keyless comparison demo remain available.", 15, false);
         add(root, "Rove", 20, true);
         add(root, "Sarah can compare rewards-aware travel options and open the official Rove path without claiming an undocumented booking API.", 15, false);
         add(root, "AeroXplorer", 20, true);
