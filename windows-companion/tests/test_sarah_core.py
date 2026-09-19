@@ -932,9 +932,8 @@ def test_windows_local_ollama_is_preferred_over_paid_or_remote_model(monkeypatch
         response = ModelClient(database).respond("Continue")
         assert calls == ["http://127.0.0.1:11434/api/chat"]
         assert response.route == "OFFLINE_LOCAL"
-        receipt = extract_text_turn_receipt(response.factual_truth)
-        assert receipt["actual_provider"] == "ollama-local"
-        assert receipt["actual_model"] == "qwen3.5:9b"
+        assert "actual_provider=ollama-local" in response.factual_truth
+        assert "actual_model=qwen3.5:9b" in response.factual_truth
 
 def test_windows_voice_can_use_local_unbundled_configuration(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
