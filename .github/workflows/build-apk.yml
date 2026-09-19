@@ -205,7 +205,15 @@ jobs:
           test -s windows-companion/sarah_local_voice_worker.py
           test -s windows-companion/SETUP_FREE_LOCAL_VOICE.ps1
           if grep -Fq "CloudVoiceClient.speak" Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/SarahVoiceRouter.java; then
-            echo 'Android still contains a paid cloud voice call'
+            echo 'Android voice router still contains a paid cloud voice call'
+            exit 1
+          fi
+          if grep -Fq "CloudVoiceClient.speak" Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java; then
+            echo 'Android main activity still contains a paid cloud voice call'
+            exit 1
+          fi
+          if grep -Fq "ElevenLabsVoiceConfig." Sarah_Morgan_Android_Phone_First_v3/android-app/app/src/main/java/com/kiraworld/sarahtravel/MainActivity.java; then
+            echo 'Android main activity still depends on ElevenLabs voice configuration'
             exit 1
           fi
 
