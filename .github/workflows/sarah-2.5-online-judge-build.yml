@@ -337,7 +337,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
-          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
           SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
@@ -1371,7 +1370,6 @@ jobs:
         env:
           SARAH_MODEL_BACKEND_URL: ''
           SARAH_MODEL_BACKEND_TOKEN: ''
-          SARAH_ELEVENLABS_BACKEND_URL: ''
           SARAH_TAVILY_API_KEY: ''
         run: |
           python -m pip install --upgrade pip
@@ -1522,7 +1520,7 @@ jobs:
             model_requested = $env:SARAH_MODEL_ID
             backend_url = $env:BACKEND_URL
             provider_key_embedded = $false
-            elevenlabs_key_embedded = $false
+            voice_runtime = 'generated_local_or_os_offline_no_paid_provider'
             event_app_token_bundled = $true
             event_app_token_kind = 'hmac_sha256_artifact_scoped_bootstrap_v1'
             event_app_token_sha256 = $env:EVENT_AUTH_TOKEN_SHA256
