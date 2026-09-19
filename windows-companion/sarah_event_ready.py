@@ -291,7 +291,7 @@ def owner_connection_status_text(
         expiry = safe_text(event.get("expires_utc"))
         return (
             "This event build already contains its short-lived, per-run Sarah capability. "
-            f"Connected model and current-source lookup can use it automatically until {expiry}. Sarah's voice stays local and needs no owner code."
+            f"Connected model and current-source lookup can use it automatically until {expiry}. No owner code is needed for that connection; Sarah's voice stays local."
         )
     if state.get("activated"):
         return (
