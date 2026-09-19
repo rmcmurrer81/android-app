@@ -210,22 +210,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
-          SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
-          # Voice IDs are public identifiers, not credentials. Prefer an owner
-          # override, otherwise use Sarah's established approved voice.
-          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
-          # Accept the current app-token name or the legacy protected-voice
-          # app-token name. Both are revocable client-to-backend credentials;
-          # neither is an ElevenLabs/provider API key.
-          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_MODEL_BACKEND_TOKEN: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
           DISPATCH_PROVIDER: ${{ inputs.provider }}
           DISPATCH_MODEL: ${{ inputs.model }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           missing=0
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SARAH_ELEVENLABS_API_KEY SARAH_ELEVENLABS_VOICE_ID SARAH_MODEL_BACKEND_TOKEN; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SARAH_MODEL_BACKEND_TOKEN; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing repository Actions secret: $name"
               missing=1
@@ -275,7 +268,7 @@ jobs:
         id: event_auth
         shell: bash
         env:
-          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -346,11 +339,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.SARAH_OPENAI_API_KEY }}
           SARAH_ELEVENLABS_API_KEY: ${{ secrets.SARAH_ELEVENLABS_API_KEY }}
           TAVILY_API_KEY: ${{ secrets.SARAH_TAVILY_API_KEY }}
-          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
           SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
-          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
           SARAH_DEPLOYMENT_ID: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -372,8 +363,6 @@ jobs:
             printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" \
               >> /tmp/sarah-model-proxy-secrets.env
           fi
-          printf 'ELEVENLABS_API_KEY=%s\n' "$SARAH_ELEVENLABS_API_KEY" \
-            >> /tmp/sarah-model-proxy-secrets.env
           if [ -n "${TAVILY_API_KEY:-}" ]; then
             printf 'TAVILY_API_KEY=%s\n' "$TAVILY_API_KEY" \
               >> /tmp/sarah-model-proxy-secrets.env
@@ -389,8 +378,6 @@ jobs:
             --secrets-file /tmp/sarah-model-proxy-secrets.env \
             --var "SARAH_MODEL_PROVIDER:$SARAH_MODEL_PROVIDER" \
             --var "SARAH_MODEL_ID:$SARAH_MODEL_ID" \
-            --var "SARAH_ELEVENLABS_VOICE_ID:$SARAH_ELEVENLABS_VOICE_ID" \
-            --var "SARAH_ELEVENLABS_MODEL_ID:$SARAH_ELEVENLABS_MODEL_ID" \
             --var "SARAH_EVENT_AUTH_EXPIRES_UTC:$SARAH_EVENT_AUTH_EXPIRES_UTC" \
             --var "SARAH_DEPLOYMENT_ID:$SARAH_DEPLOYMENT_ID" \
             --var "SARAH_SOURCE_SHA256:$SOURCE_SHA256" \
@@ -437,8 +424,6 @@ jobs:
           EXPECTED_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
           EXPECTED_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
           PROTECTED_SEARCH_CONFIGURED: ${{ steps.deploy.outputs.protected_search_configured }}
-          SARAH_VOICE_FIRST_BYTE_MAX_MS: '10000'
-          SARAH_VOICE_RESPONSE_COMPLETE_MAX_MS: '30000'
         run: |
           set -euo pipefail
           deployment_ready=0
@@ -459,7 +444,7 @@ jobs:
               'provider': os.environ['SARAH_MODEL_PROVIDER'],
               'model_override': os.environ['SARAH_MODEL_ID'],
           }
-          matches = health.get('ok') is True and health.get('voice_ready') is True
+          matches = health.get('ok') is True
           matches = matches and health.get('deployment_ready') is True
           matches = matches and health.get('route_rate_limits_ready') is True
           matches = matches and health.get('event_access_state') == 'active'
@@ -602,7 +587,7 @@ jobs:
               'provider': os.environ['SARAH_MODEL_PROVIDER'],
               'model_override': os.environ['SARAH_MODEL_ID'],
           }
-          matches = capabilities.get('ok') is True and capabilities.get('voice_ready') is True
+          matches = capabilities.get('ok') is True
           matches = matches and capabilities.get('deployment_ready') is True
           matches = matches and capabilities.get('route_rate_limits_ready') is True
           matches = matches and capabilities.get('event_access_state') == 'active'
@@ -837,110 +822,7 @@ jobs:
           print('Exact deployed-model solid-red JPEG vision smoke passed.')
           PY
 
-          python - <<'PY'
-          import json
-          json.dump({
-              'text': 'Sarah voice is ready.',
-              'voice_id': None,
-          }, open('/tmp/sarah-voice-request.json', 'w', encoding='utf-8'))
-          PY
-          voice_status=000
-          voice_deadline=$(( $(date +%s) + 100 ))
-          for attempt in $(seq 1 4); do
-            voice_remaining=$(( voice_deadline - $(date +%s) ))
-            if [ "$voice_remaining" -le 0 ]; then
-              break
-            fi
-            voice_request_timeout=35
-            if [ "$voice_request_timeout" -gt "$voice_remaining" ]; then
-              voice_request_timeout="$voice_remaining"
-            fi
-            voice_connect_timeout=10
-            if [ "$voice_connect_timeout" -gt "$voice_request_timeout" ]; then
-              voice_connect_timeout="$voice_request_timeout"
-            fi
-            voice_url="${BACKEND_URL%/}/voice?deployment=${EXPECTED_DEPLOYMENT_ID}&acceptance_probe=voice&attempt=${attempt}"
-            if ! curl --silent --show-error \
-              --connect-timeout "$voice_connect_timeout" --max-time "$voice_request_timeout" \
-              -D /tmp/sarah-voice-headers.txt \
-              -H "Authorization: Bearer $SARAH_BACKEND_TOKEN" \
-              -H 'Cache-Control: no-cache' \
-              -H 'Pragma: no-cache' \
-              -H 'Content-Type: application/json' \
-              --data-binary @/tmp/sarah-voice-request.json \
-              --output /tmp/sarah-voice-smoke.mp3 \
-              --write-out '%{http_code} %{time_starttransfer} %{time_total}\n' \
-              "$voice_url" > /tmp/sarah-voice-timing.txt; then
-              voice_status=000
-            else
-              read -r voice_status _ < /tmp/sarah-voice-timing.txt
-            fi
-            case "$voice_status" in
-              200)
-                echo "Protected voice route reached the exact Worker on attempt $attempt."
-                break
-                ;;
-              000|404|408|429|5??)
-                ;;
-              *)
-                python -c "import json,re; from pathlib import Path; payload=json.loads(Path('/tmp/sarah-voice-smoke.mp3').read_text(encoding='utf-8', errors='strict')); candidate_error=str(payload.get('error') or ''); safe_error=candidate_error if re.fullmatch(r'[a-z0-9_]{1,80}', candidate_error) else 'unknown'; candidate_status=payload.get('upstream_status'); safe_status=candidate_status if isinstance(candidate_status, int) and 100 <= candidate_status <= 599 else None; print(f'VOICE_FAILURE_CONTRACT error={safe_error} upstream_status={safe_status}')"
-                echo "::error::Protected voice route returned non-propagation HTTP $voice_status."
-                exit 1
-                ;;
-            esac
-            voice_remaining=$(( voice_deadline - $(date +%s) ))
-            if [ "$attempt" -lt 4 ] && [ "$voice_remaining" -gt 0 ]; then
-              voice_sleep=2
-              if [ "$voice_sleep" -gt "$voice_remaining" ]; then
-                voice_sleep="$voice_remaining"
-              fi
-              sleep "$voice_sleep"
-            fi
-          done
-          if [ "$voice_status" != '200' ]; then
-            echo "::error::Protected voice route did not reach HTTP 200 inside its bounded cache-busted window (last HTTP $voice_status)."
-            exit 1
-          fi
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          audio = Path('/tmp/sarah-voice-smoke.mp3')
-          headers = Path('/tmp/sarah-voice-headers.txt').read_text(encoding='utf-8', errors='replace').lower()
-          status, first_byte_seconds, total_seconds = Path('/tmp/sarah-voice-timing.txt').read_text().split()
-          if status != '200':
-              raise SystemExit(f'Protected ElevenLabs smoke response returned HTTP {status}.')
-          first_byte_seconds, total_seconds = float(first_byte_seconds), float(total_seconds)
-          first_byte_ms = round(first_byte_seconds * 1000)
-          response_complete_ms = round(total_seconds * 1000)
-          first_byte_limit = int(os.environ['SARAH_VOICE_FIRST_BYTE_MAX_MS'])
-          response_complete_limit = int(os.environ['SARAH_VOICE_RESPONSE_COMPLETE_MAX_MS'])
-          if first_byte_ms < 0 or response_complete_ms < first_byte_ms:
-              raise SystemExit('Protected ElevenLabs timing output was invalid.')
-          if first_byte_ms > first_byte_limit:
-              raise SystemExit(
-                  f'VOICE_TRANSPORT_LATENCY_BLOCKED: first byte {first_byte_ms} ms exceeded {first_byte_limit} ms.'
-              )
-          if response_complete_ms > response_complete_limit:
-              raise SystemExit(
-                  f'VOICE_TRANSPORT_LATENCY_BLOCKED: response completion {response_complete_ms} ms exceeded {response_complete_limit} ms.'
-              )
-          if audio.stat().st_size < 128:
-              raise SystemExit('Protected ElevenLabs smoke response was too small to be audio.')
-          if 'content-type: audio/' not in headers:
-              raise SystemExit('Protected ElevenLabs smoke response did not identify audio content.')
-          if 'x-sarah-voice-route: elevenlabs-protected' not in headers:
-              raise SystemExit('Protected ElevenLabs smoke response omitted the approved route receipt.')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-              output.write(f'voice_first_byte_ms={first_byte_ms}\n')
-              output.write(f'voice_response_complete_ms={response_complete_ms}\n')
-              output.write(f'voice_first_byte_limit_ms={first_byte_limit}\n')
-              output.write(f'voice_response_complete_limit_ms={response_complete_limit}\n')
-          print(
-              'Protected ElevenLabs transport-latency gate passed; bytes:', audio.stat().st_size,
-              'first_byte_ms:', first_byte_ms,
-              'response_complete_ms:', response_complete_ms,
-          )
-          PY
+          echo 'Paid voice smoke skipped: Sarah voice is local/on-device and does not use ElevenLabs.'
 
       - name: Run bounded live Sarah conversation through the production ModelClient
         id: live_conversation
@@ -1185,7 +1067,6 @@ jobs:
       - name: Build the side-by-side online/offline event candidate APK
         env:
           SARAH_OPENAI_API_KEY: ''
-          SARAH_ELEVENLABS_API_KEY: ''
           SARAH_MODEL_PROVIDER: ${{ steps.config.outputs.provider }}
           SARAH_MODEL_ID: ${{ steps.config.outputs.model }}
           SARAH_LIVE_CONVERSATION_OBJECTIVE: ${{ steps.live_conversation.outputs.objective }}
@@ -1194,8 +1075,6 @@ jobs:
           SARAH_LIVE_TEXT_MAX_TURN_ID: ${{ steps.live_conversation.outputs.text_max_turn_id }}
           SARAH_LIVE_TEXT_MAX_ROUTE: ${{ steps.live_conversation.outputs.text_max_route }}
           SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED: ${{ steps.live_conversation.outputs.text_max_web_search_requested }}
-          SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
-          SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
           EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}
           EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}
@@ -1203,9 +1082,6 @@ jobs:
           SARAH_EXPECTED_DEPLOYMENT_ID: ${{ steps.deploy.outputs.deployment_id }}
           SARAH_EXPECTED_WORKER_SOURCE_SHA256: ${{ steps.deploy.outputs.source_sha256 }}
           SARAH_EXPECTED_WORKER_CONFIG_SHA256: ${{ steps.deploy.outputs.config_sha256 }}
-          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
-          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
-          SARAH_ELEVENLABS_BACKEND_TOKEN: ''
           SARAH_TAVILY_API_KEY: ''
           SARAH_STAY22_BACKEND_URL: ''
           SARAH_STAY22_BACKEND_TOKEN: ''
@@ -1216,7 +1092,6 @@ jobs:
         run: |
           set -euo pipefail
           export SARAH_EVENT_BACKEND_TOKEN="$SARAH_EVENT_DERIVED_TOKEN"
-          export SARAH_ELEVENLABS_BACKEND_URL="${SARAH_MODEL_BACKEND_URL%/}/voice"
           gradle -p Sarah_Morgan_Android_Phone_First_v3/android-app :app:assembleEventCandidate --stacktrace
           python - <<'PY'
           import json
@@ -1332,8 +1207,6 @@ jobs:
           SARAH_LIVE_CONVERSATION_OBJECTIVE: ${{ steps.live_conversation.outputs.objective }}
           SARAH_LIVE_TEXT_MEDIAN_MS: ${{ steps.live_conversation.outputs.text_median_ms }}
           SARAH_LIVE_TEXT_MAX_MS: ${{ steps.live_conversation.outputs.text_max_ms }}
-          SARAH_LIVE_VOICE_FIRST_BYTE_MS: ${{ steps.protected_acceptance.outputs.voice_first_byte_ms }}
-          SARAH_LIVE_VOICE_COMPLETE_MS: ${{ steps.protected_acceptance.outputs.voice_response_complete_ms }}
           EVENT_AUTH_EXPIRES_UTC: ${{ steps.event_auth.outputs.expires_utc }}
           EVENT_AUTH_TOKEN_SHA256: ${{ steps.event_auth.outputs.token_sha256 }}
           EVENT_AUTH_CONTEXT_SHA256: ${{ steps.event_auth.outputs.context_sha256 }}
@@ -1377,7 +1250,6 @@ jobs:
                   'Deleting the exact Worker removes the endpoint; changing the repository derivation key alone does not.'
               ),
               'provider_key_embedded': False,
-              'elevenlabs_key_embedded': False,
               'protected_backend_access_bundled': True,
               'event_app_token_kind': 'hmac_sha256_artifact_scoped_bootstrap_v1',
               'event_app_token_sha256': os.environ['EVENT_AUTH_TOKEN_SHA256'],
@@ -1398,11 +1270,7 @@ jobs:
                   os.environ['SARAH_LIVE_TEXT_MAX_WEB_SEARCH_REQUESTED'].lower() == 'true'
               ),
               'live_vision_solid_red_jpeg_smoke_test': 'passed_exact_red',
-              'live_protected_elevenlabs_smoke_test': 'passed_transport_latency_gate',
-              'live_protected_elevenlabs_first_byte_ms': int(os.environ['SARAH_LIVE_VOICE_FIRST_BYTE_MS']),
-              'live_protected_elevenlabs_response_complete_ms': int(os.environ['SARAH_LIVE_VOICE_COMPLETE_MS']),
-              'live_protected_elevenlabs_first_byte_limit_ms': 10000,
-              'live_protected_elevenlabs_response_complete_limit_ms': 30000,
+              'voice_runtime': 'android_on_device_and_windows_generated_local_no_paid_provider',
               'contextual_chat_current_source_coupling': 'passed',
               'offline_fallback': 'included',
               'physical_galaxy_a17_acceptance': 'pending',
@@ -1503,9 +1371,7 @@ jobs:
         env:
           SARAH_MODEL_BACKEND_URL: ''
           SARAH_MODEL_BACKEND_TOKEN: ''
-          SARAH_ELEVENLABS_API_KEY: ''
           SARAH_ELEVENLABS_BACKEND_URL: ''
-          SARAH_ELEVENLABS_BACKEND_TOKEN: ''
           SARAH_TAVILY_API_KEY: ''
         run: |
           python -m pip install --upgrade pip
@@ -1522,7 +1388,7 @@ jobs:
       - name: Derive and mask the same artifact-scoped Windows capability
         shell: pwsh
         env:
-          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN || secrets.SARAH_ELEVENLABS_BACKEND_TOKEN }}
+          SARAH_EVENT_DERIVATION_KEY: ${{ secrets.SARAH_MODEL_BACKEND_TOKEN }}
           SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
           SARAH_EVENT_EXPECTED_TOKEN_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_token_sha256 }}
           SARAH_EVENT_EXPECTED_CONTEXT_SHA256: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_context_sha256 }}
@@ -1578,12 +1444,10 @@ jobs:
           SARAH_MODEL_PROVIDER: ${{ needs.deploy-smoke-test-and-build.outputs.model_provider }}
           SARAH_MODEL_ID: ${{ needs.deploy-smoke-test-and-build.outputs.model_id }}
           SARAH_EVENT_AUTH_EXPIRES_UTC: ${{ needs.deploy-smoke-test-and-build.outputs.event_auth_expires_utc }}
-          SARAH_ELEVENLABS_VOICE_ID: ${{ secrets.SARAH_ELEVENLABS_VOICE_ID || 'WcGvc9xxaOYbKswm3NBx' }}
-          SARAH_ELEVENLABS_MODEL_ID: ${{ secrets.SARAH_ELEVENLABS_MODEL_ID || 'eleven_flash_v2_5' }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_EVENT_AUTH_EXPIRES_UTC', 'SARAH_ELEVENLABS_VOICE_ID')) {
+          foreach ($name in @('SARAH_MODEL_BACKEND_URL', 'SARAH_MODEL_BACKEND_TOKEN', 'SARAH_MODEL_PROVIDER', 'SARAH_MODEL_ID', 'SARAH_EVENT_AUTH_EXPIRES_UTC')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
               throw "Required event build setting is absent: $name"
             }
@@ -1597,8 +1461,6 @@ jobs:
             SARAH_MODEL_PROVIDER = $env:SARAH_MODEL_PROVIDER
             SARAH_MODEL_ID = $env:SARAH_MODEL_ID
             SARAH_EVENT_AUTH_EXPIRES_UTC = $env:SARAH_EVENT_AUTH_EXPIRES_UTC
-            SARAH_ELEVENLABS_VOICE_ID = $env:SARAH_ELEVENLABS_VOICE_ID
-            SARAH_ELEVENLABS_MODEL_ID = $env:SARAH_ELEVENLABS_MODEL_ID
             SARAH_EVENT_GMAIL_AVAILABLE = 'false'
           }
           $secretKeys = @($eventConfig.Keys | Where-Object { $_ -match '(TOKEN|API_KEY|PASSWORD|SECRET)' })
@@ -1609,7 +1471,7 @@ jobs:
           $eventConfigPath = (Resolve-Path 'build').Path + '\sarah-event-config.json'
           $eventConfig | ConvertTo-Json | Set-Content -LiteralPath $eventConfigPath -Encoding utf8NoBOM
           try {
-            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import sarah_wallet --hidden-import sarah_calendar sarah_event_ready.py
+            python -m PyInstaller --noconfirm --clean --onefile --windowed --name SarahTravelOS-R3-Candidate --add-data "$eventConfigPath;." --add-data 'assets\sarah_adult_portrait_r2_runtime_512.png;assets' --add-data 'sarah_local_voice_worker.py;.' --add-data 'SETUP_FREE_LOCAL_VOICE.ps1;.' --collect-all pystray --collect-all PIL --collect-all playsound3 --hidden-import miniaudio --hidden-import sarah_wallet --hidden-import sarah_calendar --hidden-import sarah_local_voice sarah_event_ready.py
             if ($LASTEXITCODE -ne 0) { throw 'Sarah application build failed.' }
           }
           finally {
