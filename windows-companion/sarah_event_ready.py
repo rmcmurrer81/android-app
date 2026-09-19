@@ -8,6 +8,7 @@ from pathlib import Path
 import queue
 import secrets
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -290,11 +291,11 @@ def owner_connection_status_text(
         expiry = safe_text(event.get("expires_utc"))
         return (
             "This event build already contains its short-lived, per-run Sarah capability. "
-            f"Normal chat, current-source lookup, and approved voice use it automatically until {expiry}. No owner code is needed."
+            f"Connected model and current-source lookup can use it automatically until {expiry}. Sarah's voice stays local and needs no owner code."
         )
     if state.get("activated"):
         return (
-            "Sarah already has a connection protected for this Windows account. Normal chat uses it automatically; no code is needed."
+            "Sarah already has a connected model/search route protected for this Windows account. Her voice remains local and free; no voice-provider code is needed."
         )
     return (
         "This installation has no active packaged event capability. Install a current authorized event build. "
