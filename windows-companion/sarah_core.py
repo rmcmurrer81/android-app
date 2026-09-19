@@ -1896,7 +1896,11 @@ def discover_local_ollama() -> str:
     """Return a reachable local Ollama endpoint without contacting the internet."""
 
     explicit = safe_text(os.environ.get("SARAH_OLLAMA_URL"))
-    candidates = [explicit] if explicit else ["http://127.0.0.1:11434"]
+    if explicit:
+        # An owner/operator-selected local endpoint is authoritative. The chat
+        # request itself is the bounded health check, avoiding an extra probe.
+        return explicit.rstrip("/")
+    candidates = ["http://127.0.0.1:11434"]
     for candidate in candidates:
         base = safe_text(candidate).rstrip("/")
         if not base.startswith(("http://127.0.0.1:", "http://localhost:")):
