@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: agent/sarah-2.5-event-ready
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -143,11 +143,14 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
             --name SarahTravelOS-R3-Candidate `
+            --add-data 'sarah_local_voice_worker.py;.' `
+            --add-data 'SETUP_FREE_LOCAL_VOICE.ps1;.' `
             --collect-all pystray `
             --collect-all PIL `
             --collect-all playsound3 `
             --hidden-import googleapiclient.discovery `
             --hidden-import google_auth_oauthlib.flow `
+            --hidden-import sarah_local_voice `
             sarah_event_ready.py
           if (!(Test-Path 'dist\SarahTravelOS-R3-Candidate.exe')) { throw 'SarahTravelOS-R3-Candidate.exe was not created.' }
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
