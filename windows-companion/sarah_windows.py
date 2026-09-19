@@ -24,12 +24,13 @@ from sarah_live_avatar import (
 )
 
 from sarah_core import (
-    ChannelResponse, ElevenLabsVoice, ModelClient, SarahDatabase, TavilyResearch,
+    ChannelResponse, ModelClient, SarahDatabase, TavilyResearch,
     app_home, asks_for_current_area, corrected_name, discovery_queries, is_stress_or_fear,
     load_runtime_config, needs_owner_identity_confirmation, route_label, safe_text,
     resolve_backend_access, save_runtime_config, runtime_setting,
 )
 from sarah_sync_server import SarahSyncServer
+from sarah_local_voice import SarahLocalVoice
 
 try:
     import pystray
@@ -152,7 +153,7 @@ class SarahApp:
         self.db = SarahDatabase()
         self.model = ModelClient(self.db)
         self.research = TavilyResearch(root=self.db.root)
-        self.voice = ElevenLabsVoice()
+        self.voice = SarahLocalVoice(self.db.root)
         self.sync_server = SarahSyncServer(self.db)
         self.tasks: queue.Queue[tuple[str, object]] = queue.Queue()
         self.answer_requests: queue.Queue[object] = queue.Queue()
@@ -300,7 +301,7 @@ class SarahApp:
         except ValueError as error:
             messagebox.showerror("Sarah online setup", str(error), parent=self.root)
             return
-        self.voice = ElevenLabsVoice(self.db.root)
+        self.voice = SarahLocalVoice(self.db.root)
         self.research = TavilyResearch(root=self.db.root)
         self.status.set("Sarah’s secure connection settings were saved for this Windows account")
 
@@ -660,7 +661,7 @@ class SarahApp:
         }
         try:
             if self.voice.configured and (sys.platform.startswith("win") or playsound):
-                attempted = "ELEVENLABS"
+                attempted = "LOCAL_GENERATED_VOICE"
                 try:
                     synthesis_start = int(time.time() * 1000)
                     audio_path = self.voice.synthesize(
@@ -689,8 +690,8 @@ class SarahApp:
                         return
                     if not playback_ok:
                         raise RuntimeError("windows_audio_player_failed")
-                    actual = "ELEVENLABS"
-                    outcome = "Voice completed with Sarah's configured ElevenLabs route."
+                    actual = "LOCAL_GENERATED_VOICE"
+                    outcome = "Voice completed with Sarah's free generated local voice."
                 except Exception as error:
                     if synthesis_start and not synthesis_end:
                         synthesis_end = int(time.time() * 1000)
@@ -707,9 +708,9 @@ class SarahApp:
                         outcome = "Voice stopped because a newer owner turn or Stop voice superseded it."
                         return
                     actual = "WINDOWS_SYSTEM_SPEECH" if fallback_ok else "TEXT_ONLY"
-                    outcome = ("ElevenLabs failed; the explicit Windows offline voice fallback completed."
+                    outcome = ("Sarah's generated local voice failed; the Windows offline voice fallback completed."
                                if fallback_ok else
-                               "ElevenLabs failed and Windows offline voice was unavailable; text remained available.")
+                               "Sarah's generated local voice failed and Windows offline voice was unavailable; text remained available.")
             elif self.voice.configured and sys.platform.startswith("win"):
                 attempted = "ELEVENLABS_NOT_ATTEMPTED_NO_MP3_PLAYER"
                 failure_reason = "mp3_player_unavailable"
@@ -725,9 +726,9 @@ class SarahApp:
                     outcome = "Voice stopped because a newer owner turn or Stop voice superseded it."
                     return
                 actual = "WINDOWS_SYSTEM_SPEECH" if fallback_ok else "TEXT_ONLY"
-                outcome = ("ElevenLabs playback support was unavailable; the explicit Windows offline voice fallback completed."
+                outcome = ("Generated local voice playback was unavailable; the Windows offline voice fallback completed."
                            if fallback_ok else
-                           "ElevenLabs playback support and Windows offline voice were unavailable; text remained available.")
+                           "Generated local voice playback and Windows offline voice were unavailable; text remained available.")
             elif sys.platform.startswith("win"):
                 attempted = "WINDOWS_SYSTEM_SPEECH"
                 if not self._voice_request_is_current(person_id, generation):
@@ -742,7 +743,7 @@ class SarahApp:
                     outcome = "Voice stopped because a newer owner turn or Stop voice superseded it."
                     return
                 actual = "WINDOWS_SYSTEM_SPEECH" if fallback_ok else "TEXT_ONLY"
-                outcome = ("Voice completed with the Windows offline route; ElevenLabs is not configured."
+                outcome = ("Voice completed with the Windows offline route; Sarah's generated local voice is not set up."
                            if fallback_ok else
                            "Windows offline voice was unavailable; text remained available.")
         finally:
