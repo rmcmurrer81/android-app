@@ -34,6 +34,7 @@ WORKFLOW_CREDENTIAL_FIELDS = frozenset(SENSITIVE_BUILD_FIELDS + (
 
 ACTIVE_WORKFLOW_NAMES = (
     "apply-sarah-2-2.yml",
+    "offline-trip-map-kit.yml",
     "build-apk.yml",
     "materialize-sarah-public-source-baseline.yml",
     "sarah-2-2-authoritative-gate.yml",
@@ -52,6 +53,7 @@ ACTIVE_WORKFLOW_NAMES = (
     "sarah-2.5-source-extract.yml",
     "sarah-public-release.yml",
     "sarah-public-source-assembler.yml",
+    "sarah-team-integration-package.yml",
 )
 
 LEGACY_22_WORKFLOW_NAMES = (
