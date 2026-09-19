@@ -901,9 +901,9 @@ def test_windows_research_generation_cancellation_preempts_stale_save():
         wait_for_windows_handles()
 
 
-def test_windows_backend_failure_then_ollama_success_records_attempted_and_actual(monkeypatch):
+def test_windows_local_ollama_is_preferred_over_paid_or_remote_model(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
-        root = make_sarah_home(Path(temp) / "fallback-route")
+        root = make_sarah_home(Path(temp) / "local-first-route")
         database = SarahDatabase(root)
         database.ensure_profile("Robert", 45, "Newark", "travel", True)
         save_runtime_config({
@@ -920,31 +920,21 @@ def test_windows_backend_failure_then_ollama_success_records_attempted_and_actua
 
             @staticmethod
             def json():
-                return {"message": {"content": "<SPOKEN>Offline answer.</SPOKEN><FACTUAL_TRUTH>Saved knowledge only.</FACTUAL_TRUTH>"}}
+                return {"message": {"content": "<SPOKEN>Local answer.</SPOKEN><FACTUAL_TRUTH>Saved knowledge only.</FACTUAL_TRUTH>"}}
 
         def fake_post(url, **kwargs):
             calls.append(url)
             if url.startswith("https://"):
-                raise requests.ConnectionError("protected backend unavailable")
+                raise AssertionError("ordinary conversation must not call the remote model when local Ollama is selected")
             return OllamaReply()
 
         monkeypatch.setattr("sarah_core.requests.post", fake_post)
         response = ModelClient(database).respond("Continue")
-        protected_calls = [url for url in calls if url.startswith("https://")]
-        assert len(protected_calls) == 2
-        protected_attempts = [
-            urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["sarah_attempt"][0]
-            for url in protected_calls
-        ]
-        assert protected_attempts == ["1", "2"]
-        assert calls[-1].endswith("/api/chat")
-        assert response.route == "ONLINE_FAILED_FELL_BACK_OFFLINE"
-        assert "Attempted route: ONLINE_WORKERS_AI" in response.factual_truth
-        assert "Actual route: local Ollama" in response.factual_truth
-
-        del database
-        wait_for_windows_handles()
-
+        assert calls == ["http://127.0.0.1:11434/api/chat"]
+        assert response.route == "OFFLINE_LOCAL"
+        receipt = extract_text_turn_receipt(response.factual_truth)
+        assert receipt["actual_provider"] == "ollama-local"
+        assert receipt["actual_model"] == "qwen3.5:9b"
 
 def test_windows_voice_can_use_local_unbundled_configuration(monkeypatch):
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
@@ -1672,7 +1662,7 @@ def test_windows_voice_failure_uses_system_speech_fallback(monkeypatch):
     assert "System.Speech" in calls[0][0][-1]
     assert app.speaking is False
     receipt = json.loads(settings["voice_route_receipt:test-person"])
-    assert receipt["attempted_route"] == "ELEVENLABS"
+    assert receipt["attempted_route"] == "LOCAL_GENERATED_VOICE"
     assert receipt["actual_route"] == "WINDOWS_SYSTEM_SPEECH"
     assert receipt["synthesis_start"] > 0
     assert receipt["synthesis_end"] >= receipt["synthesis_start"]
@@ -1849,7 +1839,7 @@ def test_windows_stop_during_synthesis_suppresses_fallback_and_playback(monkeypa
 
         @staticmethod
         def synthesize(_text, *, should_cancel, total_budget_seconds):
-            assert total_budget_seconds == 15.0
+            assert total_budget_seconds == 120.0
             app._begin_voice_generation("stopped_by_owner")
             assert should_cancel()
             raise RuntimeError("voice_synthesis_cancelled")
